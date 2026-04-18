@@ -2,6 +2,7 @@
 #define APP_APP_EVENT_H
 
 #include "AppDataCache.h"
+#include "DiagnosticsSnapshot.h"
 
 #include <cstdint>
 
@@ -18,13 +19,19 @@ enum class AppEventType
   WeatherFetched,
   WeatherFetchFailed,
   RefreshDue,
+  ShortPressed,
+  LongPressed,
+  ToastExpired,
+  DiagnosticsSnapshotCaptured,
 };
 
 struct AppEvent
 {
   AppEventType type = AppEventType::BootRequested;
   uint32_t epochSeconds = 0;
+  uint32_t monotonicMs = 0;
   WeatherSnapshot weather;
+  DiagnosticsSnapshot diagnostics;
 
   static AppEvent bootRequested()
   {
@@ -83,6 +90,37 @@ struct AppEvent
     AppEvent event;
     event.type = AppEventType::RefreshDue;
     event.epochSeconds = epoch;
+    return event;
+  }
+
+  static AppEvent shortPressed(uint32_t nowMs)
+  {
+    AppEvent event;
+    event.type = AppEventType::ShortPressed;
+    event.monotonicMs = nowMs;
+    return event;
+  }
+
+  static AppEvent longPressed(uint32_t nowMs)
+  {
+    AppEvent event;
+    event.type = AppEventType::LongPressed;
+    event.monotonicMs = nowMs;
+    return event;
+  }
+
+  static AppEvent toastExpired()
+  {
+    AppEvent event;
+    event.type = AppEventType::ToastExpired;
+    return event;
+  }
+
+  static AppEvent diagnosticsSnapshotCaptured(const DiagnosticsSnapshot &snapshot)
+  {
+    AppEvent event;
+    event.type = AppEventType::DiagnosticsSnapshotCaptured;
+    event.diagnostics = snapshot;
     return event;
   }
 };

@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 
 namespace app
 {
@@ -18,21 +19,27 @@ enum class AppActionType
   SleepWifi,
   PersistConfig,
   ResetWifiAndRestart,
+  CaptureDiagnosticsSnapshot,
+  PreviewBrightness,
+  ApplyBrightness,
+  RestartDevice,
 };
 
 struct AppAction
 {
   AppActionType type = AppActionType::RenderRequested;
+  uint32_t value = 0;
 };
 
 struct ActionList
 {
-  std::array<AppAction, 8> items{};
+  std::array<AppAction, 12> items{};
   std::size_t count = 0;
 
-  void push(AppActionType type)
+  void push(AppActionType type, uint32_t value = 0)
   {
     items[count].type = type;
+    items[count].value = value;
     ++count;
   }
 

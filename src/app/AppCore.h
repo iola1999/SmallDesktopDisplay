@@ -7,6 +7,7 @@
 #include "AppEvent.h"
 #include "AppRuntimeState.h"
 #include "AppViewModel.h"
+#include "UiSessionState.h"
 
 namespace app
 {
@@ -24,14 +25,19 @@ public:
   AppConfigData &configMutable() { return config_; }
   const AppDataCache &cache() const { return cache_; }
   const AppViewModel &view() const { return view_; }
+  const UiSessionState &ui() const { return ui_; }
 
 private:
   void enterBlockingError(BlockingErrorReason reason, const char *title, const char *detail);
-  void refreshMainView();
+  void clearToast();
+  void refreshOperationalView();
+  void openSettingsMenu();
+  void openRebootConfirmMenu();
 
   AppConfigData config_;
   AppRuntimeState runtime_;
   AppDataCache cache_;
+  UiSessionState ui_;
   AppViewModel view_;
 };
 
