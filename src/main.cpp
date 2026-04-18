@@ -13,6 +13,7 @@
 #include "app/BackgroundRefreshPolicy.h"
 #include "app/AppCore.h"
 #include "app/AppDriver.h"
+#include "app/HomeAnimationTransition.h"
 #include "ui/TftDisplayPort.h"
 
 namespace
@@ -34,10 +35,24 @@ uint32_t g_lastHoldFeedbackTickMs = 0;
 
 void dispatch(const app::ActionList &actions)
 {
-  g_driver.dispatch(g_core, actions);
+  const bool wasHomeAnimationActive = animate::enabled();
   animate::setDhtEnabled(g_core.config().dhtEnabled);
-  animate::setHomeActive(g_core.view().kind == app::ViewKind::Main &&
-                         g_core.view().main.homeAnimationEnabled);
+
+  if (app::homeAnimationTransitionPhase(wasHomeAnimationActive, g_core.view()) ==
+      app::HomeAnimationTransitionPhase::BeforeRender)
+  {
+    animate::setHomeActive(g_core.view().kind == app::ViewKind::Main &&
+                           g_core.view().main.homeAnimationEnabled);
+  }
+
+  g_driver.dispatch(g_core, actions);
+
+  if (app::homeAnimationTransitionPhase(wasHomeAnimationActive, g_core.view()) ==
+      app::HomeAnimationTransitionPhase::AfterRender)
+  {
+    animate::setHomeActive(g_core.view().kind == app::ViewKind::Main &&
+                           g_core.view().main.homeAnimationEnabled);
+  }
 }
 
 void showGestureFeedbackIfHandled(input::ButtonEvent inputEvent,

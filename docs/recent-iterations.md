@@ -45,3 +45,11 @@ Update it whenever behavior, architecture, or interaction details change.
 ### Follow-Up Candidate
 
 - Refactor weather/NTP/network refresh into an incremental async job runner so background sync no longer blocks even on the home page.
+
+## 2026-04-19
+
+### Render Transition Fixes
+
+- Fixed the right-bottom home animation teardown ordering bug.
+- Root cause: leaving `Home` rendered the destination page first, then `animate::setHomeActive(false)` cleared the old animation region over the newly rendered page.
+- New behavior: when transitioning away from `Home`, animation deactivation and region clear happen before the destination page render.
