@@ -76,8 +76,19 @@ struct InfoBodyData
 {
   std::string title;
   std::string subtitle;
-  std::array<InfoRowData, 4> rows{};
+  std::array<InfoRowData, 10> rows{};
   std::size_t rowCount = 0;
+  std::size_t visibleRowCount = 4;
+  std::size_t firstVisibleRowIndex = 0;
+  std::size_t selectedRowIndex = 0;
+};
+
+struct HoldFeedbackViewData
+{
+  bool visible = false;
+  bool armed = false;
+  uint32_t pressStartedMs = 0;
+  uint8_t progressPercent = 0;
 };
 
 struct AdjustBodyData
@@ -98,6 +109,8 @@ struct MainViewData
   MenuBodyData menu;
   InfoBodyData info;
   AdjustBodyData adjust;
+  HoldFeedbackViewData holdFeedback;
+  bool homeAnimationEnabled = false;
 
   std::string timeText = "--:--:--";
   std::string dateText;

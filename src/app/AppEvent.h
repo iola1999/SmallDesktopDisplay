@@ -19,6 +19,9 @@ enum class AppEventType
   WeatherFetched,
   WeatherFetchFailed,
   RefreshDue,
+  PressStarted,
+  LongPressArmed,
+  PressReleased,
   ShortPressed,
   LongPressed,
   ToastExpired,
@@ -90,6 +93,30 @@ struct AppEvent
     AppEvent event;
     event.type = AppEventType::RefreshDue;
     event.epochSeconds = epoch;
+    return event;
+  }
+
+  static AppEvent pressStarted(uint32_t nowMs)
+  {
+    AppEvent event;
+    event.type = AppEventType::PressStarted;
+    event.monotonicMs = nowMs;
+    return event;
+  }
+
+  static AppEvent longPressArmed(uint32_t nowMs)
+  {
+    AppEvent event;
+    event.type = AppEventType::LongPressArmed;
+    event.monotonicMs = nowMs;
+    return event;
+  }
+
+  static AppEvent pressReleased(uint32_t nowMs)
+  {
+    AppEvent event;
+    event.type = AppEventType::PressReleased;
+    event.monotonicMs = nowMs;
     return event;
   }
 

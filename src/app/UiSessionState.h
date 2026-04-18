@@ -17,6 +17,20 @@ enum class UiRoute
   RebootConfirmMenu,
 };
 
+struct InfoPageState
+{
+  uint8_t selectedRowIndex = 0;
+  uint8_t firstVisibleRowIndex = 0;
+};
+
+struct HoldFeedbackState
+{
+  bool visible = false;
+  bool armed = false;
+  uint32_t pressStartedMs = 0;
+  uint8_t progressPercent = 0;
+};
+
 struct UiSessionState
 {
   UiRoute route = UiRoute::Home;
@@ -25,6 +39,8 @@ struct UiSessionState
   bool toastVisible = false;
   uint32_t toastDeadlineMs = 0;
   DiagnosticsSnapshot diagnostics;
+  InfoPageState infoPage;
+  HoldFeedbackState holdFeedback;
 };
 
 } // namespace app

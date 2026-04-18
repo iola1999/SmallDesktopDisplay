@@ -10,6 +10,7 @@ TEST_CASE("boot request renders splash and starts wifi connection")
   CHECK(actions.count == 2);
   CHECK(actions[0].type == app::AppActionType::RenderRequested);
   CHECK(actions[1].type == app::AppActionType::ConnectWifi);
+  CHECK(actions[1].payload.mode == app::WifiConnectMode::ForegroundBlocking);
   CHECK(core.runtime().mode == app::AppMode::Booting);
   CHECK(core.view().kind == app::ViewKind::Splash);
 }
