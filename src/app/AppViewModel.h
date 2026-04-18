@@ -5,6 +5,7 @@
 #include "AppRuntimeState.h"
 
 #include <array>
+#include <cstddef>
 #include <string>
 
 namespace app
@@ -31,8 +32,73 @@ struct ErrorViewData
   bool retrying = false;
 };
 
+enum class OperationalPageKind
+{
+  Home,
+  Menu,
+  Info,
+  Adjust,
+};
+
+struct FooterHints
+{
+  std::string shortPressLabel;
+  std::string longPressLabel;
+};
+
+struct ToastData
+{
+  bool visible = false;
+  std::string text;
+};
+
+struct MenuItemData
+{
+  std::string label;
+  bool selected = false;
+};
+
+struct MenuBodyData
+{
+  std::string title;
+  std::string subtitle;
+  std::array<MenuItemData, 4> items{};
+  std::size_t itemCount = 0;
+};
+
+struct InfoRowData
+{
+  std::string label;
+  std::string value;
+};
+
+struct InfoBodyData
+{
+  std::string title;
+  std::string subtitle;
+  std::array<InfoRowData, 4> rows{};
+  std::size_t rowCount = 0;
+};
+
+struct AdjustBodyData
+{
+  std::string title;
+  std::string subtitle;
+  int value = 0;
+  int minValue = 0;
+  int maxValue = 100;
+  std::string unit = "%";
+};
+
 struct MainViewData
 {
+  OperationalPageKind pageKind = OperationalPageKind::Home;
+  FooterHints footer;
+  ToastData toast;
+  MenuBodyData menu;
+  InfoBodyData info;
+  AdjustBodyData adjust;
+
   std::string timeText = "--:--:--";
   std::string dateText;
   std::string cityName;
