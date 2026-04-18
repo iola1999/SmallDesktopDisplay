@@ -16,6 +16,7 @@ public:
   void setRotation(uint8_t rotation);
   void tickClock();
   void tickBanner();
+  void tickTransientUi(const app::AppViewModel &view, uint32_t nowMs);
   void render(const app::AppViewModel &view) override;
 };
 

@@ -27,6 +27,14 @@ int s_humidityPercent = 0;
 uint16_t s_tempColor = 0xFFFF;
 uint16_t s_humidityColor = 0xFFFF;
 bool s_mainPageActive = false;
+int s_lastHoldFillWidth = -1;
+bool s_holdVisible = false;
+bool s_holdArmed = false;
+
+constexpr int kHoldLineX = 14;
+constexpr int kHoldLineY = 4;
+constexpr int kHoldLineWidth = 212;
+constexpr int kHoldLineHeight = 3;
 
 String weekText()
 {
@@ -150,6 +158,54 @@ void drawHumidityBar()
   display::clk.fillRoundRect(1, 1, halfBar, 4, 2, s_humidityColor);
   display::clk.pushSprite(45, 222);
   display::clk.deleteSprite();
+}
+
+void clearHoldLine()
+{
+  display::tft.fillRect(kHoldLineX, kHoldLineY, kHoldLineWidth, kHoldLineHeight, app_config::kColorBg);
+  s_lastHoldFillWidth = -1;
+  s_holdVisible = false;
+  s_holdArmed = false;
+}
+
+void drawHoldLine(const app::HoldFeedbackViewData &hold, uint32_t nowMs)
+{
+  if (!hold.visible)
+  {
+    clearHoldLine();
+    return;
+  }
+
+  uint8_t progressPercent = 0;
+  if (hold.armed)
+  {
+    progressPercent = 100;
+  }
+  else if (nowMs > hold.pressStartedMs && app_config::kButtonLongPressMs > 0)
+  {
+    const uint32_t elapsedMs = nowMs - hold.pressStartedMs;
+    progressPercent = static_cast<uint8_t>((elapsedMs >= app_config::kButtonLongPressMs)
+                                             ? 100U
+                                             : (elapsedMs * 100U) / app_config::kButtonLongPressMs);
+  }
+
+  const int fillWidth = (kHoldLineWidth * progressPercent) / 100;
+  if (s_holdVisible && fillWidth == s_lastHoldFillWidth && hold.armed == s_holdArmed)
+  {
+    return;
+  }
+
+  display::tft.fillRect(kHoldLineX, kHoldLineY, kHoldLineWidth, kHoldLineHeight, app_config::kColorBg);
+  display::tft.drawFastHLine(kHoldLineX, kHoldLineY + 1, kHoldLineWidth, TFT_DARKGREY);
+  if (fillWidth > 0)
+  {
+    const uint16_t color = hold.armed ? TFT_YELLOW : TFT_WHITE;
+    display::tft.fillRect(kHoldLineX, kHoldLineY, fillWidth, kHoldLineHeight, color);
+  }
+
+  s_holdVisible = true;
+  s_holdArmed = hold.armed;
+  s_lastHoldFillWidth = fillWidth;
 }
 
 void updateTemperatureBar(int temperatureC)
@@ -467,6 +523,7 @@ void drawSplashPage(const app::SplashViewData &view)
 {
   s_mainPageActive = false;
   display::clear();
+  clearHoldLine();
   display::clk.setColorDepth(8);
   display::clk.createSprite(220, 100);
   display::clk.fillSprite(app_config::kColorBg);
@@ -483,6 +540,7 @@ void drawErrorPage(const app::ErrorViewData &view)
 {
   s_mainPageActive = false;
   display::clear();
+  clearHoldLine();
   display::clk.setColorDepth(8);
   display::clk.createSprite(220, 120);
   display::clk.fillSprite(app_config::kColorBg);
@@ -516,6 +574,7 @@ void drawMainPage(const app::MainViewData &view)
     forceClockRedraw();
     refreshBanner();
     drawToast(view.toast);
+    drawHoldLine(view.holdFeedback, millis());
     return;
   }
 
@@ -537,6 +596,13 @@ void drawMainPage(const app::MainViewData &view)
     case app::OperationalPageKind::Home:
       break;
   }
+
+  drawHoldLine(view.holdFeedback, millis());
+}
+
+void refreshHoldFeedback(const app::HoldFeedbackViewData &hold, uint32_t nowMs)
+{
+  drawHoldLine(hold, nowMs);
 }
 
 } // namespace screen

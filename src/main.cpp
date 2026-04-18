@@ -29,6 +29,7 @@ app::AppDriver g_driver(g_storage, g_network, g_weather, g_timeSync, g_sensor, g
 
 uint32_t g_lastSecondTickMs = 0;
 uint32_t g_lastBannerTickMs = 0;
+uint32_t g_lastHoldFeedbackTickMs = 0;
 
 void dispatch(const app::ActionList &actions)
 {
@@ -111,18 +112,40 @@ void loop()
   input::tick();
   const uint32_t nowMs = millis();
 
-  switch (input::consumeEvent())
+  input::ButtonEvent inputEvent = input::ButtonEvent::None;
+  while (input::pollEvent(inputEvent))
   {
-    case input::ButtonEvent::ShortPress:
-      dispatch(g_core.handle(app::AppEvent::shortPressed(nowMs)));
-      break;
+    switch (inputEvent)
+    {
+      case input::ButtonEvent::PressStarted:
+        dispatch(g_core.handle(app::AppEvent::pressStarted(nowMs)));
+        break;
 
-    case input::ButtonEvent::LongPress:
-      dispatch(g_core.handle(app::AppEvent::longPressed(nowMs)));
-      break;
+      case input::ButtonEvent::LongPressArmed:
+        dispatch(g_core.handle(app::AppEvent::longPressArmed(nowMs)));
+        break;
 
-    case input::ButtonEvent::None:
-      break;
+      case input::ButtonEvent::PressReleased:
+        dispatch(g_core.handle(app::AppEvent::pressReleased(nowMs)));
+        break;
+
+      case input::ButtonEvent::ShortPress:
+        dispatch(g_core.handle(app::AppEvent::shortPressed(nowMs)));
+        break;
+
+      case input::ButtonEvent::LongPress:
+        dispatch(g_core.handle(app::AppEvent::longPressed(nowMs)));
+        break;
+
+      case input::ButtonEvent::None:
+        break;
+    }
+  }
+
+  if (nowMs - g_lastHoldFeedbackTickMs >= app_config::kHoldFeedbackRefreshMs)
+  {
+    g_lastHoldFeedbackTickMs = nowMs;
+    g_display.tickTransientUi(g_core.view(), nowMs);
   }
 
   if (g_core.ui().toastVisible && nowMs >= g_core.ui().toastDeadlineMs)

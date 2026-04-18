@@ -7,13 +7,16 @@ namespace input
 enum class ButtonEvent
 {
   None,
+  PressStarted,
+  LongPressArmed,
+  PressReleased,
   ShortPress,
   LongPress,
 };
 
 void begin();
 void tick();
-ButtonEvent consumeEvent();
+bool pollEvent(ButtonEvent &event);
 
 } // namespace input
 

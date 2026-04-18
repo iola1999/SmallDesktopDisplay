@@ -32,6 +32,16 @@ void TftDisplayPort::tickBanner()
   screen::refreshBanner();
 }
 
+void TftDisplayPort::tickTransientUi(const app::AppViewModel &view, uint32_t nowMs)
+{
+  if (view.kind != app::ViewKind::Main)
+  {
+    return;
+  }
+
+  screen::refreshHoldFeedback(view.main.holdFeedback, nowMs);
+}
+
 void TftDisplayPort::render(const app::AppViewModel &view)
 {
   switch (view.kind)

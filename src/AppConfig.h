@@ -35,6 +35,8 @@ constexpr const char *kDefaultCityCode = "101090609";
 constexpr uint8_t kPinLcdBacklight = 5;  // LCD 背光
 constexpr uint8_t kPinButton = 4;        // 按键
 constexpr uint8_t kPinDht = 12;          // DHT11
+constexpr uint32_t kButtonLongPressMs = 200;
+constexpr uint32_t kHoldFeedbackRefreshMs = 16;
 
 // UI 坐标 / 尺寸
 constexpr uint16_t kTimeY = 82; // 时钟字体 y 坐标

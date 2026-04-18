@@ -8,6 +8,7 @@ namespace screen
 
 void refreshClock();
 void refreshBanner();
+void refreshHoldFeedback(const app::HoldFeedbackViewData &hold, uint32_t nowMs);
 void forceClockRedraw();
 void drawSplashPage(const app::SplashViewData &view);
 void drawErrorPage(const app::ErrorViewData &view);
