@@ -9,7 +9,7 @@ void AppDriver::appendActions(ActionList &target, const ActionList &source)
 {
   for (std::size_t index = 0; index < source.count; ++index)
   {
-    target.push(source[index].type);
+    target.push(source[index].type, source[index].value);
   }
 }
 
@@ -42,6 +42,15 @@ void AppDriver::execute(const ActionList &actions, const AppConfigData &config, 
         storage_.save(config);
         break;
 
+      case AppActionType::PreviewBrightness:
+        display_.setBrightness(static_cast<uint8_t>(actions[index].value));
+        break;
+
+      case AppActionType::ApplyBrightness:
+        display_.setBrightness(static_cast<uint8_t>(actions[index].value));
+        storage_.save(config);
+        break;
+
       case AppActionType::ResetWifiAndRestart:
         network_.resetAndRestart();
         break;
@@ -49,6 +58,8 @@ void AppDriver::execute(const ActionList &actions, const AppConfigData &config, 
       case AppActionType::ResolveCityCode:
       case AppActionType::SyncTime:
       case AppActionType::FetchWeather:
+      case AppActionType::CaptureDiagnosticsSnapshot:
+      case AppActionType::RestartDevice:
       default:
         break;
     }
@@ -143,11 +154,22 @@ void AppDriver::dispatch(AppCore &core, const ActionList &actions)
           storage_.save(core.config());
           break;
 
+        case AppActionType::PreviewBrightness:
+          display_.setBrightness(static_cast<uint8_t>(pending[index].value));
+          break;
+
+        case AppActionType::ApplyBrightness:
+          display_.setBrightness(static_cast<uint8_t>(pending[index].value));
+          storage_.save(core.config());
+          break;
+
         case AppActionType::ResetWifiAndRestart:
           network_.resetAndRestart();
           break;
 
         case AppActionType::ResolveCityCode:
+        case AppActionType::CaptureDiagnosticsSnapshot:
+        case AppActionType::RestartDevice:
         default:
           break;
       }

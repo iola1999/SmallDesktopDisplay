@@ -5,10 +5,16 @@
 struct FakeDisplayPort : ports::DisplayPort
 {
   bool rendered = false;
+  int brightness = -1;
 
   void render(const app::AppViewModel &) override
   {
     rendered = true;
+  }
+
+  void setBrightness(uint8_t percent) override
+  {
+    brightness = percent;
   }
 };
 
@@ -97,4 +103,27 @@ TEST_CASE("driver executes connect-wifi and render actions against ports")
 
   CHECK(display.rendered == true);
   CHECK(network.connectCalled == true);
+}
+
+TEST_CASE("driver applies preview and persistent brightness actions")
+{
+  FakeDisplayPort display;
+  FakeNetworkPort network;
+  NullStoragePort storage;
+  NullWeatherPort weather;
+  NullTimeSyncPort timeSync;
+  NullSensorPort sensor;
+  ports::ClockPort *clock = nullptr;
+
+  app::AppDriver driver(storage, network, weather, timeSync, sensor, display, clock);
+  app::ActionList actions;
+  actions.push(app::AppActionType::PreviewBrightness, 55);
+  actions.push(app::AppActionType::ApplyBrightness, 70);
+
+  app::AppConfigData config;
+  config.lcdBrightness = 70;
+  app::AppViewModel view;
+  driver.execute(actions, config, view);
+
+  CHECK(display.brightness == 70);
 }

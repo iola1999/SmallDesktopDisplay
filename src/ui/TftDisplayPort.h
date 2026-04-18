@@ -12,7 +12,7 @@ class TftDisplayPort : public ports::DisplayPort
 {
 public:
   void begin(uint8_t rotation, uint8_t brightness);
-  void setBrightness(uint8_t brightness);
+  void setBrightness(uint8_t brightness) override;
   void setRotation(uint8_t rotation);
   void tickClock();
   void tickBanner();

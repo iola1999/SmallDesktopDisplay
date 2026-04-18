@@ -18,6 +18,28 @@ constexpr std::array<const char *, 2> kRestartConfirmItems{
   "Confirm Restart",
 };
 
+constexpr std::array<uint8_t, 7> kBrightnessPresets{{10, 25, 40, 55, 70, 85, 100}};
+
+uint8_t nearestBrightnessPresetIndex(uint8_t brightness)
+{
+  uint8_t bestIndex = 0;
+  int bestDistance = 101;
+
+  for (uint8_t index = 0; index < kBrightnessPresets.size(); ++index)
+  {
+    const int distance = (kBrightnessPresets[index] > brightness)
+                           ? static_cast<int>(kBrightnessPresets[index] - brightness)
+                           : static_cast<int>(brightness - kBrightnessPresets[index]);
+    if (distance < bestDistance)
+    {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  }
+
+  return bestIndex;
+}
+
 } // namespace
 
 void AppCore::enterBlockingError(BlockingErrorReason reason, const char *title, const char *detail)
@@ -98,7 +120,20 @@ void AppCore::refreshOperationalView()
       break;
 
     case UiRoute::DiagnosticsPage:
+      break;
+
     case UiRoute::BrightnessAdjustPage:
+      view_.main.pageKind = OperationalPageKind::Adjust;
+      view_.main.adjust.title = "Brightness";
+      view_.main.adjust.subtitle = "Preview before save";
+      view_.main.adjust.value = kBrightnessPresets[ui_.selectedBrightnessPresetIndex];
+      view_.main.adjust.minValue = kBrightnessPresets.front();
+      view_.main.adjust.maxValue = kBrightnessPresets.back();
+      view_.main.adjust.unit = "%";
+      view_.main.footer.shortPressLabel = "Cycle";
+      view_.main.footer.longPressLabel = "Save";
+      view_.main.toast.visible = false;
+      view_.main.toast.text.clear();
       break;
   }
 }
@@ -268,6 +303,14 @@ ActionList AppCore::handle(const AppEvent &event)
         refreshOperationalView();
         actions.push(AppActionType::RenderRequested);
       }
+      else if (ui_.route == UiRoute::BrightnessAdjustPage)
+      {
+        ui_.selectedBrightnessPresetIndex =
+          static_cast<uint8_t>((ui_.selectedBrightnessPresetIndex + 1U) % kBrightnessPresets.size());
+        refreshOperationalView();
+        actions.push(AppActionType::PreviewBrightness, view_.main.adjust.value);
+        actions.push(AppActionType::RenderRequested);
+      }
       else if (ui_.route == UiRoute::RebootConfirmMenu)
       {
         ui_.selectedMenuIndex =
@@ -296,11 +339,26 @@ ActionList AppCore::handle(const AppEvent &event)
           refreshOperationalView();
           actions.push(AppActionType::RenderRequested);
         }
+        else if (ui_.selectedMenuIndex == 2)
+        {
+          ui_.route = UiRoute::BrightnessAdjustPage;
+          ui_.selectedBrightnessPresetIndex = nearestBrightnessPresetIndex(config_.lcdBrightness);
+          clearToast();
+          refreshOperationalView();
+          actions.push(AppActionType::RenderRequested);
+        }
         else if (ui_.selectedMenuIndex == 3)
         {
           openRebootConfirmMenu();
           actions.push(AppActionType::RenderRequested);
         }
+      }
+      else if (ui_.route == UiRoute::BrightnessAdjustPage)
+      {
+        config_.lcdBrightness = kBrightnessPresets[ui_.selectedBrightnessPresetIndex];
+        actions.push(AppActionType::ApplyBrightness, config_.lcdBrightness);
+        openSettingsMenu();
+        actions.push(AppActionType::RenderRequested);
       }
       else if (ui_.route == UiRoute::RebootConfirmMenu)
       {

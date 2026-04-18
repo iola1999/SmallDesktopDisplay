@@ -13,6 +13,8 @@ struct DispatchDisplayPort : ports::DisplayPort
     ++renderCount;
     lastKind = view.kind;
   }
+
+  void setBrightness(uint8_t) override {}
 };
 
 struct DispatchNetworkPort : ports::NetworkPort
