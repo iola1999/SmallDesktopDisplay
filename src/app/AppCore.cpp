@@ -1,7 +1,6 @@
 #include "app/AppCore.h"
 
 #include <cstdio>
-#include <ctime>
 
 namespace app
 {
@@ -57,24 +56,7 @@ std::string formatEpochCompact(uint32_t epochSeconds)
   {
     return "-";
   }
-
-  const std::time_t raw = static_cast<std::time_t>(epochSeconds);
-  const std::tm *tm = std::localtime(&raw);
-  if (!tm)
-  {
-    return "-";
-  }
-
-  char buffer[20];
-  snprintf(
-    buffer,
-    sizeof(buffer),
-    "%02d-%02d %02d:%02d",
-    tm->tm_mon + 1,
-    tm->tm_mday,
-    tm->tm_hour,
-    tm->tm_min);
-  return buffer;
+  return formatUint32(epochSeconds);
 }
 
 std::string textOrDash(const std::string &value)
