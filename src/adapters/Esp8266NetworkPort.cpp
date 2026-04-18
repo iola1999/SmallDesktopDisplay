@@ -20,6 +20,11 @@ void Esp8266NetworkPort::sleep()
   net::sleep();
 }
 
+void Esp8266NetworkPort::restart()
+{
+  net::restart();
+}
+
 void Esp8266NetworkPort::resetAndRestart()
 {
   net::resetAndRestart();

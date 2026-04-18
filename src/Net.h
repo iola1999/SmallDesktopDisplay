@@ -9,6 +9,7 @@ namespace net
 bool connect(app::AppConfigData &config);
 void sleep();
 void wake();
+void restart();
 void resetAndRestart();
 
 } // namespace net

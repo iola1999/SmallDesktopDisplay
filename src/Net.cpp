@@ -204,6 +204,11 @@ void wake()
   delay(1);
 }
 
+void restart()
+{
+  ESP.restart();
+}
+
 void resetAndRestart()
 {
 #if WM_EN

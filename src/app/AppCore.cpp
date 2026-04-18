@@ -120,6 +120,22 @@ void AppCore::refreshOperationalView()
       break;
 
     case UiRoute::DiagnosticsPage:
+      view_.main.pageKind = OperationalPageKind::Info;
+      view_.main.info.title = "Diagnostics";
+      view_.main.info.subtitle = "Captured on entry";
+      view_.main.info.rowCount = 4;
+      view_.main.info.rows[0].label = "Free Heap";
+      view_.main.info.rows[0].value = std::to_string(ui_.diagnostics.freeHeapBytes);
+      view_.main.info.rows[1].label = "Flash Used";
+      view_.main.info.rows[1].value = std::to_string(ui_.diagnostics.programFlashUsedBytes);
+      view_.main.info.rows[2].label = "Flash Total";
+      view_.main.info.rows[2].value = std::to_string(ui_.diagnostics.programFlashTotalBytes);
+      view_.main.info.rows[3].label = "WiFi";
+      view_.main.info.rows[3].value = ui_.diagnostics.wifiConnected ? ui_.diagnostics.wifiSsid : "not connected";
+      view_.main.footer.shortPressLabel = "Back";
+      view_.main.footer.longPressLabel = "Back";
+      view_.main.toast.visible = false;
+      view_.main.toast.text.clear();
       break;
 
     case UiRoute::BrightnessAdjustPage:
@@ -303,6 +319,11 @@ ActionList AppCore::handle(const AppEvent &event)
         refreshOperationalView();
         actions.push(AppActionType::RenderRequested);
       }
+      else if (ui_.route == UiRoute::DiagnosticsPage)
+      {
+        openSettingsMenu();
+        actions.push(AppActionType::RenderRequested);
+      }
       else if (ui_.route == UiRoute::BrightnessAdjustPage)
       {
         ui_.selectedBrightnessPresetIndex =
@@ -339,6 +360,10 @@ ActionList AppCore::handle(const AppEvent &event)
           refreshOperationalView();
           actions.push(AppActionType::RenderRequested);
         }
+        else if (ui_.selectedMenuIndex == 1)
+        {
+          actions.push(AppActionType::CaptureDiagnosticsSnapshot);
+        }
         else if (ui_.selectedMenuIndex == 2)
         {
           ui_.route = UiRoute::BrightnessAdjustPage;
@@ -357,6 +382,11 @@ ActionList AppCore::handle(const AppEvent &event)
       {
         config_.lcdBrightness = kBrightnessPresets[ui_.selectedBrightnessPresetIndex];
         actions.push(AppActionType::ApplyBrightness, config_.lcdBrightness);
+        openSettingsMenu();
+        actions.push(AppActionType::RenderRequested);
+      }
+      else if (ui_.route == UiRoute::DiagnosticsPage)
+      {
         openSettingsMenu();
         actions.push(AppActionType::RenderRequested);
       }
@@ -384,6 +414,10 @@ ActionList AppCore::handle(const AppEvent &event)
       break;
 
     case AppEventType::DiagnosticsSnapshotCaptured:
+      ui_.diagnostics = event.diagnostics;
+      ui_.route = UiRoute::DiagnosticsPage;
+      refreshOperationalView();
+      actions.push(AppActionType::RenderRequested);
       break;
   }
 

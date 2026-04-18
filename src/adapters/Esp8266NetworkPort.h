@@ -12,6 +12,7 @@ public:
   bool connect(app::AppConfigData &config) override;
   void wake() override;
   void sleep() override;
+  void restart() override;
   void resetAndRestart() override;
 };
 

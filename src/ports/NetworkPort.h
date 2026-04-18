@@ -13,6 +13,7 @@ public:
   virtual void wake() = 0;
   virtual void sleep() = 0;
   virtual bool connect(app::AppConfigData &config) = 0;
+  virtual void restart() = 0;
   virtual void resetAndRestart() = 0;
 };
 

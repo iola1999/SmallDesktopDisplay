@@ -26,6 +26,7 @@ struct DispatchNetworkPort : ports::NetworkPort
 
   void wake() override {}
   void sleep() override {}
+  void restart() override {}
   void resetAndRestart() override {}
 };
 
@@ -78,6 +79,14 @@ struct DispatchSensorPort : ports::SensorPort
   }
 };
 
+struct NullSystemStatusPort : ports::SystemStatusPort
+{
+  app::DiagnosticsSnapshot capture() const override
+  {
+    return {};
+  }
+};
+
 TEST_CASE("driver dispatch executes synchronous boot flow to operational")
 {
   DispatchStoragePort storage;
@@ -85,10 +94,11 @@ TEST_CASE("driver dispatch executes synchronous boot flow to operational")
   DispatchWeatherPort weather;
   DispatchTimeSyncPort timeSync;
   DispatchSensorPort sensor;
+  NullSystemStatusPort systemStatus;
   DispatchDisplayPort display;
 
   app::AppCore core;
-  app::AppDriver driver(storage, network, weather, timeSync, sensor, display, nullptr);
+  app::AppDriver driver(storage, network, weather, timeSync, sensor, systemStatus, display, nullptr);
 
   driver.dispatch(core, core.handle(app::AppEvent::bootRequested()));
 

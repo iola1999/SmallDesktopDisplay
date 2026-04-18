@@ -23,6 +23,7 @@ struct FakeNetworkPort : ports::NetworkPort
   bool connectCalled = false;
   bool wakeCalled = false;
   bool sleepCalled = false;
+  bool restartCalled = false;
 
   void wake() override
   {
@@ -40,7 +41,20 @@ struct FakeNetworkPort : ports::NetworkPort
     return true;
   }
 
+  void restart() override
+  {
+    restartCalled = true;
+  }
+
   void resetAndRestart() override {}
+};
+
+struct NullSystemStatusPort : ports::SystemStatusPort
+{
+  app::DiagnosticsSnapshot capture() const override
+  {
+    return {};
+  }
 };
 
 struct NullStoragePort : ports::StoragePort
@@ -90,9 +104,10 @@ TEST_CASE("driver executes connect-wifi and render actions against ports")
   NullWeatherPort weather;
   NullTimeSyncPort timeSync;
   NullSensorPort sensor;
+  NullSystemStatusPort systemStatus;
   ports::ClockPort *clock = nullptr;
 
-  app::AppDriver driver(storage, network, weather, timeSync, sensor, display, clock);
+  app::AppDriver driver(storage, network, weather, timeSync, sensor, systemStatus, display, clock);
   app::ActionList actions;
   actions.push(app::AppActionType::RenderRequested);
   actions.push(app::AppActionType::ConnectWifi);
@@ -113,9 +128,10 @@ TEST_CASE("driver applies preview and persistent brightness actions")
   NullWeatherPort weather;
   NullTimeSyncPort timeSync;
   NullSensorPort sensor;
+  NullSystemStatusPort systemStatus;
   ports::ClockPort *clock = nullptr;
 
-  app::AppDriver driver(storage, network, weather, timeSync, sensor, display, clock);
+  app::AppDriver driver(storage, network, weather, timeSync, sensor, systemStatus, display, clock);
   app::ActionList actions;
   actions.push(app::AppActionType::PreviewBrightness, 55);
   actions.push(app::AppActionType::ApplyBrightness, 70);

@@ -51,6 +51,10 @@ void AppDriver::execute(const ActionList &actions, const AppConfigData &config, 
         storage_.save(config);
         break;
 
+      case AppActionType::RestartDevice:
+        network_.restart();
+        break;
+
       case AppActionType::ResetWifiAndRestart:
         network_.resetAndRestart();
         break;
@@ -59,7 +63,6 @@ void AppDriver::execute(const ActionList &actions, const AppConfigData &config, 
       case AppActionType::SyncTime:
       case AppActionType::FetchWeather:
       case AppActionType::CaptureDiagnosticsSnapshot:
-      case AppActionType::RestartDevice:
       default:
         break;
     }
@@ -163,13 +166,19 @@ void AppDriver::dispatch(AppCore &core, const ActionList &actions)
           storage_.save(core.config());
           break;
 
+        case AppActionType::CaptureDiagnosticsSnapshot:
+          appendActions(next, core.handle(AppEvent::diagnosticsSnapshotCaptured(systemStatus_.capture())));
+          break;
+
+        case AppActionType::RestartDevice:
+          network_.restart();
+          break;
+
         case AppActionType::ResetWifiAndRestart:
           network_.resetAndRestart();
           break;
 
         case AppActionType::ResolveCityCode:
-        case AppActionType::CaptureDiagnosticsSnapshot:
-        case AppActionType::RestartDevice:
         default:
           break;
       }
