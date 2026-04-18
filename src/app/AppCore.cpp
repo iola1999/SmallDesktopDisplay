@@ -37,11 +37,25 @@ ActionList AppCore::handle(const AppEvent &event)
     case AppEventType::BootRequested:
       runtime_.mode = AppMode::Booting;
       runtime_.blockingError = BlockingErrorReason::None;
+      runtime_.backgroundSyncInProgress = false;
+      runtime_.lastBackgroundSyncFailed = false;
       runtime_.syncPhase = SyncPhase::ConnectingWifi;
       view_.kind = ViewKind::Splash;
       view_.splash.detail = "Connecting WiFi";
       actions.push(AppActionType::RenderRequested);
       actions.push(AppActionType::ConnectWifi);
+      break;
+
+    case AppEventType::RefreshDue:
+      if (runtime_.mode == AppMode::Operational && !runtime_.backgroundSyncInProgress)
+      {
+        runtime_.backgroundSyncInProgress = true;
+        runtime_.lastBackgroundSyncFailed = false;
+        runtime_.syncPhase = SyncPhase::ConnectingWifi;
+        view_.main.showSyncInProgress = true;
+        actions.push(AppActionType::WakeWifi);
+        actions.push(AppActionType::ConnectWifi);
+      }
       break;
 
     case AppEventType::WifiConnected:
@@ -50,11 +64,23 @@ ActionList AppCore::handle(const AppEvent &event)
       break;
 
     case AppEventType::WifiConnectionFailed:
-      enterBlockingError(
-        BlockingErrorReason::NoNetwork,
-        "Network Error",
-        "Unable to connect to WiFi");
-      actions.push(AppActionType::RenderRequested);
+      if (runtime_.initialSyncComplete)
+      {
+        runtime_.backgroundSyncInProgress = false;
+        runtime_.lastBackgroundSyncFailed = true;
+        runtime_.syncPhase = SyncPhase::Idle;
+        view_.main.showSyncInProgress = false;
+        actions.push(AppActionType::SleepWifi);
+        actions.push(AppActionType::RenderRequested);
+      }
+      else
+      {
+        enterBlockingError(
+          BlockingErrorReason::NoNetwork,
+          "Network Error",
+          "Unable to connect to WiFi");
+        actions.push(AppActionType::RenderRequested);
+      }
       break;
 
     case AppEventType::TimeSynced:
@@ -66,32 +92,66 @@ ActionList AppCore::handle(const AppEvent &event)
       break;
 
     case AppEventType::TimeSyncFailed:
-      enterBlockingError(
-        BlockingErrorReason::TimeSyncFailed,
-        "Time Sync Failed",
-        "Unable to reach NTP server");
-      actions.push(AppActionType::RenderRequested);
+      if (runtime_.initialSyncComplete)
+      {
+        runtime_.backgroundSyncInProgress = false;
+        runtime_.lastBackgroundSyncFailed = true;
+        runtime_.syncPhase = SyncPhase::Idle;
+        view_.main.showSyncInProgress = false;
+        actions.push(AppActionType::SleepWifi);
+        actions.push(AppActionType::RenderRequested);
+      }
+      else
+      {
+        enterBlockingError(
+          BlockingErrorReason::TimeSyncFailed,
+          "Time Sync Failed",
+          "Unable to reach NTP server");
+        actions.push(AppActionType::RenderRequested);
+      }
       break;
 
     case AppEventType::WeatherFetched:
+    {
+      const bool wasBackgroundSync = runtime_.backgroundSyncInProgress;
       cache_.weather = event.weather;
       runtime_.lastWeatherSyncEpoch = event.epochSeconds;
       runtime_.initialSyncComplete = true;
+      runtime_.backgroundSyncInProgress = false;
+      runtime_.lastBackgroundSyncFailed = false;
       runtime_.mode = AppMode::Operational;
       runtime_.syncPhase = SyncPhase::Idle;
+      runtime_.nextRefreshDueEpoch = event.epochSeconds + (config_.weatherUpdateMinutes * 60U);
       refreshMainView();
+      view_.main.showSyncInProgress = false;
+      if (wasBackgroundSync)
+      {
+        actions.push(AppActionType::SleepWifi);
+      }
       actions.push(AppActionType::RenderRequested);
       break;
+    }
 
     case AppEventType::WeatherFetchFailed:
-      enterBlockingError(
-        BlockingErrorReason::WeatherFetchFailed,
-        "Weather Failed",
-        "Unable to fetch weather data");
-      actions.push(AppActionType::RenderRequested);
+      if (runtime_.initialSyncComplete)
+      {
+        runtime_.backgroundSyncInProgress = false;
+        runtime_.lastBackgroundSyncFailed = true;
+        runtime_.syncPhase = SyncPhase::Idle;
+        view_.main.showSyncInProgress = false;
+        actions.push(AppActionType::SleepWifi);
+        actions.push(AppActionType::RenderRequested);
+      }
+      else
+      {
+        enterBlockingError(
+          BlockingErrorReason::WeatherFetchFailed,
+          "Weather Failed",
+          "Unable to fetch weather data");
+        actions.push(AppActionType::RenderRequested);
+      }
       break;
 
-    case AppEventType::RefreshDue:
     default:
       break;
   }

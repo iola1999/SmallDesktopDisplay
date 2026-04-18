@@ -38,6 +38,7 @@ struct AppRuntimeState
   SyncPhase syncPhase = SyncPhase::Idle;
   bool initialSyncComplete = false;
   bool backgroundSyncInProgress = false;
+  bool lastBackgroundSyncFailed = false;
   uint32_t lastWeatherSyncEpoch = 0;
   uint32_t lastTimeSyncEpoch = 0;
   uint32_t nextRefreshDueEpoch = 0;
