@@ -30,8 +30,7 @@ void enterBrightness(app::AppCore &core)
 {
   core.handle(app::AppEvent::longPressed(1000));
   core.handle(app::AppEvent::shortPressed(1001));
-  core.handle(app::AppEvent::shortPressed(1002));
-  core.handle(app::AppEvent::longPressed(1003));
+  core.handle(app::AppEvent::longPressed(1002));
 }
 
 } // namespace
@@ -50,9 +49,11 @@ TEST_CASE("brightness page previews the next preset without persisting")
   CHECK(core.ui().route == app::UiRoute::BrightnessAdjustPage);
   CHECK(core.config().lcdBrightness == 40);
   CHECK(core.view().main.pageKind == app::OperationalPageKind::Adjust);
+  CHECK(core.view().main.adjust.subtitle == "");
   CHECK(core.view().main.adjust.value == 55);
-  CHECK(core.view().main.footer.shortPressLabel == "Cycle");
+  CHECK(core.view().main.footer.shortPressLabel == "Next");
   CHECK(core.view().main.footer.longPressLabel == "Save");
+  CHECK(core.view().main.footer.doublePressLabel == "Back");
 }
 
 TEST_CASE("long press on brightness page applies and saves the preset")
@@ -68,5 +69,19 @@ TEST_CASE("long press on brightness page applies and saves the preset")
   CHECK(actions[0].value == 55);
   CHECK(actions[1].type == app::AppActionType::RenderRequested);
   CHECK(core.config().lcdBrightness == 55);
+  CHECK(core.ui().route == app::UiRoute::SettingsMenu);
+}
+
+TEST_CASE("double press leaves brightness page without saving")
+{
+  auto core = brightnessCore();
+  enterBrightness(core);
+  core.handle(app::AppEvent::shortPressed(1004));
+
+  const auto actions = core.handle(app::AppEvent::doublePressed(1005));
+
+  CHECK(actions.count == 1);
+  CHECK(actions[0].type == app::AppActionType::RenderRequested);
+  CHECK(core.config().lcdBrightness == 40);
   CHECK(core.ui().route == app::UiRoute::SettingsMenu);
 }

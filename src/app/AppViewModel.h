@@ -44,6 +44,7 @@ struct FooterHints
 {
   std::string shortPressLabel;
   std::string longPressLabel;
+  std::string doublePressLabel;
 };
 
 struct ToastData

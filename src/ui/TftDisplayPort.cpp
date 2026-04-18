@@ -42,6 +42,11 @@ void TftDisplayPort::tickTransientUi(const app::AppViewModel &view, uint32_t now
   screen::refreshHoldFeedback(view.main.holdFeedback, nowMs);
 }
 
+void TftDisplayPort::showGestureFeedback(app::GestureFeedbackKind kind, uint32_t nowMs)
+{
+  screen::showGestureFeedback(kind, nowMs);
+}
+
 void TftDisplayPort::render(const app::AppViewModel &view)
 {
   switch (view.kind)

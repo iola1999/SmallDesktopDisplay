@@ -11,6 +11,7 @@ enum class ButtonEvent
   LongPressArmed,
   PressReleased,
   ShortPress,
+  DoublePress,
   LongPress,
 };
 

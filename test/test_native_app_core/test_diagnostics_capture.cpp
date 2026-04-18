@@ -115,9 +115,8 @@ TEST_CASE("diagnostics menu entry requests a single captured snapshot")
 {
   auto core = diagnosticsCore();
   core.handle(app::AppEvent::longPressed(1000));
-  core.handle(app::AppEvent::shortPressed(1001));
 
-  const auto actions = core.handle(app::AppEvent::longPressed(1002));
+  const auto actions = core.handle(app::AppEvent::longPressed(1001));
 
   CHECK(actions.count == 1);
   CHECK(actions[0].type == app::AppActionType::CaptureDiagnosticsSnapshot);
@@ -127,8 +126,7 @@ TEST_CASE("captured snapshot renders the diagnostics info page")
 {
   auto core = diagnosticsCore();
   core.handle(app::AppEvent::longPressed(1000));
-  core.handle(app::AppEvent::shortPressed(1001));
-  core.handle(app::AppEvent::longPressed(1002));
+  core.handle(app::AppEvent::longPressed(1001));
 
   app::DiagnosticsSnapshot snapshot;
   snapshot.valid = true;
@@ -159,8 +157,7 @@ TEST_CASE("content-page short press scrolls and long press returns")
 {
   auto core = diagnosticsCore();
   core.handle(app::AppEvent::longPressed(1000));
-  core.handle(app::AppEvent::shortPressed(1001));
-  core.handle(app::AppEvent::longPressed(1002));
+  core.handle(app::AppEvent::longPressed(1001));
 
   app::DiagnosticsSnapshot snapshot;
   snapshot.valid = true;

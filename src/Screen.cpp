@@ -6,6 +6,7 @@
 
 #include "AppConfig.h"
 #include "Display.h"
+#include "app/TransientUi.h"
 #include "font/ZdyLwFont_20.h"
 #include "font/timeClockFont.h"
 #include "weatherNum/weatherNum.h"
@@ -30,11 +31,20 @@ bool s_mainPageActive = false;
 int s_lastHoldFillWidth = -1;
 bool s_holdVisible = false;
 bool s_holdArmed = false;
+app::GestureFeedbackKind s_gestureFeedbackKind = app::GestureFeedbackKind::None;
+uint32_t s_gestureFeedbackStartedMs = 0;
+bool s_gestureFeedbackDrawn = false;
 
 constexpr int kHoldLineX = 14;
 constexpr int kHoldLineY = 4;
 constexpr int kHoldLineWidth = 212;
 constexpr int kHoldLineHeight = 3;
+constexpr int kTopTransientStripY = 0;
+constexpr int kTopTransientStripHeight = 12;
+constexpr int kGestureFeedbackX = 82;
+constexpr int kGestureFeedbackY = 0;
+constexpr int kGestureFeedbackWidth = 76;
+constexpr int kGestureFeedbackHeight = 11;
 
 String weekText()
 {
@@ -160,12 +170,96 @@ void drawHumidityBar()
   display::clk.deleteSprite();
 }
 
+void clearTopTransientStrip()
+{
+  display::tft.fillRect(0, kTopTransientStripY, 240, kTopTransientStripHeight, app_config::kColorBg);
+}
+
 void clearHoldLine()
 {
-  display::tft.fillRect(kHoldLineX, kHoldLineY, kHoldLineWidth, kHoldLineHeight, app_config::kColorBg);
+  clearTopTransientStrip();
   s_lastHoldFillWidth = -1;
   s_holdVisible = false;
   s_holdArmed = false;
+}
+
+const char *gestureFeedbackText(app::GestureFeedbackKind kind)
+{
+  switch (kind)
+  {
+    case app::GestureFeedbackKind::Tap:
+      return "Tap";
+
+    case app::GestureFeedbackKind::Hold:
+      return "Hold";
+
+    case app::GestureFeedbackKind::Back:
+      return "2x Back";
+
+    case app::GestureFeedbackKind::None:
+    default:
+      return "";
+  }
+}
+
+uint16_t gestureFeedbackColor(app::GestureFeedbackKind kind)
+{
+  switch (kind)
+  {
+    case app::GestureFeedbackKind::Tap:
+      return TFT_WHITE;
+
+    case app::GestureFeedbackKind::Hold:
+      return TFT_YELLOW;
+
+    case app::GestureFeedbackKind::Back:
+      return TFT_CYAN;
+
+    case app::GestureFeedbackKind::None:
+    default:
+      return TFT_WHITE;
+  }
+}
+
+void refreshGestureFeedback(uint32_t nowMs)
+{
+  const bool visible = app::gestureFeedbackVisible(s_gestureFeedbackStartedMs, nowMs) &&
+                       s_gestureFeedbackKind != app::GestureFeedbackKind::None;
+  if (!visible)
+  {
+    if (s_gestureFeedbackDrawn)
+    {
+      clearTopTransientStrip();
+      s_gestureFeedbackDrawn = false;
+    }
+    s_gestureFeedbackKind = app::GestureFeedbackKind::None;
+    s_gestureFeedbackStartedMs = 0;
+    return;
+  }
+
+  clearTopTransientStrip();
+  display::tft.fillRoundRect(
+    kGestureFeedbackX,
+    kGestureFeedbackY,
+    kGestureFeedbackWidth,
+    kGestureFeedbackHeight,
+    5,
+    TFT_DARKGREY);
+  display::tft.drawRoundRect(
+    kGestureFeedbackX,
+    kGestureFeedbackY,
+    kGestureFeedbackWidth,
+    kGestureFeedbackHeight,
+    5,
+    gestureFeedbackColor(s_gestureFeedbackKind));
+  display::tft.setTextDatum(MC_DATUM);
+  display::tft.setTextColor(gestureFeedbackColor(s_gestureFeedbackKind), TFT_DARKGREY);
+  display::tft.drawString(
+    gestureFeedbackText(s_gestureFeedbackKind),
+    kGestureFeedbackX + (kGestureFeedbackWidth / 2),
+    kGestureFeedbackY + (kGestureFeedbackHeight / 2) + 1,
+    1);
+  s_gestureFeedbackDrawn = true;
 }
 
 void drawHoldLine(const app::HoldFeedbackViewData &hold, uint32_t nowMs)
@@ -176,18 +270,8 @@ void drawHoldLine(const app::HoldFeedbackViewData &hold, uint32_t nowMs)
     return;
   }
 
-  uint8_t progressPercent = 0;
-  if (hold.armed)
-  {
-    progressPercent = 100;
-  }
-  else if (nowMs > hold.pressStartedMs && app_config::kButtonLongPressMs > 0)
-  {
-    const uint32_t elapsedMs = nowMs - hold.pressStartedMs;
-    progressPercent = static_cast<uint8_t>((elapsedMs >= app_config::kButtonLongPressMs)
-                                             ? 100U
-                                             : (elapsedMs * 100U) / app_config::kButtonLongPressMs);
-  }
+  const uint8_t progressPercent =
+    app::holdFeedbackProgressPercent(hold.pressStartedMs, hold.armed, nowMs);
 
   const int fillWidth = (kHoldLineWidth * progressPercent) / 100;
   if (s_holdVisible && fillWidth == s_lastHoldFillWidth && hold.armed == s_holdArmed)
@@ -195,7 +279,15 @@ void drawHoldLine(const app::HoldFeedbackViewData &hold, uint32_t nowMs)
     return;
   }
 
-  display::tft.fillRect(kHoldLineX, kHoldLineY, kHoldLineWidth, kHoldLineHeight, app_config::kColorBg);
+  clearTopTransientStrip();
+  if (progressPercent == 0 && !hold.armed)
+  {
+    s_holdVisible = false;
+    s_holdArmed = false;
+    s_lastHoldFillWidth = -1;
+    return;
+  }
+
   display::tft.drawFastHLine(kHoldLineX, kHoldLineY + 1, kHoldLineWidth, TFT_DARKGREY);
   if (fillWidth > 0)
   {
@@ -354,33 +446,33 @@ void drawIndoorClimate(float temperatureC, float humidityPercent)
 
 void drawFooterHints(const app::FooterHints &footer)
 {
-  if (footer.shortPressLabel.empty() && footer.longPressLabel.empty())
+  if (footer.shortPressLabel.empty() &&
+      footer.longPressLabel.empty() &&
+      footer.doublePressLabel.empty())
   {
     return;
   }
 
-  const int footerY = 284;
-  display::tft.drawFastHLine(10, footerY - 8, 220, TFT_DARKGREY);
-  display::tft.setTextDatum(TL_DATUM);
-  display::tft.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::tft.drawString(("Tap " + footer.shortPressLabel).c_str(), 12, footerY, 2);
-  display::tft.setTextDatum(TR_DATUM);
-  display::tft.setTextColor(TFT_YELLOW, app_config::kColorBg);
-  display::tft.drawString(("Hold " + footer.longPressLabel).c_str(), 228, footerY, 2);
+  const String text =
+    String("Tap ") + footer.shortPressLabel.c_str() +
+    "  Hold " + footer.longPressLabel.c_str() +
+    "  2x " + footer.doublePressLabel.c_str();
+  const int footerY = 232;
+  display::tft.fillRoundRect(8, footerY - 8, 224, 16, 5, TFT_DARKGREY);
+  display::tft.drawRoundRect(8, footerY - 8, 224, 16, 5, TFT_LIGHTGREY);
+  display::tft.setTextDatum(MC_DATUM);
+  display::tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+  display::tft.drawString(text, 120, footerY, 1);
 }
 
-void drawPageChrome(const std::string &title,
-                    const std::string &subtitle,
-                    const app::FooterHints &footer)
+void drawPageChrome(const std::string &title, const app::FooterHints &footer)
 {
   display::clear();
-  display::tft.fillRoundRect(10, 10, 220, 48, 8, TFT_DARKGREY);
-  display::tft.drawRoundRect(10, 10, 220, 48, 8, TFT_LIGHTGREY);
-  display::tft.setTextDatum(TL_DATUM);
+  display::tft.fillRoundRect(12, 12, 216, 24, 6, TFT_DARKGREY);
+  display::tft.drawRoundRect(12, 12, 216, 24, 6, TFT_LIGHTGREY);
+  display::tft.setTextDatum(ML_DATUM);
   display::tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-  display::tft.drawString(title.c_str(), 20, 18, 4);
-  display::tft.setTextColor(TFT_YELLOW, TFT_DARKGREY);
-  display::tft.drawString(subtitle.c_str(), 20, 40, 2);
+  display::tft.drawString(title.c_str(), 20, 24, 2);
   drawFooterHints(footer);
 }
 
@@ -400,27 +492,27 @@ void drawToast(const app::ToastData &toast)
 
 void drawMenuPage(const app::MenuBodyData &menu, const app::FooterHints &footer)
 {
-  drawPageChrome(menu.title, menu.subtitle, footer);
+  drawPageChrome(menu.title, footer);
 
   for (std::size_t index = 0; index < menu.itemCount; ++index)
   {
-    const int y = 74 + static_cast<int>(index) * 44;
+    const int y = 56 + static_cast<int>(index) * 38;
     const bool selected = menu.items[index].selected;
     const uint16_t fillColor = selected ? TFT_YELLOW : TFT_BLACK;
     const uint16_t borderColor = selected ? TFT_WHITE : TFT_DARKGREY;
     const uint16_t textColor = selected ? TFT_BLACK : TFT_WHITE;
 
-    display::tft.fillRoundRect(14, y, 212, 34, 6, fillColor);
-    display::tft.drawRoundRect(14, y, 212, 34, 6, borderColor);
+    display::tft.fillRoundRect(16, y, 208, 30, 6, fillColor);
+    display::tft.drawRoundRect(16, y, 208, 30, 6, borderColor);
     display::tft.setTextDatum(ML_DATUM);
     display::tft.setTextColor(textColor, fillColor);
-    display::tft.drawString(menu.items[index].label.c_str(), 26, y + 17, 2);
+    display::tft.drawString(menu.items[index].label.c_str(), 28, y + 15, 2);
   }
 }
 
 void drawInfoPage(const app::InfoBodyData &info, const app::FooterHints &footer)
 {
-  drawPageChrome(info.title, info.subtitle, footer);
+  drawPageChrome(info.title, footer);
 
   for (std::size_t visibleIndex = 0; visibleIndex < info.visibleRowCount; ++visibleIndex)
   {
@@ -430,14 +522,14 @@ void drawInfoPage(const app::InfoBodyData &info, const app::FooterHints &footer)
       break;
     }
 
-    const int y = 76 + static_cast<int>(visibleIndex) * 44;
+    const int y = 58 + static_cast<int>(visibleIndex) * 36;
     const bool selected = (rowIndex == info.selectedRowIndex);
     const uint16_t fillColor = selected ? TFT_DARKGREY : app_config::kColorBg;
     const uint16_t borderColor = selected ? TFT_YELLOW : TFT_DARKGREY;
     const uint16_t valueColor = selected ? TFT_WHITE : TFT_YELLOW;
 
-    display::tft.fillRoundRect(14, y - 8, 212, 34, 6, fillColor);
-    display::tft.drawRoundRect(14, y - 8, 212, 34, 6, borderColor);
+    display::tft.fillRoundRect(14, y - 6, 212, 30, 6, fillColor);
+    display::tft.drawRoundRect(14, y - 6, 212, 30, 6, borderColor);
     display::tft.setTextDatum(TL_DATUM);
     display::tft.setTextColor(TFT_WHITE, fillColor);
     display::tft.drawString(info.rows[rowIndex].label.c_str(), 20, y, 2);
@@ -449,10 +541,10 @@ void drawInfoPage(const app::InfoBodyData &info, const app::FooterHints &footer)
 
 void drawAdjustPage(const app::AdjustBodyData &adjust, const app::FooterHints &footer)
 {
-  drawPageChrome(adjust.title, adjust.subtitle, footer);
+  drawPageChrome(adjust.title, footer);
 
   const int barX = 24;
-  const int barY = 178;
+  const int barY = 170;
   const int barWidth = 192;
   const int barHeight = 18;
   const int fillWidth = ((adjust.value - adjust.minValue) * barWidth) /
@@ -460,15 +552,15 @@ void drawAdjustPage(const app::AdjustBodyData &adjust, const app::FooterHints &f
 
   display::tft.setTextDatum(MC_DATUM);
   display::tft.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::tft.drawString(String(adjust.value).c_str(), 120, 116, 7);
+  display::tft.drawString(String(adjust.value).c_str(), 120, 108, 7);
   display::tft.setTextColor(TFT_YELLOW, app_config::kColorBg);
-  display::tft.drawString(adjust.unit.c_str(), 186, 116, 4);
+  display::tft.drawString(adjust.unit.c_str(), 186, 108, 4);
 
   display::tft.drawRoundRect(barX, barY, barWidth, barHeight, 8, TFT_WHITE);
   display::tft.fillRoundRect(barX + 2, barY + 2, fillWidth > 4 ? fillWidth - 4 : 0, barHeight - 4, 6, TFT_YELLOW);
   display::tft.setTextDatum(MC_DATUM);
   display::tft.setTextColor(TFT_LIGHTGREY, app_config::kColorBg);
-  display::tft.drawString("Preset brightness", 120, 220, 2);
+  display::tft.drawString("Preset brightness", 120, 208, 2);
 }
 
 void copyBannerLines(const std::array<std::string, app_config::kBannerSlotCount> &lines)
@@ -615,6 +707,20 @@ void drawMainPage(const app::MainViewData &view)
 void refreshHoldFeedback(const app::HoldFeedbackViewData &hold, uint32_t nowMs)
 {
   drawHoldLine(hold, nowMs);
+  if (!hold.visible)
+  {
+    refreshGestureFeedback(nowMs);
+  }
+}
+
+void showGestureFeedback(app::GestureFeedbackKind kind, uint32_t nowMs)
+{
+  s_holdVisible = false;
+  s_holdArmed = false;
+  s_lastHoldFillWidth = -1;
+  s_gestureFeedbackKind = kind;
+  s_gestureFeedbackStartedMs = nowMs;
+  refreshGestureFeedback(nowMs);
 }
 
 } // namespace screen

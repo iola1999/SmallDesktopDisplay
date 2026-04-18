@@ -10,6 +10,11 @@ TEST_CASE("ui session defaults to home route with no toast")
   app::UiSessionState ui;
   app::AppViewModel view;
 
+  CHECK(app_config::kButtonLongPressMs == 500);
+  CHECK(app_config::kButtonDoubleClickMs == 300);
+  CHECK(app_config::kHoldFeedbackDelayMs == app_config::kButtonDoubleClickMs);
+  CHECK(app_config::kKeepWifiAwake == true);
+  CHECK(app_config::kGestureFeedbackDurationMs == 420);
   CHECK(ui.route == app::UiRoute::Home);
   CHECK(ui.selectedMenuIndex == 0);
   CHECK(ui.selectedBrightnessPresetIndex == 0);
@@ -26,6 +31,7 @@ TEST_CASE("ui session defaults to home route with no toast")
   CHECK(view.main.pageKind == app::OperationalPageKind::Home);
   CHECK(view.main.footer.shortPressLabel == "");
   CHECK(view.main.footer.longPressLabel == "");
+  CHECK(view.main.footer.doublePressLabel == "");
   CHECK(view.main.toast.visible == false);
   CHECK(view.main.menu.itemCount == 0);
   CHECK(view.main.info.rowCount == 0);
@@ -61,4 +67,12 @@ TEST_CASE("press lifecycle events preserve monotonic timestamps")
   CHECK(armed.monotonicMs == 1180);
   CHECK(released.type == app::AppEventType::PressReleased);
   CHECK(released.monotonicMs == 1230);
+}
+
+TEST_CASE("double press events preserve monotonic timestamps")
+{
+  const auto event = app::AppEvent::doublePressed(1400);
+
+  CHECK(event.type == app::AppEventType::DoublePressed);
+  CHECK(event.monotonicMs == 1400);
 }

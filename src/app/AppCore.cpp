@@ -8,8 +8,7 @@ namespace app
 namespace
 {
 
-constexpr std::array<const char *, 4> kSettingsItems{
-  "Back",
+constexpr std::array<const char *, 3> kSettingsItems{
   "Diagnostics",
   "Brightness",
   "Restart",
@@ -170,21 +169,26 @@ void AppCore::refreshOperationalView()
     case UiRoute::SettingsMenu:
       view_.main.pageKind = OperationalPageKind::Menu;
       view_.main.menu.title = "Settings";
-      view_.main.menu.subtitle = "Long press to enter";
+      view_.main.menu.subtitle.clear();
       view_.main.menu.itemCount = kSettingsItems.size();
       for (std::size_t index = 0; index < kSettingsItems.size(); ++index)
       {
         view_.main.menu.items[index].label = kSettingsItems[index];
         view_.main.menu.items[index].selected = (index == ui_.selectedMenuIndex);
       }
+      for (std::size_t index = kSettingsItems.size(); index < view_.main.menu.items.size(); ++index)
+      {
+        view_.main.menu.items[index] = MenuItemData{};
+      }
       view_.main.footer.shortPressLabel = "Next";
-      view_.main.footer.longPressLabel = "Enter";
+      view_.main.footer.longPressLabel = "OK";
+      view_.main.footer.doublePressLabel = "Back";
       break;
 
     case UiRoute::RebootConfirmMenu:
       view_.main.pageKind = OperationalPageKind::Menu;
       view_.main.menu.title = "Restart";
-      view_.main.menu.subtitle = "Hold to execute";
+      view_.main.menu.subtitle.clear();
       view_.main.menu.itemCount = kRestartConfirmItems.size();
       for (std::size_t index = 0; index < kRestartConfirmItems.size(); ++index)
       {
@@ -196,13 +200,14 @@ void AppCore::refreshOperationalView()
         view_.main.menu.items[index] = MenuItemData{};
       }
       view_.main.footer.shortPressLabel = "Next";
-      view_.main.footer.longPressLabel = "Enter";
+      view_.main.footer.longPressLabel = "OK";
+      view_.main.footer.doublePressLabel = "Back";
       break;
 
     case UiRoute::DiagnosticsPage:
       view_.main.pageKind = OperationalPageKind::Info;
       view_.main.info.title = "Diagnostics";
-      view_.main.info.subtitle = "Tap to scroll";
+      view_.main.info.subtitle.clear();
       view_.main.info.rowCount = 9;
       view_.main.info.firstVisibleRowIndex = ui_.infoPage.firstVisibleRowIndex;
       view_.main.info.selectedRowIndex = ui_.infoPage.selectedRowIndex;
@@ -225,19 +230,21 @@ void AppCore::refreshOperationalView()
       view_.main.info.rows[8].label = "Flash Total";
       view_.main.info.rows[8].value = formatUint32(ui_.diagnostics.programFlashTotalBytes);
       view_.main.footer.shortPressLabel = "Scroll";
-      view_.main.footer.longPressLabel = "Back";
+      view_.main.footer.longPressLabel = "OK";
+      view_.main.footer.doublePressLabel = "Back";
       break;
 
     case UiRoute::BrightnessAdjustPage:
       view_.main.pageKind = OperationalPageKind::Adjust;
       view_.main.adjust.title = "Brightness";
-      view_.main.adjust.subtitle = "Preview before save";
+      view_.main.adjust.subtitle.clear();
       view_.main.adjust.value = kBrightnessPresets[ui_.selectedBrightnessPresetIndex];
       view_.main.adjust.minValue = kBrightnessPresets.front();
       view_.main.adjust.maxValue = kBrightnessPresets.back();
       view_.main.adjust.unit = "%";
-      view_.main.footer.shortPressLabel = "Cycle";
+      view_.main.footer.shortPressLabel = "Next";
       view_.main.footer.longPressLabel = "Save";
+      view_.main.footer.doublePressLabel = "Back";
       break;
   }
 }
@@ -301,7 +308,6 @@ ActionList AppCore::handle(const AppEvent &event)
       {
         beginHoldFeedback(event.monotonicMs);
         refreshOperationalView();
-        actions.push(AppActionType::RenderRequested);
       }
       break;
 
@@ -310,7 +316,6 @@ ActionList AppCore::handle(const AppEvent &event)
       {
         armHoldFeedback();
         refreshOperationalView();
-        actions.push(AppActionType::RenderRequested);
       }
       break;
 
@@ -319,7 +324,6 @@ ActionList AppCore::handle(const AppEvent &event)
       {
         clearHoldFeedback();
         refreshOperationalView();
-        actions.push(AppActionType::RenderRequested);
       }
       break;
 
@@ -460,6 +464,30 @@ ActionList AppCore::handle(const AppEvent &event)
       }
       break;
 
+    case AppEventType::DoublePressed:
+      if (runtime_.mode != AppMode::Operational)
+      {
+        break;
+      }
+
+      clearHoldFeedback();
+      if (ui_.route == UiRoute::SettingsMenu)
+      {
+        ui_.route = UiRoute::Home;
+        resetInfoPage();
+        clearToast();
+        refreshOperationalView();
+        actions.push(AppActionType::RenderRequested);
+      }
+      else if (ui_.route == UiRoute::DiagnosticsPage ||
+               ui_.route == UiRoute::BrightnessAdjustPage ||
+               ui_.route == UiRoute::RebootConfirmMenu)
+      {
+        openSettingsMenu();
+        actions.push(AppActionType::RenderRequested);
+      }
+      break;
+
     case AppEventType::LongPressed:
       if (runtime_.mode != AppMode::Operational)
       {
@@ -476,15 +504,9 @@ ActionList AppCore::handle(const AppEvent &event)
       {
         if (ui_.selectedMenuIndex == 0)
         {
-          ui_.route = UiRoute::Home;
-          refreshOperationalView();
-          actions.push(AppActionType::RenderRequested);
-        }
-        else if (ui_.selectedMenuIndex == 1)
-        {
           actions.push(AppActionType::CaptureDiagnosticsSnapshot);
         }
-        else if (ui_.selectedMenuIndex == 2)
+        else if (ui_.selectedMenuIndex == 1)
         {
           ui_.route = UiRoute::BrightnessAdjustPage;
           ui_.selectedBrightnessPresetIndex = nearestBrightnessPresetIndex(config_.lcdBrightness);
@@ -492,7 +514,7 @@ ActionList AppCore::handle(const AppEvent &event)
           refreshOperationalView();
           actions.push(AppActionType::RenderRequested);
         }
-        else if (ui_.selectedMenuIndex == 3)
+        else if (ui_.selectedMenuIndex == 2)
         {
           openRebootConfirmMenu();
           actions.push(AppActionType::RenderRequested);

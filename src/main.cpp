@@ -10,6 +10,7 @@
 #include "adapters/Esp8266SystemStatusPort.h"
 #include "adapters/NtpTimeSyncPort.h"
 #include "adapters/WeatherServicePort.h"
+#include "app/BackgroundRefreshPolicy.h"
 #include "app/AppCore.h"
 #include "app/AppDriver.h"
 #include "ui/TftDisplayPort.h"
@@ -37,6 +38,37 @@ void dispatch(const app::ActionList &actions)
   animate::setDhtEnabled(g_core.config().dhtEnabled);
   animate::setHomeActive(g_core.view().kind == app::ViewKind::Main &&
                          g_core.view().main.homeAnimationEnabled);
+}
+
+void showGestureFeedbackIfHandled(input::ButtonEvent inputEvent,
+                                  const app::ActionList &actions,
+                                  uint32_t nowMs)
+{
+  if (actions.count == 0)
+  {
+    return;
+  }
+
+  switch (inputEvent)
+  {
+    case input::ButtonEvent::ShortPress:
+      g_display.showGestureFeedback(app::GestureFeedbackKind::Tap, nowMs);
+      break;
+
+    case input::ButtonEvent::DoublePress:
+      g_display.showGestureFeedback(app::GestureFeedbackKind::Back, nowMs);
+      break;
+
+    case input::ButtonEvent::LongPress:
+      g_display.showGestureFeedback(app::GestureFeedbackKind::Hold, nowMs);
+      break;
+
+    case input::ButtonEvent::None:
+    case input::ButtonEvent::PressStarted:
+    case input::ButtonEvent::LongPressArmed:
+    case input::ButtonEvent::PressReleased:
+      break;
+  }
 }
 
 void applyCliCommand(const cli::Command &command)
@@ -132,12 +164,28 @@ void loop()
         break;
 
       case input::ButtonEvent::ShortPress:
-        dispatch(g_core.handle(app::AppEvent::shortPressed(nowMs)));
+      {
+        const auto actions = g_core.handle(app::AppEvent::shortPressed(nowMs));
+        dispatch(actions);
+        showGestureFeedbackIfHandled(inputEvent, actions, nowMs);
         break;
+      }
+
+      case input::ButtonEvent::DoublePress:
+      {
+        const auto actions = g_core.handle(app::AppEvent::doublePressed(nowMs));
+        dispatch(actions);
+        showGestureFeedbackIfHandled(inputEvent, actions, nowMs);
+        break;
+      }
 
       case input::ButtonEvent::LongPress:
-        dispatch(g_core.handle(app::AppEvent::longPressed(nowMs)));
+      {
+        const auto actions = g_core.handle(app::AppEvent::longPressed(nowMs));
+        dispatch(actions);
+        showGestureFeedbackIfHandled(inputEvent, actions, nowMs);
         break;
+      }
 
       case input::ButtonEvent::None:
         break;
@@ -176,10 +224,7 @@ void loop()
   animate::tick();
 
   const uint32_t nowEpoch = static_cast<uint32_t>(now());
-  if (g_core.runtime().mode == app::AppMode::Operational &&
-      !g_core.runtime().backgroundSyncInProgress &&
-      g_core.runtime().nextRefreshDueEpoch > 0 &&
-      nowEpoch >= g_core.runtime().nextRefreshDueEpoch)
+  if (app::shouldTriggerScheduledRefresh(g_core.runtime(), g_core.ui(), nowEpoch))
   {
     dispatch(g_core.handle(app::AppEvent::refreshDue(nowEpoch)));
   }

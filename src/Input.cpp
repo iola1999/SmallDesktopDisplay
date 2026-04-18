@@ -45,6 +45,11 @@ void onClick(Button2 &)
   pushEvent(ButtonEvent::ShortPress);
 }
 
+void onDoubleClick(Button2 &)
+{
+  pushEvent(ButtonEvent::DoublePress);
+}
+
 void onLongDetected(Button2 &)
 {
   pushEvent(ButtonEvent::LongPressArmed);
@@ -63,6 +68,7 @@ void begin()
   s_button.setPressedHandler(onPressed);
   s_button.setReleasedHandler(onReleased);
   s_button.setClickHandler(onClick);
+  s_button.setDoubleClickHandler(onDoubleClick);
   s_button.setLongClickDetectedHandler(onLongDetected);
   s_button.setLongClickHandler(onLongClick);
 }

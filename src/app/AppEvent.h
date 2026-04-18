@@ -23,6 +23,7 @@ enum class AppEventType
   LongPressArmed,
   PressReleased,
   ShortPressed,
+  DoublePressed,
   LongPressed,
   ToastExpired,
   DiagnosticsSnapshotCaptured,
@@ -132,6 +133,14 @@ struct AppEvent
   {
     AppEvent event;
     event.type = AppEventType::LongPressed;
+    event.monotonicMs = nowMs;
+    return event;
+  }
+
+  static AppEvent doublePressed(uint32_t nowMs)
+  {
+    AppEvent event;
+    event.type = AppEventType::DoublePressed;
     event.monotonicMs = nowMs;
     return event;
   }

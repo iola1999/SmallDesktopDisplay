@@ -1,6 +1,7 @@
 #ifndef SCREEN_H
 #define SCREEN_H
 
+#include "app/TransientUi.h"
 #include "app/AppViewModel.h"
 
 namespace screen
@@ -9,6 +10,7 @@ namespace screen
 void refreshClock();
 void refreshBanner();
 void refreshHoldFeedback(const app::HoldFeedbackViewData &hold, uint32_t nowMs);
+void showGestureFeedback(app::GestureFeedbackKind kind, uint32_t nowMs);
 void forceClockRedraw();
 void drawSplashPage(const app::SplashViewData &view);
 void drawErrorPage(const app::ErrorViewData &view);

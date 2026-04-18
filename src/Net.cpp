@@ -161,6 +161,16 @@ bool connect(app::AppConfigData &config, app::WifiConnectMode mode)
 {
   const bool blockingUi = (mode == app::WifiConnectMode::ForegroundBlocking);
 
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    config.wifiSsid = WiFi.SSID().c_str();
+    config.wifiPsk = WiFi.psk().c_str();
+    storage::saveConfig(config);
+    display::setRotation(config.lcdRotation);
+    display::setBrightness(config.lcdBrightness);
+    return true;
+  }
+
   WiFi.begin(config.wifiSsid.c_str(), config.wifiPsk.c_str());
 
   const uint32_t start = millis();
@@ -218,12 +228,22 @@ bool isWifiAwake()
 
 void sleep()
 {
+  if (app_config::kKeepWifiAwake)
+  {
+    s_wifiAwake = true;
+    return;
+  }
   WiFi.forceSleepBegin();
   s_wifiAwake = false;
 }
 
 void wake()
 {
+  if (app_config::kKeepWifiAwake)
+  {
+    s_wifiAwake = true;
+    return;
+  }
   WiFi.forceSleepWake();
   s_wifiAwake = true;
   delay(1);

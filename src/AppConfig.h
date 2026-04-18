@@ -35,7 +35,11 @@ constexpr const char *kDefaultCityCode = "101090609";
 constexpr uint8_t kPinLcdBacklight = 5;  // LCD 背光
 constexpr uint8_t kPinButton = 4;        // 按键
 constexpr uint8_t kPinDht = 12;          // DHT11
-constexpr uint32_t kButtonLongPressMs = 200;
+constexpr bool kKeepWifiAwake = true;
+constexpr uint32_t kButtonDoubleClickMs = 300;
+constexpr uint32_t kButtonLongPressMs = 500;
+constexpr uint32_t kHoldFeedbackDelayMs = kButtonDoubleClickMs;
+constexpr uint32_t kGestureFeedbackDurationMs = 420;
 constexpr uint32_t kHoldFeedbackRefreshMs = 16;
 
 // UI 坐标 / 尺寸
