@@ -19,8 +19,11 @@ struct DispatchDisplayPort : ports::DisplayPort
 
 struct DispatchNetworkPort : ports::NetworkPort
 {
-  bool connect(app::AppConfigData &) override
+  app::WifiConnectMode lastMode = app::WifiConnectMode::ForegroundBlocking;
+
+  bool connect(app::AppConfigData &, app::WifiConnectMode mode) override
   {
+    lastMode = mode;
     return true;
   }
 
@@ -81,7 +84,7 @@ struct DispatchSensorPort : ports::SensorPort
 
 struct NullSystemStatusPort : ports::SystemStatusPort
 {
-  app::DiagnosticsSnapshot capture() const override
+  app::DiagnosticsSnapshot capture(const app::AppConfigData &, const app::AppRuntimeState &) const override
   {
     return {};
   }
@@ -108,4 +111,5 @@ TEST_CASE("driver dispatch executes synchronous boot flow to operational")
   CHECK(core.view().main.cityName == "Shijiazhuang");
   CHECK(display.renderCount >= 2);
   CHECK(display.lastKind == app::ViewKind::Main);
+  CHECK(network.lastMode == app::WifiConnectMode::ForegroundBlocking);
 }

@@ -157,26 +157,46 @@ void runSmartConfig()
 
 } // namespace
 
-bool connect(app::AppConfigData &config)
+bool connect(app::AppConfigData &config, app::WifiConnectMode mode)
 {
+  const bool blockingUi = (mode == app::WifiConnectMode::ForegroundBlocking);
+
   WiFi.begin(config.wifiSsid.c_str(), config.wifiPsk.c_str());
 
   const uint32_t start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 12000)
   {
-    display::drawLoading(30, 1);
+    if (blockingUi)
+    {
+      display::drawLoading(30, 1);
+    }
+    else
+    {
+      delay(30);
+    }
   }
 
   if (WiFi.status() != WL_CONNECTED)
   {
 #if WM_EN
+    if (!blockingUi)
+    {
+      return false;
+    }
     runWebConfig(config);
 #else
+    if (!blockingUi)
+    {
+      return false;
+    }
     runSmartConfig();
 #endif
   }
 
-  loadingUntilConnected();
+  if (blockingUi && WiFi.status() != WL_CONNECTED)
+  {
+    loadingUntilConnected();
+  }
 
   if (WiFi.status() == WL_CONNECTED)
   {
@@ -189,6 +209,11 @@ bool connect(app::AppConfigData &config)
   }
 
   return false;
+}
+
+bool isWifiAwake()
+{
+  return s_wifiAwake;
 }
 
 void sleep()

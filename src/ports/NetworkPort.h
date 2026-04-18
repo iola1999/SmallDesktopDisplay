@@ -1,6 +1,7 @@
 #ifndef PORTS_NETWORK_PORT_H
 #define PORTS_NETWORK_PORT_H
 
+#include "app/AppAction.h"
 #include "app/AppConfigData.h"
 
 namespace ports
@@ -12,7 +13,7 @@ public:
   virtual ~NetworkPort() {}
   virtual void wake() = 0;
   virtual void sleep() = 0;
-  virtual bool connect(app::AppConfigData &config) = 0;
+  virtual bool connect(app::AppConfigData &config, app::WifiConnectMode mode) = 0;
   virtual void restart() = 0;
   virtual void resetAndRestart() = 0;
 };

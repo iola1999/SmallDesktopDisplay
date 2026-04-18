@@ -9,7 +9,14 @@ void AppDriver::appendActions(ActionList &target, const ActionList &source)
 {
   for (std::size_t index = 0; index < source.count; ++index)
   {
-    target.push(source[index].type, source[index].value);
+    if (source[index].type == AppActionType::ConnectWifi)
+    {
+      target.pushConnectWifi(source[index].payload.mode);
+    }
+    else
+    {
+      target.push(source[index].type, source[index].value);
+    }
   }
 }
 
@@ -26,7 +33,7 @@ void AppDriver::execute(const ActionList &actions, const AppConfigData &config, 
       case AppActionType::ConnectWifi:
       {
         AppConfigData configCopy = config;
-        (void)network_.connect(configCopy);
+        (void)network_.connect(configCopy, actions[index].payload.mode);
         break;
       }
 
@@ -99,7 +106,7 @@ void AppDriver::dispatch(AppCore &core, const ActionList &actions)
         }
 
         case AppActionType::ConnectWifi:
-          if (network_.connect(core.configMutable()))
+          if (network_.connect(core.configMutable(), pending[index].payload.mode))
           {
             storage_.save(core.config());
             appendActions(next, core.handle(AppEvent::wifiConnected()));
@@ -158,16 +165,19 @@ void AppDriver::dispatch(AppCore &core, const ActionList &actions)
           break;
 
         case AppActionType::PreviewBrightness:
-          display_.setBrightness(static_cast<uint8_t>(pending[index].value));
+          display_.setBrightness(static_cast<uint8_t>(pending[index].payload.value));
           break;
 
         case AppActionType::ApplyBrightness:
-          display_.setBrightness(static_cast<uint8_t>(pending[index].value));
+          display_.setBrightness(static_cast<uint8_t>(pending[index].payload.value));
           storage_.save(core.config());
           break;
 
         case AppActionType::CaptureDiagnosticsSnapshot:
-          appendActions(next, core.handle(AppEvent::diagnosticsSnapshotCaptured(systemStatus_.capture())));
+          appendActions(
+            next,
+            core.handle(
+              AppEvent::diagnosticsSnapshotCaptured(systemStatus_.capture(core.config(), core.runtime()))));
           break;
 
         case AppActionType::RestartDevice:

@@ -9,7 +9,7 @@ namespace adapters
 class Esp8266NetworkPort : public ports::NetworkPort
 {
 public:
-  bool connect(app::AppConfigData &config) override;
+  bool connect(app::AppConfigData &config, app::WifiConnectMode mode) override;
   void wake() override;
   void sleep() override;
   void restart() override;

@@ -24,6 +24,7 @@ struct FakeNetworkPort : ports::NetworkPort
   bool wakeCalled = false;
   bool sleepCalled = false;
   bool restartCalled = false;
+  app::WifiConnectMode lastMode = app::WifiConnectMode::ForegroundBlocking;
 
   void wake() override
   {
@@ -35,9 +36,10 @@ struct FakeNetworkPort : ports::NetworkPort
     sleepCalled = true;
   }
 
-  bool connect(app::AppConfigData &) override
+  bool connect(app::AppConfigData &, app::WifiConnectMode mode) override
   {
     connectCalled = true;
+    lastMode = mode;
     return true;
   }
 
@@ -51,7 +53,7 @@ struct FakeNetworkPort : ports::NetworkPort
 
 struct NullSystemStatusPort : ports::SystemStatusPort
 {
-  app::DiagnosticsSnapshot capture() const override
+  app::DiagnosticsSnapshot capture(const app::AppConfigData &, const app::AppRuntimeState &) const override
   {
     return {};
   }
@@ -96,7 +98,7 @@ struct NullSensorPort : ports::SensorPort
   }
 };
 
-TEST_CASE("driver executes connect-wifi and render actions against ports")
+TEST_CASE("driver execute forwards wifi connect mode through the port")
 {
   FakeDisplayPort display;
   FakeNetworkPort network;
@@ -110,7 +112,7 @@ TEST_CASE("driver executes connect-wifi and render actions against ports")
   app::AppDriver driver(storage, network, weather, timeSync, sensor, systemStatus, display, clock);
   app::ActionList actions;
   actions.push(app::AppActionType::RenderRequested);
-  actions.push(app::AppActionType::ConnectWifi);
+  actions.pushConnectWifi(app::WifiConnectMode::BackgroundSilent);
 
   app::AppConfigData config;
   app::AppViewModel view;
@@ -118,6 +120,7 @@ TEST_CASE("driver executes connect-wifi and render actions against ports")
 
   CHECK(display.rendered == true);
   CHECK(network.connectCalled == true);
+  CHECK(network.lastMode == app::WifiConnectMode::BackgroundSilent);
 }
 
 TEST_CASE("driver applies preview and persistent brightness actions")

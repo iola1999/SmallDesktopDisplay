@@ -1,12 +1,14 @@
 #ifndef NET_H
 #define NET_H
 
+#include "app/AppAction.h"
 #include "app/AppConfigData.h"
 
 namespace net
 {
 
-bool connect(app::AppConfigData &config);
+bool connect(app::AppConfigData &config, app::WifiConnectMode mode);
+bool isWifiAwake();
 void sleep();
 void wake();
 void restart();

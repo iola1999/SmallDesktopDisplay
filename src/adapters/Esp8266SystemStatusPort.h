@@ -9,7 +9,8 @@ namespace adapters
 class Esp8266SystemStatusPort : public ports::SystemStatusPort
 {
 public:
-  app::DiagnosticsSnapshot capture() const override;
+  app::DiagnosticsSnapshot capture(const app::AppConfigData &config,
+                                   const app::AppRuntimeState &runtime) const override;
 };
 
 } // namespace adapters

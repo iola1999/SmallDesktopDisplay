@@ -5,9 +5,9 @@
 namespace adapters
 {
 
-bool Esp8266NetworkPort::connect(app::AppConfigData &config)
+bool Esp8266NetworkPort::connect(app::AppConfigData &config, app::WifiConnectMode mode)
 {
-  return net::connect(config);
+  return net::connect(config, mode);
 }
 
 void Esp8266NetworkPort::wake()

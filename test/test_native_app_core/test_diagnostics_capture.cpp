@@ -28,15 +28,20 @@ app::AppCore diagnosticsCore()
 
 struct FakeSystemStatusPort : ports::SystemStatusPort
 {
-  app::DiagnosticsSnapshot capture() const override
+  app::DiagnosticsSnapshot capture(const app::AppConfigData &config,
+                                   const app::AppRuntimeState &runtime) const override
   {
     app::DiagnosticsSnapshot snapshot;
     snapshot.valid = true;
+    snapshot.savedWifiSsid = config.wifiSsid;
+    snapshot.activeWifiSsid = runtime.backgroundSyncInProgress ? "BackgroundSSID" : "-";
+    snapshot.wifiLinkConnected = runtime.backgroundSyncInProgress;
+    snapshot.wifiRadioAwake = runtime.backgroundSyncInProgress;
+    snapshot.lastWeatherSyncEpoch = runtime.lastWeatherSyncEpoch;
+    snapshot.refreshIntervalMinutes = config.weatherUpdateMinutes;
     snapshot.freeHeapBytes = 1111;
     snapshot.programFlashUsedBytes = 2222;
     snapshot.programFlashTotalBytes = 3333;
-    snapshot.wifiConnected = true;
-    snapshot.wifiSsid = "LabWiFi";
     return snapshot;
   }
 };
@@ -51,7 +56,7 @@ struct FakeNetworkPort : ports::NetworkPort
 {
   bool restartCalled = false;
 
-  bool connect(app::AppConfigData &) override
+  bool connect(app::AppConfigData &, app::WifiConnectMode) override
   {
     return true;
   }
@@ -184,7 +189,7 @@ TEST_CASE("content-page short press scrolls and long press returns")
   CHECK(core.ui().route == app::UiRoute::SettingsMenu);
 }
 
-TEST_CASE("driver dispatch routes diagnostics capture and restart")
+TEST_CASE("driver dispatch captures diagnostics with config and runtime context")
 {
   FakeDisplayPort display;
   FakeNetworkPort network;
@@ -194,12 +199,16 @@ TEST_CASE("driver dispatch routes diagnostics capture and restart")
   NullSensorPort sensor;
   FakeSystemStatusPort systemStatus;
   app::AppCore core = diagnosticsCore();
+  core.configMutable().wifiSsid = "StudioWiFi";
+  core.configMutable().weatherUpdateMinutes = 15;
   app::AppDriver driver(storage, network, weather, timeSync, sensor, systemStatus, display, nullptr);
 
   app::ActionList diagnostics;
   diagnostics.push(app::AppActionType::CaptureDiagnosticsSnapshot);
   driver.dispatch(core, diagnostics);
   CHECK(core.ui().route == app::UiRoute::DiagnosticsPage);
+  CHECK(core.view().main.info.rows[0].value == "StudioWiFi");
+  CHECK(core.view().main.info.rows[5].value == "15m");
 
   app::ActionList restart;
   restart.push(app::AppActionType::RestartDevice);
