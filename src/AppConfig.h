@@ -10,9 +10,6 @@
 #define DHT_EN 0         // 1: 启用 DHT11 温湿度传感器 (GPIO12)
 #define ANIMATE_CHOICE 2 // 右下角动图: 0 关闭 / 1 太空人 / 2 胡桃
 
-// 兼容旧名
-#define Animate_Choice ANIMATE_CHOICE
-
 // ============================================================
 // 编译期常量
 // ============================================================
@@ -41,6 +38,7 @@ constexpr uint8_t kPinDht = 12;          // DHT11
 
 // UI 坐标 / 尺寸
 constexpr uint16_t kTimeY = 82; // 时钟字体 y 坐标
+constexpr uint8_t  kBannerSlotCount = 6;
 
 // 颜色 (RGB565)
 constexpr uint16_t kColorFontYellow = 0xD404;
@@ -58,13 +56,5 @@ constexpr uint32_t kWeatherHttpTimeoutMs = 5000;
 constexpr uint8_t  kWeatherMaxRetries = 2;
 
 } // namespace app_config
-
-// ============================================================
-// 兼容旧宏 (可逐步移除)
-// ============================================================
-#define TMS              app_config::kTickMs
-#define timeY            app_config::kTimeY
-#define SD_FONT_YELLOW   app_config::kColorFontYellow
-#define SD_FONT_WHITE    app_config::kColorFontWhite
 
 #endif // APP_CONFIG_H

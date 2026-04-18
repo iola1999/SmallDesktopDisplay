@@ -1,6 +1,8 @@
 #ifndef APP_STATE_H
 #define APP_STATE_H
 
+#include "AppConfig.h"
+
 #include <stdint.h>
 #include <WString.h>
 
@@ -18,15 +20,14 @@ struct AppState
 {
   // 用户可配置
   WifiCredentials wifi{}; // 默认空; 首次启动会进入配网
-  String cityCode = "101090609";
-  uint32_t weatherUpdateMinutes = 1;
-  uint8_t lcdBrightness = 50; // 0-100
-  uint8_t lcdRotation = 0;    // 0-3
-  uint8_t dhtEnabled = 0;     // 运行时 flag
+  String cityCode = app_config::kDefaultCityCode;
+  uint32_t weatherUpdateMinutes = app_config::kDefaultWeatherUpdateMinutes;
+  uint8_t lcdBrightness = app_config::kDefaultLcdBrightness; // 0-100
+  uint8_t lcdRotation = app_config::kDefaultLcdRotation;     // 0-3
+  uint8_t dhtEnabled = 0;                                    // 运行时 flag
 
   // 运行时状态
   bool wifiAwake = true;
-  bool weatherDirty = false;
 
   // 天气读数缓存 (用于进度条)
   int tempPercent = 0;
@@ -35,7 +36,7 @@ struct AppState
   uint16_t humidityColor = 0xFFFF;
 
   // 滚动横幅
-  String bannerText[7];
+  String bannerText[app_config::kBannerSlotCount];
   int bannerIndex = 0;
 
   // 时钟脏位缓存

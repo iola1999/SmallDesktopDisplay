@@ -8,7 +8,6 @@
 namespace cli
 {
 
-void begin();
 void tick(); // 在 loop 里轮询
 
 } // namespace cli

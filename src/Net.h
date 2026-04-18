@@ -18,7 +18,6 @@ void wake();                 // WiFi.forceSleepWake
 void resetAndRestart();      // 清空 WM + EEPROM WiFi + ESP.restart
 
 void tickOnlineTasks();      // 周期检查 WiFi 连上后拉一次时间+天气再睡
-bool awake();
 
 } // namespace net
 

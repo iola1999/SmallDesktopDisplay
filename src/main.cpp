@@ -74,13 +74,6 @@ void taskAnimate()
   animate::tick();
 }
 
-void refreshAll()
-{
-  screen::forceClockRedraw();
-  screen::refreshBanner();
-  net::wake();
-}
-
 } // namespace
 
 void setup()
@@ -142,7 +135,6 @@ void setup()
 
 void loop()
 {
-  animate::tick();
   if (g_controller.shouldRun())
     g_controller.run();
   net::tickOnlineTasks();

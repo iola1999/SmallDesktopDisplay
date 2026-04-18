@@ -277,7 +277,7 @@ void refreshBanner()
   display::clk.deleteSprite();
   display::clk.unloadFont();
 
-  g_app.bannerIndex = (g_app.bannerIndex + 1) % 6;
+  g_app.bannerIndex = (g_app.bannerIndex + 1) % app_config::kBannerSlotCount;
 }
 
 void drawIndoorTemp(float tempC, float humidityPct)

@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
+#include <string.h>
 
 #include "AppState.h"
 #include "Display.h"
@@ -24,6 +25,14 @@ namespace
 #if WM_EN
 WiFiManager s_wm;
 #endif
+
+void copyWifiField(char *dest, size_t size, const String &value)
+{
+  if (size == 0)
+    return;
+  strncpy(dest, value.c_str(), size - 1);
+  dest[size - 1] = '\0';
+}
 
 void loadingUntilConnected()
 {
@@ -168,8 +177,8 @@ bool ensureConnected()
 
   if (WiFi.status() == WL_CONNECTED)
   {
-    strncpy(g_app.wifi.ssid, WiFi.SSID().c_str(), sizeof(g_app.wifi.ssid) - 1);
-    strncpy(g_app.wifi.psk, WiFi.psk().c_str(), sizeof(g_app.wifi.psk) - 1);
+    copyWifiField(g_app.wifi.ssid, sizeof(g_app.wifi.ssid), WiFi.SSID());
+    copyWifiField(g_app.wifi.psk, sizeof(g_app.wifi.psk), WiFi.psk());
     storage::saveWifi(g_app.wifi);
     Serial.printf("[Net] connected: %s\n", g_app.wifi.ssid);
     return true;
@@ -190,11 +199,6 @@ void wake()
   WiFi.forceSleepWake();
   g_app.wifiAwake = true;
   Serial.println(F("[Net] wake"));
-}
-
-bool awake()
-{
-  return g_app.wifiAwake;
 }
 
 void tickOnlineTasks()

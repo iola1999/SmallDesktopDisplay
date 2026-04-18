@@ -1,28 +1,18 @@
 #ifndef STORAGE_H
 #define STORAGE_H
 
-#include <stdint.h>
 #include "AppState.h"
+
+#include <stdint.h>
 
 // ============================================================
 // EEPROM 持久化
-// 统一使用 struct + magic + version 读写, 同时向后兼容旧手写布局
+// 固定使用当前布局; 旧布局和迁移逻辑已移除
 // ============================================================
 
 namespace storage
 {
 
-// 旧布局偏移 (仅用于首次迁移)
-namespace legacy_layout
-{
-constexpr int kBrightnessAddr = 1;
-constexpr int kRotationAddr = 2;
-constexpr int kDhtEnabledAddr = 3;
-constexpr int kCityCodeAddr = 10; // 5 字节 BCD
-constexpr int kWifiAddr = 30;     // sizeof(WifiCredentials) = 96
-} // namespace legacy_layout
-
-// 新布局: 从 0 开始连续写入带 magic 的结构体
 struct PersistedConfig
 {
   uint16_t magic;   // 0x5344 'SD'
@@ -45,7 +35,7 @@ constexpr uint8_t kVersion = 1;
 constexpr size_t kEepromSize = 1024;
 
 void begin();                 // EEPROM.begin(kEepromSize)
-bool load(AppState &state);   // 读取, 若无 magic 则尝试旧布局
+bool load(AppState &state);   // 读取, 无效配置时回退到默认值并重写
 void save(const AppState &state);
 void saveWifi(const WifiCredentials &wifi);
 void clearWifi();

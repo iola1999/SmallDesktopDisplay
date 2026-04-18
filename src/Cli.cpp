@@ -2,7 +2,6 @@
 
 #include <Arduino.h>
 
-#include "AppConfig.h"
 #include "AppState.h"
 #include "Display.h"
 #include "Net.h"
@@ -144,11 +143,6 @@ void handle(const String &line)
 }
 
 } // namespace
-
-void begin()
-{
-  // no-op
-}
 
 void tick()
 {

@@ -2,8 +2,6 @@
 #define _SD3_Font_
 
 #include <pgmspace.h>
-#define SD_FONT_YELLOW 0xD404 // 黄色字体颜色
-#define SD_FONT_WHITE 0xFFFF  // 黄色字体颜色
 
 struct LineAtom
 {
