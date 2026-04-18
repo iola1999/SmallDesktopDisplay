@@ -4,3 +4,10 @@
 .vscode/launch.json
 .vscode/ipch
 .test/
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Local personal overrides (see CLAUDE.md)
+CLAUDE.local.md
