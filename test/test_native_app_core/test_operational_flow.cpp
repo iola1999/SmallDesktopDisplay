@@ -29,18 +29,21 @@ app::AppCore bootedCore()
 
 } // namespace
 
-TEST_CASE("refresh due starts a background sync without leaving main view")
+TEST_CASE("background refresh stays on the current route and uses silent connect mode")
 {
   auto core = bootedCore();
+  core.handle(app::AppEvent::longPressed(1000));
   const auto actions = core.handle(app::AppEvent::refreshDue(1710000600));
 
   CHECK(actions.count == 2);
   CHECK(actions[0].type == app::AppActionType::WakeWifi);
   CHECK(actions[1].type == app::AppActionType::ConnectWifi);
+  CHECK(actions[1].payload.mode == app::WifiConnectMode::BackgroundSilent);
   CHECK(core.runtime().mode == app::AppMode::Operational);
   CHECK(core.runtime().backgroundSyncInProgress == true);
-  CHECK(core.view().kind == app::ViewKind::Main);
-  CHECK(core.view().main.showSyncInProgress == true);
+  CHECK(core.ui().route == app::UiRoute::SettingsMenu);
+  CHECK(core.view().main.pageKind == app::OperationalPageKind::Menu);
+  CHECK(core.view().main.homeAnimationEnabled == false);
 }
 
 TEST_CASE("weather fetch failure during background sync keeps the last main view")

@@ -29,7 +29,12 @@ public:
 
 private:
   void enterBlockingError(BlockingErrorReason reason, const char *title, const char *detail);
+  void beginHoldFeedback(uint32_t nowMs);
+  void armHoldFeedback();
+  void clearHoldFeedback();
   void clearToast();
+  void resetInfoPage();
+  void advanceInfoPage(std::size_t rowCount, std::size_t visibleRowCount);
   void refreshOperationalView();
   void openSettingsMenu();
   void openRebootConfirmMenu();

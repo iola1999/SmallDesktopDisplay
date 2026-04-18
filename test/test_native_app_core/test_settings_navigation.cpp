@@ -58,6 +58,39 @@ TEST_CASE("long press on home opens the settings menu")
   CHECK(core.view().main.footer.longPressLabel == "Enter");
 }
 
+TEST_CASE("press lifecycle events drive hold feedback without changing route")
+{
+  auto core = operationalCore();
+
+  const auto started = core.handle(app::AppEvent::pressStarted(1000));
+  CHECK(started.count == 1);
+  CHECK(started[0].type == app::AppActionType::RenderRequested);
+  CHECK(core.ui().holdFeedback.visible == true);
+  CHECK(core.view().main.holdFeedback.visible == true);
+  CHECK(core.view().main.holdFeedback.pressStartedMs == 1000);
+
+  const auto armed = core.handle(app::AppEvent::longPressArmed(1200));
+  CHECK(armed.count == 1);
+  CHECK(core.ui().holdFeedback.armed == true);
+  CHECK(core.view().main.holdFeedback.progressPercent == 100);
+
+  const auto released = core.handle(app::AppEvent::pressReleased(1230));
+  CHECK(released.count == 1);
+  CHECK(core.ui().holdFeedback.visible == false);
+  CHECK(core.view().main.holdFeedback.visible == false);
+  CHECK(core.ui().route == app::UiRoute::Home);
+}
+
+TEST_CASE("home is the only page that enables the right-bottom animation")
+{
+  auto core = operationalCore();
+
+  CHECK(core.view().main.homeAnimationEnabled == true);
+
+  core.handle(app::AppEvent::longPressed(1000));
+  CHECK(core.view().main.homeAnimationEnabled == false);
+}
+
 TEST_CASE("reboot requires a confirmation menu before restart action")
 {
   auto core = operationalCore();

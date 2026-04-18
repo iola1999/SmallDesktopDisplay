@@ -127,11 +127,15 @@ TEST_CASE("captured snapshot renders the diagnostics info page")
 
   app::DiagnosticsSnapshot snapshot;
   snapshot.valid = true;
+  snapshot.savedWifiSsid = "StudioWiFi";
+  snapshot.activeWifiSsid = "-";
+  snapshot.wifiLinkConnected = false;
+  snapshot.wifiRadioAwake = false;
+  snapshot.lastWeatherSyncEpoch = 1710000000;
+  snapshot.refreshIntervalMinutes = 15;
   snapshot.freeHeapBytes = 32768;
   snapshot.programFlashUsedBytes = 846012;
   snapshot.programFlashTotalBytes = 1044464;
-  snapshot.wifiConnected = true;
-  snapshot.wifiSsid = "OfficeWiFi";
 
   const auto actions = core.handle(app::AppEvent::diagnosticsSnapshotCaptured(snapshot));
 
@@ -139,9 +143,45 @@ TEST_CASE("captured snapshot renders the diagnostics info page")
   CHECK(actions[0].type == app::AppActionType::RenderRequested);
   CHECK(core.ui().route == app::UiRoute::DiagnosticsPage);
   CHECK(core.view().main.pageKind == app::OperationalPageKind::Info);
-  CHECK(core.view().main.info.rowCount == 4);
-  CHECK(core.view().main.info.rows[0].label == "Free Heap");
-  CHECK(core.view().main.info.rows[3].value == "OfficeWiFi");
+  CHECK(core.view().main.info.rowCount == 9);
+  CHECK(core.view().main.info.visibleRowCount == 4);
+  CHECK(core.view().main.info.rows[0].label == "Saved SSID");
+  CHECK(core.view().main.info.rows[1].value == "sleeping");
+  CHECK(core.view().main.info.rows[4].label == "Last Sync");
+}
+
+TEST_CASE("content-page short press scrolls and long press returns")
+{
+  auto core = diagnosticsCore();
+  core.handle(app::AppEvent::longPressed(1000));
+  core.handle(app::AppEvent::shortPressed(1001));
+  core.handle(app::AppEvent::longPressed(1002));
+
+  app::DiagnosticsSnapshot snapshot;
+  snapshot.valid = true;
+  snapshot.savedWifiSsid = "StudioWiFi";
+  snapshot.activeWifiSsid = "-";
+  snapshot.wifiLinkConnected = false;
+  snapshot.wifiRadioAwake = false;
+  snapshot.lastWeatherSyncEpoch = 1710000000;
+  snapshot.refreshIntervalMinutes = 15;
+  snapshot.freeHeapBytes = 32768;
+  snapshot.programFlashUsedBytes = 846012;
+  snapshot.programFlashTotalBytes = 1044464;
+  core.handle(app::AppEvent::diagnosticsSnapshotCaptured(snapshot));
+
+  core.handle(app::AppEvent::shortPressed(1000));
+  core.handle(app::AppEvent::shortPressed(1001));
+  core.handle(app::AppEvent::shortPressed(1002));
+  core.handle(app::AppEvent::shortPressed(1003));
+
+  CHECK(core.ui().infoPage.selectedRowIndex == 4);
+  CHECK(core.ui().infoPage.firstVisibleRowIndex == 1);
+
+  const auto back = core.handle(app::AppEvent::longPressed(1004));
+  CHECK(back.count == 1);
+  CHECK(back[0].type == app::AppActionType::RenderRequested);
+  CHECK(core.ui().route == app::UiRoute::SettingsMenu);
 }
 
 TEST_CASE("driver dispatch routes diagnostics capture and restart")

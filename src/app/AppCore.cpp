@@ -1,6 +1,7 @@
 #include "app/AppCore.h"
 
 #include <cstdio>
+#include <ctime>
 
 namespace app
 {
@@ -21,6 +22,7 @@ constexpr std::array<const char *, 2> kRestartConfirmItems{
 };
 
 constexpr std::array<uint8_t, 7> kBrightnessPresets{{10, 25, 40, 55, 70, 85, 100}};
+constexpr std::size_t kInfoVisibleRows = 4;
 
 uint8_t nearestBrightnessPresetIndex(uint8_t brightness)
 {
@@ -49,6 +51,37 @@ std::string formatUint32(uint32_t value)
   return buffer;
 }
 
+std::string formatEpochCompact(uint32_t epochSeconds)
+{
+  if (epochSeconds == 0)
+  {
+    return "-";
+  }
+
+  const std::time_t raw = static_cast<std::time_t>(epochSeconds);
+  const std::tm *tm = std::localtime(&raw);
+  if (!tm)
+  {
+    return "-";
+  }
+
+  char buffer[20];
+  snprintf(
+    buffer,
+    sizeof(buffer),
+    "%02d-%02d %02d:%02d",
+    tm->tm_mon + 1,
+    tm->tm_mday,
+    tm->tm_hour,
+    tm->tm_min);
+  return buffer;
+}
+
+std::string textOrDash(const std::string &value)
+{
+  return value.empty() ? "-" : value;
+}
+
 } // namespace
 
 void AppCore::enterBlockingError(BlockingErrorReason reason, const char *title, const char *detail)
@@ -63,12 +96,61 @@ void AppCore::enterBlockingError(BlockingErrorReason reason, const char *title, 
   view_.error.retrying = false;
 }
 
+void AppCore::beginHoldFeedback(uint32_t nowMs)
+{
+  ui_.holdFeedback.visible = true;
+  ui_.holdFeedback.armed = false;
+  ui_.holdFeedback.pressStartedMs = nowMs;
+  ui_.holdFeedback.progressPercent = 0;
+}
+
+void AppCore::armHoldFeedback()
+{
+  ui_.holdFeedback.visible = true;
+  ui_.holdFeedback.armed = true;
+  ui_.holdFeedback.progressPercent = 100;
+}
+
+void AppCore::clearHoldFeedback()
+{
+  ui_.holdFeedback = HoldFeedbackState{};
+}
+
 void AppCore::clearToast()
 {
   ui_.toastVisible = false;
   ui_.toastDeadlineMs = 0;
   view_.main.toast.visible = false;
   view_.main.toast.text.clear();
+}
+
+void AppCore::resetInfoPage()
+{
+  ui_.infoPage = InfoPageState{};
+}
+
+void AppCore::advanceInfoPage(std::size_t rowCount, std::size_t visibleRowCount)
+{
+  if (rowCount == 0)
+  {
+    return;
+  }
+
+  ui_.infoPage.selectedRowIndex =
+    static_cast<uint8_t>((ui_.infoPage.selectedRowIndex + 1U) % rowCount);
+
+  if (ui_.infoPage.selectedRowIndex == 0)
+  {
+    ui_.infoPage.firstVisibleRowIndex = 0;
+    return;
+  }
+
+  const std::size_t lastVisible = ui_.infoPage.firstVisibleRowIndex + visibleRowCount - 1U;
+  if (ui_.infoPage.selectedRowIndex > lastVisible)
+  {
+    ui_.infoPage.firstVisibleRowIndex =
+      static_cast<uint8_t>(ui_.infoPage.selectedRowIndex - visibleRowCount + 1U);
+  }
 }
 
 void AppCore::refreshOperationalView()
@@ -82,12 +164,23 @@ void AppCore::refreshOperationalView()
   view_.main.aqi = cache_.weather.aqi;
   view_.main.weatherCode = cache_.weather.weatherCode;
   view_.main.bannerLines = cache_.weather.bannerLines;
+  view_.main.footer = FooterHints{};
+  view_.main.toast.visible = false;
+  view_.main.toast.text.clear();
+  view_.main.menu = MenuBodyData{};
+  view_.main.info = InfoBodyData{};
+  view_.main.adjust = AdjustBodyData{};
+  view_.main.info.visibleRowCount = kInfoVisibleRows;
+  view_.main.holdFeedback.visible = ui_.holdFeedback.visible;
+  view_.main.holdFeedback.armed = ui_.holdFeedback.armed;
+  view_.main.holdFeedback.pressStartedMs = ui_.holdFeedback.pressStartedMs;
+  view_.main.holdFeedback.progressPercent = ui_.holdFeedback.progressPercent;
+  view_.main.homeAnimationEnabled = (ui_.route == UiRoute::Home);
 
   switch (ui_.route)
   {
     case UiRoute::Home:
       view_.main.pageKind = OperationalPageKind::Home;
-      view_.main.footer = FooterHints{};
       view_.main.toast.visible = ui_.toastVisible;
       view_.main.toast.text = ui_.toastVisible ? "Debug shortcut" : "";
       break;
@@ -104,8 +197,6 @@ void AppCore::refreshOperationalView()
       }
       view_.main.footer.shortPressLabel = "Next";
       view_.main.footer.longPressLabel = "Enter";
-      view_.main.toast.visible = false;
-      view_.main.toast.text.clear();
       break;
 
     case UiRoute::RebootConfirmMenu:
@@ -124,27 +215,35 @@ void AppCore::refreshOperationalView()
       }
       view_.main.footer.shortPressLabel = "Next";
       view_.main.footer.longPressLabel = "Enter";
-      view_.main.toast.visible = false;
-      view_.main.toast.text.clear();
       break;
 
     case UiRoute::DiagnosticsPage:
       view_.main.pageKind = OperationalPageKind::Info;
       view_.main.info.title = "Diagnostics";
-      view_.main.info.subtitle = "Captured on entry";
-      view_.main.info.rowCount = 4;
-      view_.main.info.rows[0].label = "Free Heap";
-      view_.main.info.rows[0].value = formatUint32(ui_.diagnostics.freeHeapBytes);
-      view_.main.info.rows[1].label = "Flash Used";
-      view_.main.info.rows[1].value = formatUint32(ui_.diagnostics.programFlashUsedBytes);
-      view_.main.info.rows[2].label = "Flash Total";
-      view_.main.info.rows[2].value = formatUint32(ui_.diagnostics.programFlashTotalBytes);
-      view_.main.info.rows[3].label = "WiFi";
-      view_.main.info.rows[3].value = ui_.diagnostics.wifiConnected ? ui_.diagnostics.wifiSsid : "not connected";
-      view_.main.footer.shortPressLabel = "Back";
+      view_.main.info.subtitle = "Tap to scroll";
+      view_.main.info.rowCount = 9;
+      view_.main.info.firstVisibleRowIndex = ui_.infoPage.firstVisibleRowIndex;
+      view_.main.info.selectedRowIndex = ui_.infoPage.selectedRowIndex;
+      view_.main.info.rows[0].label = "Saved SSID";
+      view_.main.info.rows[0].value = textOrDash(ui_.diagnostics.savedWifiSsid);
+      view_.main.info.rows[1].label = "WiFi Radio";
+      view_.main.info.rows[1].value = ui_.diagnostics.wifiRadioAwake ? "awake" : "sleeping";
+      view_.main.info.rows[2].label = "WiFi Link";
+      view_.main.info.rows[2].value = ui_.diagnostics.wifiLinkConnected ? "connected" : "disconnected";
+      view_.main.info.rows[3].label = "Active SSID";
+      view_.main.info.rows[3].value = textOrDash(ui_.diagnostics.activeWifiSsid);
+      view_.main.info.rows[4].label = "Last Sync";
+      view_.main.info.rows[4].value = formatEpochCompact(ui_.diagnostics.lastWeatherSyncEpoch);
+      view_.main.info.rows[5].label = "Refresh";
+      view_.main.info.rows[5].value = formatUint32(ui_.diagnostics.refreshIntervalMinutes) + "m";
+      view_.main.info.rows[6].label = "Free Heap";
+      view_.main.info.rows[6].value = formatUint32(ui_.diagnostics.freeHeapBytes);
+      view_.main.info.rows[7].label = "Flash Used";
+      view_.main.info.rows[7].value = formatUint32(ui_.diagnostics.programFlashUsedBytes);
+      view_.main.info.rows[8].label = "Flash Total";
+      view_.main.info.rows[8].value = formatUint32(ui_.diagnostics.programFlashTotalBytes);
+      view_.main.footer.shortPressLabel = "Scroll";
       view_.main.footer.longPressLabel = "Back";
-      view_.main.toast.visible = false;
-      view_.main.toast.text.clear();
       break;
 
     case UiRoute::BrightnessAdjustPage:
@@ -157,8 +256,6 @@ void AppCore::refreshOperationalView()
       view_.main.adjust.unit = "%";
       view_.main.footer.shortPressLabel = "Cycle";
       view_.main.footer.longPressLabel = "Save";
-      view_.main.toast.visible = false;
-      view_.main.toast.text.clear();
       break;
   }
 }
@@ -167,6 +264,7 @@ void AppCore::openSettingsMenu()
 {
   ui_.route = UiRoute::SettingsMenu;
   ui_.selectedMenuIndex = 0;
+  resetInfoPage();
   clearToast();
   refreshOperationalView();
 }
@@ -175,6 +273,7 @@ void AppCore::openRebootConfirmMenu()
 {
   ui_.route = UiRoute::RebootConfirmMenu;
   ui_.selectedMenuIndex = 0;
+  resetInfoPage();
   clearToast();
   refreshOperationalView();
 }
@@ -199,7 +298,7 @@ ActionList AppCore::handle(const AppEvent &event)
       view_.kind = ViewKind::Splash;
       view_.splash.detail = "Connecting WiFi";
       actions.push(AppActionType::RenderRequested);
-      actions.push(AppActionType::ConnectWifi);
+      actions.pushConnectWifi(WifiConnectMode::ForegroundBlocking);
       break;
 
     case AppEventType::RefreshDue:
@@ -209,9 +308,36 @@ ActionList AppCore::handle(const AppEvent &event)
         runtime_.lastBackgroundSyncFailed = false;
         runtime_.syncPhase = SyncPhase::ConnectingWifi;
         runtime_.nextRefreshDueEpoch = event.epochSeconds + (config_.weatherUpdateMinutes * 60U);
-        view_.main.showSyncInProgress = true;
+        view_.main.showSyncInProgress = false;
         actions.push(AppActionType::WakeWifi);
-        actions.push(AppActionType::ConnectWifi);
+        actions.pushConnectWifi(WifiConnectMode::BackgroundSilent);
+      }
+      break;
+
+    case AppEventType::PressStarted:
+      if (runtime_.mode == AppMode::Operational)
+      {
+        beginHoldFeedback(event.monotonicMs);
+        refreshOperationalView();
+        actions.push(AppActionType::RenderRequested);
+      }
+      break;
+
+    case AppEventType::LongPressArmed:
+      if (runtime_.mode == AppMode::Operational && ui_.holdFeedback.visible)
+      {
+        armHoldFeedback();
+        refreshOperationalView();
+        actions.push(AppActionType::RenderRequested);
+      }
+      break;
+
+    case AppEventType::PressReleased:
+      if (runtime_.mode == AppMode::Operational && ui_.holdFeedback.visible)
+      {
+        clearHoldFeedback();
+        refreshOperationalView();
+        actions.push(AppActionType::RenderRequested);
       }
       break;
 
@@ -315,6 +441,7 @@ ActionList AppCore::handle(const AppEvent &event)
         break;
       }
 
+      clearHoldFeedback();
       if (ui_.route == UiRoute::Home)
       {
         ui_.toastVisible = true;
@@ -330,7 +457,8 @@ ActionList AppCore::handle(const AppEvent &event)
       }
       else if (ui_.route == UiRoute::DiagnosticsPage)
       {
-        openSettingsMenu();
+        advanceInfoPage(view_.main.info.rowCount, kInfoVisibleRows);
+        refreshOperationalView();
         actions.push(AppActionType::RenderRequested);
       }
       else if (ui_.route == UiRoute::BrightnessAdjustPage)
@@ -356,6 +484,7 @@ ActionList AppCore::handle(const AppEvent &event)
         break;
       }
 
+      clearHoldFeedback();
       if (ui_.route == UiRoute::Home)
       {
         openSettingsMenu();
@@ -425,6 +554,7 @@ ActionList AppCore::handle(const AppEvent &event)
     case AppEventType::DiagnosticsSnapshotCaptured:
       ui_.diagnostics = event.diagnostics;
       ui_.route = UiRoute::DiagnosticsPage;
+      resetInfoPage();
       refreshOperationalView();
       actions.push(AppActionType::RenderRequested);
       break;
