@@ -53,3 +53,15 @@ Update it whenever behavior, architecture, or interaction details change.
 - Fixed the right-bottom home animation teardown ordering bug.
 - Root cause: leaving `Home` rendered the destination page first, then `animate::setHomeActive(false)` cleared the old animation region over the newly rendered page.
 - New behavior: when transitioning away from `Home`, animation deactivation and region clear happen before the destination page render.
+
+### Incremental Settings Rendering
+
+- Added a small render-planning layer that compares the last rendered `AppViewModel` with the next one and chooses between full-frame render and targeted page-body redraws.
+- Settings menu selection changes now redraw only the menu body region instead of clearing the whole screen first.
+- Diagnostics scrolling now redraws only the info rows region, keeping the compact title chrome and footer stable.
+- Brightness preset changes now redraw only the adjust-page body region rather than forcing a full-screen clear.
+- Top gesture feedback no longer clears and redraws on every transient UI tick while visible; it now draws once when triggered and clears once when it expires.
+
+### Follow-Up Candidate
+
+- Evaluate strip-based double buffering for page body regions if partial redraw still shows visible flicker on hardware; avoid full-screen frame buffers on ESP-12E due to RAM pressure.

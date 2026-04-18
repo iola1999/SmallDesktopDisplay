@@ -53,6 +53,23 @@ inline bool gestureFeedbackVisible(uint32_t triggeredMs, uint32_t nowMs)
   return (nowMs - triggeredMs) < app_config::kGestureFeedbackDurationMs;
 }
 
+inline bool gestureFeedbackShouldDraw(GestureFeedbackKind kind,
+                                      uint32_t triggeredMs,
+                                      uint32_t nowMs,
+                                      bool alreadyDrawn)
+{
+  return kind != GestureFeedbackKind::None &&
+         gestureFeedbackVisible(triggeredMs, nowMs) &&
+         !alreadyDrawn;
+}
+
+inline bool holdFeedbackShouldClearWhenHidden(bool wasVisible,
+                                              bool wasArmed,
+                                              int lastFillWidth)
+{
+  return wasVisible || wasArmed || lastFillWidth >= 0;
+}
+
 } // namespace app
 
 #endif // APP_TRANSIENT_UI_H

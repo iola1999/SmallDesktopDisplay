@@ -1,6 +1,7 @@
 #ifndef UI_TFT_DISPLAY_PORT_H
 #define UI_TFT_DISPLAY_PORT_H
 
+#include "app/AppViewModel.h"
 #include "app/TransientUi.h"
 #include "ports/DisplayPort.h"
 
@@ -20,6 +21,10 @@ public:
   void tickTransientUi(const app::AppViewModel &view, uint32_t nowMs);
   void showGestureFeedback(app::GestureFeedbackKind kind, uint32_t nowMs);
   void render(const app::AppViewModel &view) override;
+
+private:
+  bool hasLastView_ = false;
+  app::AppViewModel lastView_;
 };
 
 } // namespace ui

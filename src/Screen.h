@@ -1,6 +1,7 @@
 #ifndef SCREEN_H
 #define SCREEN_H
 
+#include "app/RenderPlan.h"
 #include "app/TransientUi.h"
 #include "app/AppViewModel.h"
 
@@ -15,6 +16,7 @@ void forceClockRedraw();
 void drawSplashPage(const app::SplashViewData &view);
 void drawErrorPage(const app::ErrorViewData &view);
 void drawMainPage(const app::MainViewData &view);
+void drawMainPageRegion(const app::MainViewData &view, app::RenderRegion region);
 
 } // namespace screen
 

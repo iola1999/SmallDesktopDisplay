@@ -45,6 +45,8 @@ constexpr int kGestureFeedbackX = 82;
 constexpr int kGestureFeedbackY = 0;
 constexpr int kGestureFeedbackWidth = 76;
 constexpr int kGestureFeedbackHeight = 11;
+constexpr int kPageBodyY = 44;
+constexpr int kPageBodyHeight = 180;
 
 String weekText()
 {
@@ -237,6 +239,15 @@ void refreshGestureFeedback(uint32_t nowMs)
     return;
   }
 
+  if (!app::gestureFeedbackShouldDraw(
+        s_gestureFeedbackKind,
+        s_gestureFeedbackStartedMs,
+        nowMs,
+        s_gestureFeedbackDrawn))
+  {
+    return;
+  }
+
   clearTopTransientStrip();
   display::tft.fillRoundRect(
     kGestureFeedbackX,
@@ -266,7 +277,10 @@ void drawHoldLine(const app::HoldFeedbackViewData &hold, uint32_t nowMs)
 {
   if (!hold.visible)
   {
-    clearHoldLine();
+    if (app::holdFeedbackShouldClearWhenHidden(s_holdVisible, s_holdArmed, s_lastHoldFillWidth))
+    {
+      clearHoldLine();
+    }
     return;
   }
 
@@ -465,6 +479,11 @@ void drawFooterHints(const app::FooterHints &footer)
   display::tft.drawString(text, 120, footerY, 1);
 }
 
+void clearPageBody()
+{
+  display::tft.fillRect(0, kPageBodyY, 240, kPageBodyHeight, app_config::kColorBg);
+}
+
 void drawPageChrome(const std::string &title, const app::FooterHints &footer)
 {
   display::clear();
@@ -474,6 +493,24 @@ void drawPageChrome(const std::string &title, const app::FooterHints &footer)
   display::tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
   display::tft.drawString(title.c_str(), 20, 24, 2);
   drawFooterHints(footer);
+}
+
+void drawMenuItems(const app::MenuBodyData &menu)
+{
+  for (std::size_t index = 0; index < menu.itemCount; ++index)
+  {
+    const int y = 56 + static_cast<int>(index) * 38;
+    const bool selected = menu.items[index].selected;
+    const uint16_t fillColor = selected ? TFT_YELLOW : TFT_BLACK;
+    const uint16_t borderColor = selected ? TFT_WHITE : TFT_DARKGREY;
+    const uint16_t textColor = selected ? TFT_BLACK : TFT_WHITE;
+
+    display::tft.fillRoundRect(16, y, 208, 30, 6, fillColor);
+    display::tft.drawRoundRect(16, y, 208, 30, 6, borderColor);
+    display::tft.setTextDatum(ML_DATUM);
+    display::tft.setTextColor(textColor, fillColor);
+    display::tft.drawString(menu.items[index].label.c_str(), 28, y + 15, 2);
+  }
 }
 
 void drawToast(const app::ToastData &toast)
@@ -493,27 +530,17 @@ void drawToast(const app::ToastData &toast)
 void drawMenuPage(const app::MenuBodyData &menu, const app::FooterHints &footer)
 {
   drawPageChrome(menu.title, footer);
-
-  for (std::size_t index = 0; index < menu.itemCount; ++index)
-  {
-    const int y = 56 + static_cast<int>(index) * 38;
-    const bool selected = menu.items[index].selected;
-    const uint16_t fillColor = selected ? TFT_YELLOW : TFT_BLACK;
-    const uint16_t borderColor = selected ? TFT_WHITE : TFT_DARKGREY;
-    const uint16_t textColor = selected ? TFT_BLACK : TFT_WHITE;
-
-    display::tft.fillRoundRect(16, y, 208, 30, 6, fillColor);
-    display::tft.drawRoundRect(16, y, 208, 30, 6, borderColor);
-    display::tft.setTextDatum(ML_DATUM);
-    display::tft.setTextColor(textColor, fillColor);
-    display::tft.drawString(menu.items[index].label.c_str(), 28, y + 15, 2);
-  }
+  drawMenuItems(menu);
 }
 
-void drawInfoPage(const app::InfoBodyData &info, const app::FooterHints &footer)
+void drawMenuBody(const app::MenuBodyData &menu)
 {
-  drawPageChrome(info.title, footer);
+  clearPageBody();
+  drawMenuItems(menu);
+}
 
+void drawInfoRows(const app::InfoBodyData &info)
+{
   for (std::size_t visibleIndex = 0; visibleIndex < info.visibleRowCount; ++visibleIndex)
   {
     const std::size_t rowIndex = info.firstVisibleRowIndex + visibleIndex;
@@ -539,10 +566,20 @@ void drawInfoPage(const app::InfoBodyData &info, const app::FooterHints &footer)
   }
 }
 
-void drawAdjustPage(const app::AdjustBodyData &adjust, const app::FooterHints &footer)
+void drawInfoPage(const app::InfoBodyData &info, const app::FooterHints &footer)
 {
-  drawPageChrome(adjust.title, footer);
+  drawPageChrome(info.title, footer);
+  drawInfoRows(info);
+}
 
+void drawInfoBody(const app::InfoBodyData &info)
+{
+  clearPageBody();
+  drawInfoRows(info);
+}
+
+void drawAdjustBodyContent(const app::AdjustBodyData &adjust)
+{
   const int barX = 24;
   const int barY = 170;
   const int barWidth = 192;
@@ -561,6 +598,18 @@ void drawAdjustPage(const app::AdjustBodyData &adjust, const app::FooterHints &f
   display::tft.setTextDatum(MC_DATUM);
   display::tft.setTextColor(TFT_LIGHTGREY, app_config::kColorBg);
   display::tft.drawString("Preset brightness", 120, 208, 2);
+}
+
+void drawAdjustPage(const app::AdjustBodyData &adjust, const app::FooterHints &footer)
+{
+  drawPageChrome(adjust.title, footer);
+  drawAdjustBodyContent(adjust);
+}
+
+void drawAdjustBody(const app::AdjustBodyData &adjust)
+{
+  clearPageBody();
+  drawAdjustBodyContent(adjust);
 }
 
 void copyBannerLines(const std::array<std::string, app_config::kBannerSlotCount> &lines)
@@ -704,6 +753,39 @@ void drawMainPage(const app::MainViewData &view)
   drawHoldLine(view.holdFeedback, millis());
 }
 
+void drawMainPageRegion(const app::MainViewData &view, app::RenderRegion region)
+{
+  s_mainPageActive = false;
+
+  switch (region)
+  {
+    case app::RenderRegion::MenuBody:
+      if (view.pageKind == app::OperationalPageKind::Menu)
+      {
+        drawMenuBody(view.menu);
+      }
+      break;
+
+    case app::RenderRegion::InfoBody:
+      if (view.pageKind == app::OperationalPageKind::Info)
+      {
+        drawInfoBody(view.info);
+      }
+      break;
+
+    case app::RenderRegion::AdjustBody:
+      if (view.pageKind == app::OperationalPageKind::Adjust)
+      {
+        drawAdjustBody(view.adjust);
+      }
+      break;
+
+    case app::RenderRegion::FullScreen:
+      drawMainPage(view);
+      break;
+  }
+}
+
 void refreshHoldFeedback(const app::HoldFeedbackViewData &hold, uint32_t nowMs)
 {
   drawHoldLine(hold, nowMs);
@@ -720,6 +802,7 @@ void showGestureFeedback(app::GestureFeedbackKind kind, uint32_t nowMs)
   s_lastHoldFillWidth = -1;
   s_gestureFeedbackKind = kind;
   s_gestureFeedbackStartedMs = nowMs;
+  s_gestureFeedbackDrawn = false;
   refreshGestureFeedback(nowMs);
 }
 
