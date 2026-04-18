@@ -4,6 +4,7 @@
 #include <TJpg_Decoder.h>
 
 #include "../AppConfig.h"
+#include "../Display.h"
 
 #if ANIMATE_CHOICE == 1
 #include "img/astronaut.h"
@@ -17,10 +18,15 @@ namespace animate
 namespace
 {
 bool s_dhtEnabled = false;
+bool s_homeActive = false;
 
 #if ANIMATE_CHOICE != 0
 int s_frame = -1;
 uint32_t s_lastTick = 0;
+constexpr int kAnimX = 160;
+constexpr int kAnimY = 160;
+constexpr int kAnimWidth = 80;
+constexpr int kAnimHeight = 80;
 
 #if ANIMATE_CHOICE == 1
 constexpr int kTotalFrames = 10;
@@ -41,6 +47,11 @@ void nextFrame(const uint8_t *&buf, uint32_t &size)
   size = hutao_size[s_frame];
 #endif
 }
+
+void clearAnimationRegion()
+{
+  display::tft.fillRect(kAnimX, kAnimY, kAnimWidth, kAnimHeight, app_config::kColorBg);
+}
 #endif
 } // namespace
 
@@ -49,12 +60,31 @@ void setDhtEnabled(bool enabled)
   s_dhtEnabled = enabled;
 }
 
+void setHomeActive(bool active)
+{
+#if ANIMATE_CHOICE != 0
+  if (s_homeActive == active)
+  {
+    return;
+  }
+
+  s_homeActive = active;
+  if (!s_homeActive)
+  {
+    s_frame = -1;
+    clearAnimationRegion();
+  }
+#else
+  s_homeActive = active;
+#endif
+}
+
 bool enabled()
 {
 #if ANIMATE_CHOICE == 0
   return false;
 #else
-  return !s_dhtEnabled;
+  return s_homeActive && !s_dhtEnabled;
 #endif
 }
 

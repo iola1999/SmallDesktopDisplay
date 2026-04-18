@@ -422,16 +422,28 @@ void drawInfoPage(const app::InfoBodyData &info, const app::FooterHints &footer)
 {
   drawPageChrome(info.title, info.subtitle, footer);
 
-  for (std::size_t index = 0; index < info.rowCount; ++index)
+  for (std::size_t visibleIndex = 0; visibleIndex < info.visibleRowCount; ++visibleIndex)
   {
-    const int y = 76 + static_cast<int>(index) * 44;
-    display::tft.drawFastHLine(16, y - 6, 208, TFT_DARKGREY);
+    const std::size_t rowIndex = info.firstVisibleRowIndex + visibleIndex;
+    if (rowIndex >= info.rowCount)
+    {
+      break;
+    }
+
+    const int y = 76 + static_cast<int>(visibleIndex) * 44;
+    const bool selected = (rowIndex == info.selectedRowIndex);
+    const uint16_t fillColor = selected ? TFT_DARKGREY : app_config::kColorBg;
+    const uint16_t borderColor = selected ? TFT_YELLOW : TFT_DARKGREY;
+    const uint16_t valueColor = selected ? TFT_WHITE : TFT_YELLOW;
+
+    display::tft.fillRoundRect(14, y - 8, 212, 34, 6, fillColor);
+    display::tft.drawRoundRect(14, y - 8, 212, 34, 6, borderColor);
     display::tft.setTextDatum(TL_DATUM);
-    display::tft.setTextColor(TFT_WHITE, app_config::kColorBg);
-    display::tft.drawString(info.rows[index].label.c_str(), 18, y, 2);
+    display::tft.setTextColor(TFT_WHITE, fillColor);
+    display::tft.drawString(info.rows[rowIndex].label.c_str(), 20, y, 2);
     display::tft.setTextDatum(TR_DATUM);
-    display::tft.setTextColor(TFT_YELLOW, app_config::kColorBg);
-    display::tft.drawString(info.rows[index].value.c_str(), 222, y, 2);
+    display::tft.setTextColor(valueColor, fillColor);
+    display::tft.drawString(info.rows[rowIndex].value.c_str(), 220, y, 2);
   }
 }
 

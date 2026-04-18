@@ -35,6 +35,8 @@ void dispatch(const app::ActionList &actions)
 {
   g_driver.dispatch(g_core, actions);
   animate::setDhtEnabled(g_core.config().dhtEnabled);
+  animate::setHomeActive(g_core.view().kind == app::ViewKind::Main &&
+                         g_core.view().main.homeAnimationEnabled);
 }
 
 void applyCliCommand(const cli::Command &command)

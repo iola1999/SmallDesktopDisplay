@@ -9,6 +9,7 @@ namespace animate
 {
 
 void setDhtEnabled(bool enabled);
+void setHomeActive(bool active);
 void tick();
 bool enabled();
 
