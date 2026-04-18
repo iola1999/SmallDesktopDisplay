@@ -7,6 +7,7 @@
 #include "adapters/Dht11SensorPort.h"
 #include "adapters/EepromStoragePort.h"
 #include "adapters/Esp8266NetworkPort.h"
+#include "adapters/Esp8266SystemStatusPort.h"
 #include "adapters/NtpTimeSyncPort.h"
 #include "adapters/WeatherServicePort.h"
 #include "app/AppCore.h"
@@ -21,9 +22,10 @@ adapters::Esp8266NetworkPort g_network;
 adapters::WeatherServicePort g_weather;
 adapters::NtpTimeSyncPort g_timeSync;
 adapters::Dht11SensorPort g_sensor;
+adapters::Esp8266SystemStatusPort g_systemStatus;
 ui::TftDisplayPort g_display;
 app::AppCore g_core;
-app::AppDriver g_driver(g_storage, g_network, g_weather, g_timeSync, g_sensor, g_display, nullptr);
+app::AppDriver g_driver(g_storage, g_network, g_weather, g_timeSync, g_sensor, g_systemStatus, g_display, nullptr);
 
 uint32_t g_lastSecondTickMs = 0;
 uint32_t g_lastBannerTickMs = 0;
@@ -107,19 +109,25 @@ void setup()
 void loop()
 {
   input::tick();
+  const uint32_t nowMs = millis();
 
   switch (input::consumeEvent())
   {
     case input::ButtonEvent::ShortPress:
-      ESP.reset();
+      dispatch(g_core.handle(app::AppEvent::shortPressed(nowMs)));
       break;
 
     case input::ButtonEvent::LongPress:
-      g_network.resetAndRestart();
+      dispatch(g_core.handle(app::AppEvent::longPressed(nowMs)));
       break;
 
     case input::ButtonEvent::None:
       break;
+  }
+
+  if (g_core.ui().toastVisible && nowMs >= g_core.ui().toastDeadlineMs)
+  {
+    dispatch(g_core.handle(app::AppEvent::toastExpired()));
   }
 
   cli::Command command;
@@ -128,7 +136,6 @@ void loop()
     applyCliCommand(command);
   }
 
-  const uint32_t nowMs = millis();
   if (nowMs - g_lastSecondTickMs >= app_config::kTickMs)
   {
     g_lastSecondTickMs = nowMs;

@@ -296,6 +296,113 @@ void drawIndoorClimate(float temperatureC, float humidityPercent)
   display::clk.unloadFont();
 }
 
+void drawFooterHints(const app::FooterHints &footer)
+{
+  if (footer.shortPressLabel.empty() && footer.longPressLabel.empty())
+  {
+    return;
+  }
+
+  const int footerY = 284;
+  display::tft.drawFastHLine(10, footerY - 8, 220, TFT_DARKGREY);
+  display::tft.setTextDatum(TL_DATUM);
+  display::tft.setTextColor(TFT_WHITE, app_config::kColorBg);
+  display::tft.drawString(("Tap " + footer.shortPressLabel).c_str(), 12, footerY, 2);
+  display::tft.setTextDatum(TR_DATUM);
+  display::tft.setTextColor(TFT_YELLOW, app_config::kColorBg);
+  display::tft.drawString(("Hold " + footer.longPressLabel).c_str(), 228, footerY, 2);
+}
+
+void drawPageChrome(const std::string &title,
+                    const std::string &subtitle,
+                    const app::FooterHints &footer)
+{
+  display::clear();
+  display::tft.fillRoundRect(10, 10, 220, 48, 8, TFT_DARKGREY);
+  display::tft.drawRoundRect(10, 10, 220, 48, 8, TFT_LIGHTGREY);
+  display::tft.setTextDatum(TL_DATUM);
+  display::tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+  display::tft.drawString(title.c_str(), 20, 18, 4);
+  display::tft.setTextColor(TFT_YELLOW, TFT_DARKGREY);
+  display::tft.drawString(subtitle.c_str(), 20, 40, 2);
+  drawFooterHints(footer);
+}
+
+void drawToast(const app::ToastData &toast)
+{
+  if (!toast.visible)
+  {
+    return;
+  }
+
+  display::tft.fillRoundRect(22, 96, 196, 36, 10, TFT_DARKGREY);
+  display::tft.drawRoundRect(22, 96, 196, 36, 10, TFT_YELLOW);
+  display::tft.setTextDatum(MC_DATUM);
+  display::tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+  display::tft.drawString(toast.text.c_str(), 120, 114, 2);
+}
+
+void drawMenuPage(const app::MenuBodyData &menu, const app::FooterHints &footer)
+{
+  drawPageChrome(menu.title, menu.subtitle, footer);
+
+  for (std::size_t index = 0; index < menu.itemCount; ++index)
+  {
+    const int y = 74 + static_cast<int>(index) * 44;
+    const bool selected = menu.items[index].selected;
+    const uint16_t fillColor = selected ? TFT_YELLOW : TFT_BLACK;
+    const uint16_t borderColor = selected ? TFT_WHITE : TFT_DARKGREY;
+    const uint16_t textColor = selected ? TFT_BLACK : TFT_WHITE;
+
+    display::tft.fillRoundRect(14, y, 212, 34, 6, fillColor);
+    display::tft.drawRoundRect(14, y, 212, 34, 6, borderColor);
+    display::tft.setTextDatum(ML_DATUM);
+    display::tft.setTextColor(textColor, fillColor);
+    display::tft.drawString(menu.items[index].label.c_str(), 26, y + 17, 2);
+  }
+}
+
+void drawInfoPage(const app::InfoBodyData &info, const app::FooterHints &footer)
+{
+  drawPageChrome(info.title, info.subtitle, footer);
+
+  for (std::size_t index = 0; index < info.rowCount; ++index)
+  {
+    const int y = 76 + static_cast<int>(index) * 44;
+    display::tft.drawFastHLine(16, y - 6, 208, TFT_DARKGREY);
+    display::tft.setTextDatum(TL_DATUM);
+    display::tft.setTextColor(TFT_WHITE, app_config::kColorBg);
+    display::tft.drawString(info.rows[index].label.c_str(), 18, y, 2);
+    display::tft.setTextDatum(TR_DATUM);
+    display::tft.setTextColor(TFT_YELLOW, app_config::kColorBg);
+    display::tft.drawString(info.rows[index].value.c_str(), 222, y, 2);
+  }
+}
+
+void drawAdjustPage(const app::AdjustBodyData &adjust, const app::FooterHints &footer)
+{
+  drawPageChrome(adjust.title, adjust.subtitle, footer);
+
+  const int barX = 24;
+  const int barY = 178;
+  const int barWidth = 192;
+  const int barHeight = 18;
+  const int fillWidth = ((adjust.value - adjust.minValue) * barWidth) /
+                        ((adjust.maxValue - adjust.minValue) > 0 ? (adjust.maxValue - adjust.minValue) : 1);
+
+  display::tft.setTextDatum(MC_DATUM);
+  display::tft.setTextColor(TFT_WHITE, app_config::kColorBg);
+  display::tft.drawString(String(adjust.value).c_str(), 120, 116, 7);
+  display::tft.setTextColor(TFT_YELLOW, app_config::kColorBg);
+  display::tft.drawString(adjust.unit.c_str(), 186, 116, 4);
+
+  display::tft.drawRoundRect(barX, barY, barWidth, barHeight, 8, TFT_WHITE);
+  display::tft.fillRoundRect(barX + 2, barY + 2, fillWidth > 4 ? fillWidth - 4 : 0, barHeight - 4, 6, TFT_YELLOW);
+  display::tft.setTextDatum(MC_DATUM);
+  display::tft.setTextColor(TFT_LIGHTGREY, app_config::kColorBg);
+  display::tft.drawString("Preset brightness", 120, 220, 2);
+}
+
 void copyBannerLines(const std::array<std::string, app_config::kBannerSlotCount> &lines)
 {
   for (size_t index = 0; index < lines.size(); ++index)
@@ -395,17 +502,41 @@ void drawErrorPage(const app::ErrorViewData &view)
 
 void drawMainPage(const app::MainViewData &view)
 {
-  s_mainPageActive = true;
-  display::clear();
-  display::drawTempHumidityIcons();
-  copyBannerLines(view.bannerLines);
-  drawWeatherMain(view);
-  if (view.showIndoorClimate)
+  if (view.pageKind == app::OperationalPageKind::Home)
   {
-    drawIndoorClimate(view.indoorTemperatureC, view.indoorHumidityPercent);
+    s_mainPageActive = true;
+    display::clear();
+    display::drawTempHumidityIcons();
+    copyBannerLines(view.bannerLines);
+    drawWeatherMain(view);
+    if (view.showIndoorClimate)
+    {
+      drawIndoorClimate(view.indoorTemperatureC, view.indoorHumidityPercent);
+    }
+    forceClockRedraw();
+    refreshBanner();
+    drawToast(view.toast);
+    return;
   }
-  forceClockRedraw();
-  refreshBanner();
+
+  s_mainPageActive = false;
+  switch (view.pageKind)
+  {
+    case app::OperationalPageKind::Menu:
+      drawMenuPage(view.menu, view.footer);
+      break;
+
+    case app::OperationalPageKind::Info:
+      drawInfoPage(view.info, view.footer);
+      break;
+
+    case app::OperationalPageKind::Adjust:
+      drawAdjustPage(view.adjust, view.footer);
+      break;
+
+    case app::OperationalPageKind::Home:
+      break;
+  }
 }
 
 } // namespace screen

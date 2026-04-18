@@ -79,3 +79,17 @@ TEST_CASE("reboot requires a confirmation menu before restart action")
   CHECK(restart.count == 1);
   CHECK(restart[0].type == app::AppActionType::RestartDevice);
 }
+
+TEST_CASE("toast expiry clears the home debug message without leaving home")
+{
+  auto core = operationalCore();
+  core.handle(app::AppEvent::shortPressed(5000));
+
+  const auto actions = core.handle(app::AppEvent::toastExpired());
+
+  CHECK(actions.count == 1);
+  CHECK(actions[0].type == app::AppActionType::RenderRequested);
+  CHECK(core.ui().route == app::UiRoute::Home);
+  CHECK(core.ui().toastVisible == false);
+  CHECK(core.view().main.toast.visible == false);
+}

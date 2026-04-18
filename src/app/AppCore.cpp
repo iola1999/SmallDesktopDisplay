@@ -1,5 +1,7 @@
 #include "app/AppCore.h"
 
+#include <cstdio>
+
 namespace app
 {
 
@@ -38,6 +40,13 @@ uint8_t nearestBrightnessPresetIndex(uint8_t brightness)
   }
 
   return bestIndex;
+}
+
+std::string formatUint32(uint32_t value)
+{
+  char buffer[16];
+  snprintf(buffer, sizeof(buffer), "%lu", static_cast<unsigned long>(value));
+  return buffer;
 }
 
 } // namespace
@@ -125,11 +134,11 @@ void AppCore::refreshOperationalView()
       view_.main.info.subtitle = "Captured on entry";
       view_.main.info.rowCount = 4;
       view_.main.info.rows[0].label = "Free Heap";
-      view_.main.info.rows[0].value = std::to_string(ui_.diagnostics.freeHeapBytes);
+      view_.main.info.rows[0].value = formatUint32(ui_.diagnostics.freeHeapBytes);
       view_.main.info.rows[1].label = "Flash Used";
-      view_.main.info.rows[1].value = std::to_string(ui_.diagnostics.programFlashUsedBytes);
+      view_.main.info.rows[1].value = formatUint32(ui_.diagnostics.programFlashUsedBytes);
       view_.main.info.rows[2].label = "Flash Total";
-      view_.main.info.rows[2].value = std::to_string(ui_.diagnostics.programFlashTotalBytes);
+      view_.main.info.rows[2].value = formatUint32(ui_.diagnostics.programFlashTotalBytes);
       view_.main.info.rows[3].label = "WiFi";
       view_.main.info.rows[3].value = ui_.diagnostics.wifiConnected ? ui_.diagnostics.wifiSsid : "not connected";
       view_.main.footer.shortPressLabel = "Back";
