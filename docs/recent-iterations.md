@@ -61,6 +61,7 @@ Update it whenever behavior, architecture, or interaction details change.
 - Diagnostics scrolling now redraws only the info rows region, keeping the compact title chrome and footer stable.
 - Brightness preset changes now redraw only the adjust-page body region rather than forcing a full-screen clear.
 - Top gesture feedback no longer clears and redraws on every transient UI tick while visible; it now draws once when triggered and clears once when it expires.
+- Fixed the follow-up conflict where hidden hold-feedback cleanup could still clear the shared top transient strip and erase a visible gesture capsule on the next tick.
 
 ### Follow-Up Candidate
 
