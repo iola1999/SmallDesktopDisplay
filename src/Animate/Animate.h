@@ -8,8 +8,9 @@
 namespace animate
 {
 
-void tick();    // 按 kAnimateFrameIntervalMs 切帧并绘制
-bool enabled(); // ANIMATE_CHOICE != 0 且 DHT 未启用时为 true
+void setDhtEnabled(bool enabled);
+void tick();
+bool enabled();
 
 } // namespace animate
 

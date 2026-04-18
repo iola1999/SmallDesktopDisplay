@@ -1,6 +1,6 @@
 # SmallDesktopDisplay
 
-基于 ESP8266 (`nodemcuv2` / `esp12e`) 的桌面小屏显示器固件，使用 PlatformIO + Arduino framework。当前代码已经从历史单文件实现拆分为独立模块，主功能包括时钟、天气、滚动横幅、WiFi 配网，以及可选的 DHT11 与右下角动图。
+基于 ESP-12E 模块的桌面小屏显示器固件，使用 PlatformIO + Arduino framework。当前硬件固件仍通过 PlatformIO 的 `espressif8266` 平台和 `nodemcuv2` 板型配置构建。主功能包括时钟、天气、滚动横幅、WiFi 配网，以及可选的 DHT11 与右下角动图。
 
 ## Build
 
@@ -25,17 +25,15 @@ pio run -e esp12e
 
 ## Architecture
 
-- `src/main.cpp`: 启动入口与周期任务调度
-- `src/Display.*`: TFT 初始化、背光、基础绘图
-- `src/Screen.*`: 时钟、天气主界面、横幅等高层 UI
-- `src/Net.*`: WiFi 连接、WiFiManager 配网、在线刷新生命周期
-- `src/Ntp.*`: NTP 同步
-- `src/Weather.*`: 天气接口拉取与解析
-- `src/Storage.*`: EEPROM 持久化
-- `src/Input.*`: 按键交互
-- `src/Cli.*`: 串口配置命令
-- `src/Dht11.*`: 可选 DHT11 读取
+- `src/app/*`: 纯 C++ 的应用核心、状态机和动作分发
+- `src/ports/*`: 面向硬件/平台能力的抽象接口
+- `src/adapters/*`: EEPROM、WiFi、天气、NTP、DHT11 的 ESP-12E/Arduino 适配器
+- `src/ui/*`: `AppViewModel` 到 TFT 的渲染桥接
+- `src/main.cpp`: 设备入口、定时驱动、按键/CLI 编排
+- `src/Display.*` / `src/Screen.*`: 低层显示能力与高层页面绘制
+- `src/Input.*` / `src/Cli.*`: 输入事件与串口命令解析
 - `src/Animate/*`: 可选动图播放
+- `test/test_native_app_core/*`: Host 侧 `AppCore` / `AppDriver` 测试
 
 ## Notes
 

@@ -39,6 +39,7 @@ ActionList AppCore::handle(const AppEvent &event)
       runtime_.blockingError = BlockingErrorReason::None;
       runtime_.backgroundSyncInProgress = false;
       runtime_.lastBackgroundSyncFailed = false;
+      runtime_.nextRefreshDueEpoch = 0;
       runtime_.syncPhase = SyncPhase::ConnectingWifi;
       view_.kind = ViewKind::Splash;
       view_.splash.detail = "Connecting WiFi";
@@ -52,6 +53,7 @@ ActionList AppCore::handle(const AppEvent &event)
         runtime_.backgroundSyncInProgress = true;
         runtime_.lastBackgroundSyncFailed = false;
         runtime_.syncPhase = SyncPhase::ConnectingWifi;
+        runtime_.nextRefreshDueEpoch = event.epochSeconds + (config_.weatherUpdateMinutes * 60U);
         view_.main.showSyncInProgress = true;
         actions.push(AppActionType::WakeWifi);
         actions.push(AppActionType::ConnectWifi);

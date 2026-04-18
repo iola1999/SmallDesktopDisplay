@@ -5,7 +5,6 @@
 #include <TimeLib.h>
 
 #include "AppConfig.h"
-#include "AppState.h"
 #include "Display.h"
 #include "font/ZdyLwFont_20.h"
 #include "font/timeClockFont.h"
@@ -18,11 +17,24 @@ namespace
 {
 
 WeatherNum s_weather;
+std::array<String, app_config::kBannerSlotCount> s_bannerLines{};
+int s_bannerIndex = 0;
+int s_lastHour = -1;
+int s_lastMinute = -1;
+int s_lastSecond = -1;
+int s_tempPercent = 0;
+int s_humidityPercent = 0;
+uint16_t s_tempColor = 0xFFFF;
+uint16_t s_humidityColor = 0xFFFF;
+bool s_mainPageActive = false;
 
 String weekText()
 {
   const char *wk[7] = {"日", "一", "二", "三", "四", "五", "六"};
-  return String("周") + wk[weekday() - 1];
+  const int weekIndex = weekday();
+  if (weekIndex < 1 || weekIndex > 7)
+    return "周-";
+  return String("周") + wk[weekIndex - 1];
 }
 
 String monthDayText()
@@ -30,7 +42,6 @@ String monthDayText()
   return String(month()) + "月" + day() + "日";
 }
 
-// 快速线方式绘制数字字体
 void drawLineFont(uint32_t x, uint32_t y, uint32_t num, uint32_t size, uint32_t color)
 {
   uint32_t fontSize;
@@ -59,33 +70,38 @@ void drawLineFont(uint32_t x, uint32_t y, uint32_t num, uint32_t size, uint32_t 
     return;
   }
 
-  for (uint32_t i = 0; i < fontSize; i++)
+  for (uint32_t index = 0; index < fontSize; ++index)
   {
-    display::tft.drawFastHLine(fontOne[i].xValue + x, fontOne[i].yValue + y, fontOne[i].lValue, color);
+    display::tft.drawFastHLine(fontOne[index].xValue + x,
+                               fontOne[index].yValue + y,
+                               fontOne[index].lValue,
+                               color);
   }
 }
 
 void drawClockDigits(bool force)
 {
-  int h = hour(), m = minute(), s = second();
+  const int h = hour();
+  const int m = minute();
+  const int s = second();
 
-  if (h != g_app.lastHour || force)
+  if (h != s_lastHour || force)
   {
     drawLineFont(20, app_config::kTimeY, h / 10, 3, app_config::kColorFontWhite);
     drawLineFont(60, app_config::kTimeY, h % 10, 3, app_config::kColorFontWhite);
-    g_app.lastHour = h;
+    s_lastHour = h;
   }
-  if (m != g_app.lastMinute || force)
+  if (m != s_lastMinute || force)
   {
     drawLineFont(101, app_config::kTimeY, m / 10, 3, app_config::kColorFontYellow);
     drawLineFont(141, app_config::kTimeY, m % 10, 3, app_config::kColorFontYellow);
-    g_app.lastMinute = m;
+    s_lastMinute = m;
   }
-  if (s != g_app.lastSecond || force)
+  if (s != s_lastSecond || force)
   {
     drawLineFont(182, app_config::kTimeY + 30, s / 10, 2, app_config::kColorFontWhite);
     drawLineFont(202, app_config::kTimeY + 30, s % 10, 2, app_config::kColorFontWhite);
-    g_app.lastSecond = s;
+    s_lastSecond = s;
   }
 }
 
@@ -113,137 +129,126 @@ void drawDate()
   display::clk.unloadFont();
 }
 
-} // namespace
-
-void refreshClock()
-{
-  drawClockDigits(false);
-  drawDate();
-}
-
-void forceClockRedraw()
-{
-  g_app.lastHour = -1;
-  g_app.lastMinute = -1;
-  g_app.lastSecond = -1;
-  drawClockDigits(true);
-  drawDate();
-}
-
 void drawTempBar()
 {
   display::clk.setColorDepth(8);
   display::clk.createSprite(52, 6);
   display::clk.fillSprite(app_config::kColorBg);
   display::clk.drawRoundRect(0, 0, 52, 6, 3, 0xFFFF);
-  display::clk.fillRoundRect(1, 1, g_app.tempPercent, 4, 2, g_app.tempColor);
+  display::clk.fillRoundRect(1, 1, s_tempPercent, 4, 2, s_tempColor);
   display::clk.pushSprite(45, 192);
   display::clk.deleteSprite();
 }
 
 void drawHumidityBar()
 {
-  int halfBar = g_app.humidityPercent / 2;
+  const int halfBar = s_humidityPercent / 2;
   display::clk.setColorDepth(8);
   display::clk.createSprite(52, 6);
   display::clk.fillSprite(app_config::kColorBg);
   display::clk.drawRoundRect(0, 0, 52, 6, 3, 0xFFFF);
-  display::clk.fillRoundRect(1, 1, halfBar, 4, 2, g_app.humidityColor);
+  display::clk.fillRoundRect(1, 1, halfBar, 4, 2, s_humidityColor);
   display::clk.pushSprite(45, 222);
   display::clk.deleteSprite();
 }
 
-void drawWeatherMain(const String &tempText, int tempValue,
-                     const String &humidityText, int humidityRaw,
-                     const String &cityName,
-                     int aqi,
-                     int weatherCode)
+void updateTemperatureBar(int temperatureC)
+{
+  int value = temperatureC + 10;
+  if (value < 10)
+    s_tempColor = 0x00FF;
+  else if (value < 28)
+    s_tempColor = 0x0AFF;
+  else if (value < 34)
+    s_tempColor = 0x0F0F;
+  else if (value < 41)
+    s_tempColor = 0xFF0F;
+  else
+    s_tempColor = 0xF00F;
+
+  if (value > 50)
+    value = 50;
+  s_tempPercent = value;
+}
+
+void updateHumidityBar(int humidityPercent)
+{
+  s_humidityPercent = humidityPercent;
+  if (humidityPercent > 90)
+    s_humidityColor = 0x00FF;
+  else if (humidityPercent > 70)
+    s_humidityColor = 0x0AFF;
+  else if (humidityPercent > 40)
+    s_humidityColor = 0x0F0F;
+  else if (humidityPercent > 20)
+    s_humidityColor = 0xFF0F;
+  else
+    s_humidityColor = 0xF00F;
+}
+
+const char *aqiLabel(int aqi, uint16_t &aqiBg)
+{
+  aqiBg = display::tft.color565(156, 202, 127);
+  if (aqi > 200)
+  {
+    aqiBg = display::tft.color565(136, 11, 32);
+    return "重度";
+  }
+  if (aqi > 150)
+  {
+    aqiBg = display::tft.color565(186, 55, 121);
+    return "中度";
+  }
+  if (aqi > 100)
+  {
+    aqiBg = display::tft.color565(242, 159, 57);
+    return "轻度";
+  }
+  if (aqi > 50)
+  {
+    aqiBg = display::tft.color565(247, 219, 100);
+    return "良";
+  }
+  return "优";
+}
+
+void drawWeatherMain(const app::MainViewData &view)
 {
   display::clk.setColorDepth(8);
   display::clk.loadFont(ZdyLwFont_20);
 
-  // 温度
   display::clk.createSprite(58, 24);
   display::clk.fillSprite(app_config::kColorBg);
   display::clk.setTextDatum(CC_DATUM);
   display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawString(tempText + "℃", 28, 13);
+  display::clk.drawString(String(view.temperatureText.c_str()) + "℃", 28, 13);
   display::clk.pushSprite(100, 184);
   display::clk.deleteSprite();
 
-  int t = tempValue + 10;
-  if (t < 10)
-    g_app.tempColor = 0x00FF;
-  else if (t < 28)
-    g_app.tempColor = 0x0AFF;
-  else if (t < 34)
-    g_app.tempColor = 0x0F0F;
-  else if (t < 41)
-    g_app.tempColor = 0xFF0F;
-  else if (t < 49)
-    g_app.tempColor = 0xF00F;
-  else
-  {
-    g_app.tempColor = 0xF00F;
-    t = 50;
-  }
-  g_app.tempPercent = t;
+  updateTemperatureBar(view.temperatureC);
   drawTempBar();
 
-  // 湿度
   display::clk.createSprite(58, 24);
   display::clk.fillSprite(app_config::kColorBg);
   display::clk.setTextDatum(CC_DATUM);
   display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawString(humidityText, 28, 13);
+  display::clk.drawString(view.humidityText.c_str(), 28, 13);
   display::clk.pushSprite(100, 214);
   display::clk.deleteSprite();
 
-  g_app.humidityPercent = humidityRaw;
-  if (humidityRaw > 90)
-    g_app.humidityColor = 0x00FF;
-  else if (humidityRaw > 70)
-    g_app.humidityColor = 0x0AFF;
-  else if (humidityRaw > 40)
-    g_app.humidityColor = 0x0F0F;
-  else if (humidityRaw > 20)
-    g_app.humidityColor = 0xFF0F;
-  else
-    g_app.humidityColor = 0xF00F;
+  updateHumidityBar(view.humidityPercent);
   drawHumidityBar();
 
-  // 城市
   display::clk.createSprite(94, 30);
   display::clk.fillSprite(app_config::kColorBg);
   display::clk.setTextDatum(CC_DATUM);
   display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawString(cityName, 44, 16);
+  display::clk.drawString(view.cityName.c_str(), 44, 16);
   display::clk.pushSprite(15, 15);
   display::clk.deleteSprite();
 
-  // AQI
-  uint16_t aqiBg = display::tft.color565(156, 202, 127);
-  const char *aqiText = "优";
-  if (aqi > 200)
-  {
-    aqiBg = display::tft.color565(136, 11, 32);
-    aqiText = "重度";
-  }
-  else if (aqi > 150)
-  {
-    aqiBg = display::tft.color565(186, 55, 121);
-    aqiText = "中度";
-  }
-  else if (aqi > 100)
-  {
-    aqiBg = display::tft.color565(242, 159, 57);
-    aqiText = "轻度";
-  }
-  else if (aqi > 50)
-  {
-    aqiBg = display::tft.color565(247, 219, 100);
-    aqiText = "良";
-  }
+  uint16_t aqiBg = 0;
+  const char *aqiText = aqiLabel(view.aqi, aqiBg);
   display::clk.createSprite(56, 24);
   display::clk.fillSprite(app_config::kColorBg);
   display::clk.fillRoundRect(0, 0, 50, 24, 4, aqiBg);
@@ -254,33 +259,10 @@ void drawWeatherMain(const String &tempText, int tempValue,
   display::clk.deleteSprite();
 
   display::clk.unloadFont();
-
-  // 天气图标
-  s_weather.printfweather(170, 15, weatherCode);
+  s_weather.printfweather(170, 15, view.weatherCode);
 }
 
-void refreshBanner()
-{
-  const String &text = g_app.bannerText[g_app.bannerIndex];
-  if (text.length() == 0)
-    return;
-
-  display::clk.setColorDepth(8);
-  display::clk.loadFont(ZdyLwFont_20);
-  display::clk.createSprite(150, 30);
-  display::clk.fillSprite(app_config::kColorBg);
-  display::clk.setTextWrap(false);
-  display::clk.setTextDatum(CC_DATUM);
-  display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawString(text, 74, 16);
-  display::clk.pushSprite(10, 45);
-  display::clk.deleteSprite();
-  display::clk.unloadFont();
-
-  g_app.bannerIndex = (g_app.bannerIndex + 1) % app_config::kBannerSlotCount;
-}
-
-void drawIndoorTemp(float tempC, float humidityPct)
+void drawIndoorClimate(float temperatureC, float humidityPercent)
 {
   display::clk.setColorDepth(8);
   display::clk.loadFont(ZdyLwFont_20);
@@ -297,7 +279,7 @@ void drawIndoorTemp(float tempC, float humidityPct)
   display::clk.fillSprite(app_config::kColorBg);
   display::clk.setTextDatum(CC_DATUM);
   display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawFloat(tempC, 1, 20, 13);
+  display::clk.drawFloat(temperatureC, 1, 20, 13);
   display::clk.drawString("℃", 50, 13);
   display::clk.pushSprite(170, 184);
   display::clk.deleteSprite();
@@ -306,7 +288,7 @@ void drawIndoorTemp(float tempC, float humidityPct)
   display::clk.fillSprite(app_config::kColorBg);
   display::clk.setTextDatum(CC_DATUM);
   display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawFloat(humidityPct, 1, 20, 13);
+  display::clk.drawFloat(humidityPercent, 1, 20, 13);
   display::clk.drawString("%", 50, 13);
   display::clk.pushSprite(170, 214);
   display::clk.deleteSprite();
@@ -314,33 +296,116 @@ void drawIndoorTemp(float tempC, float humidityPct)
   display::clk.unloadFont();
 }
 
-void drawConfigFailed()
+void copyBannerLines(const std::array<std::string, app_config::kBannerSlotCount> &lines)
 {
-  display::clk.setColorDepth(8);
-  display::clk.createSprite(200, 60);
-  display::clk.fillSprite(app_config::kColorBg);
-  display::clk.setTextDatum(CC_DATUM);
-  display::clk.setTextColor(TFT_GREEN, app_config::kColorBg);
-  display::clk.drawString("WiFi Connect Fail!", 100, 10, 2);
-  display::clk.drawString("SSID:", 45, 40, 2);
-  display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawString("AutoConnectAP", 125, 40, 2);
-  display::clk.pushSprite(20, 50);
-  display::clk.deleteSprite();
+  for (size_t index = 0; index < lines.size(); ++index)
+  {
+    s_bannerLines[index] = lines[index].c_str();
+  }
+  s_bannerIndex = 0;
 }
 
-void drawWeatherError(const char *reason)
+} // namespace
+
+void refreshClock()
 {
+  if (!s_mainPageActive)
+    return;
+  drawClockDigits(false);
+  drawDate();
+}
+
+void forceClockRedraw()
+{
+  s_lastHour = -1;
+  s_lastMinute = -1;
+  s_lastSecond = -1;
+  drawClockDigits(true);
+  drawDate();
+}
+
+void refreshBanner()
+{
+  if (!s_mainPageActive)
+    return;
+
+  String text;
+  for (size_t attempts = 0; attempts < s_bannerLines.size(); ++attempts)
+  {
+    const int index = (s_bannerIndex + attempts) % app_config::kBannerSlotCount;
+    if (s_bannerLines[index].length() == 0)
+      continue;
+    text = s_bannerLines[index];
+    s_bannerIndex = (index + 1) % app_config::kBannerSlotCount;
+    break;
+  }
+
+  if (text.length() == 0)
+    return;
+
   display::clk.setColorDepth(8);
   display::clk.loadFont(ZdyLwFont_20);
   display::clk.createSprite(150, 30);
   display::clk.fillSprite(app_config::kColorBg);
+  display::clk.setTextWrap(false);
   display::clk.setTextDatum(CC_DATUM);
-  display::clk.setTextColor(TFT_RED, app_config::kColorBg);
-  display::clk.drawString(String("天气获取失败: ") + reason, 74, 16);
+  display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
+  display::clk.drawString(text, 74, 16);
   display::clk.pushSprite(10, 45);
   display::clk.deleteSprite();
   display::clk.unloadFont();
+}
+
+void drawSplashPage(const app::SplashViewData &view)
+{
+  s_mainPageActive = false;
+  display::clear();
+  display::clk.setColorDepth(8);
+  display::clk.createSprite(220, 100);
+  display::clk.fillSprite(app_config::kColorBg);
+  display::clk.setTextDatum(CC_DATUM);
+  display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
+  display::clk.drawString(view.title.c_str(), 110, 30, 2);
+  display::clk.setTextColor(TFT_GREEN, app_config::kColorBg);
+  display::clk.drawString(view.detail.c_str(), 110, 65, 2);
+  display::clk.pushSprite(10, 70);
+  display::clk.deleteSprite();
+}
+
+void drawErrorPage(const app::ErrorViewData &view)
+{
+  s_mainPageActive = false;
+  display::clear();
+  display::clk.setColorDepth(8);
+  display::clk.createSprite(220, 120);
+  display::clk.fillSprite(app_config::kColorBg);
+  display::clk.setTextDatum(CC_DATUM);
+  display::clk.setTextColor(TFT_RED, app_config::kColorBg);
+  display::clk.drawString(view.title.c_str(), 110, 24, 2);
+  display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
+  display::clk.drawString(view.detail.c_str(), 110, 58, 2);
+  if (view.retrying)
+  {
+    display::clk.setTextColor(TFT_GREEN, app_config::kColorBg);
+    display::clk.drawString("Retrying...", 110, 92, 2);
+  }
+  display::clk.pushSprite(10, 50);
+  display::clk.deleteSprite();
+}
+
+void drawMainPage(const app::MainViewData &view)
+{
+  s_mainPageActive = true;
+  display::clear();
+  display::drawTempHumidityIcons();
+  copyBannerLines(view.bannerLines);
+  drawWeatherMain(view);
+  if (view.showIndoorClimate)
+  {
+    drawIndoorClimate(view.indoorTemperatureC, view.indoorHumidityPercent);
+  }
+  forceClockRedraw();
+  refreshBanner();
 }
 
 } // namespace screen

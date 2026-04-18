@@ -1,7 +1,8 @@
 #include "Dht11.h"
 
-#include "AppState.h"
-#include "Screen.h"
+#include "AppConfig.h"
+
+#include <math.h>
 
 #if DHT_EN
 #include <DHT.h>
@@ -22,14 +23,20 @@ void begin()
 #endif
 }
 
-void readAndRender()
+bool read(app::IndoorClimateSnapshot &snapshot)
 {
 #if DHT_EN
-  if (g_app.dhtEnabled == 0)
-    return;
   float t = s_dht.readTemperature();
   float h = s_dht.readHumidity();
-  screen::drawIndoorTemp(t, h);
+  if (isnan(t) || isnan(h))
+    return false;
+  snapshot.valid = true;
+  snapshot.temperatureC = t;
+  snapshot.humidityPercent = h;
+  return true;
+#else
+  (void)snapshot;
+  return false;
 #endif
 }
 

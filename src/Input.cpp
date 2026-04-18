@@ -1,27 +1,28 @@
 #include "Input.h"
 
-#include <Arduino.h>
 #include <Button2.h>
 
 #include "AppConfig.h"
-#include "Net.h"
 
 namespace input
 {
 
 namespace
 {
+
 Button2 s_button(app_config::kPinButton);
+ButtonEvent s_pendingEvent = ButtonEvent::None;
 
 void onClick(Button2 &)
 {
-  ESP.reset();
+  s_pendingEvent = ButtonEvent::ShortPress;
 }
 
 void onLongClick(Button2 &)
 {
-  net::resetAndRestart();
+  s_pendingEvent = ButtonEvent::LongPress;
 }
+
 } // namespace
 
 void begin()
@@ -33,6 +34,13 @@ void begin()
 void tick()
 {
   s_button.loop();
+}
+
+ButtonEvent consumeEvent()
+{
+  const ButtonEvent event = s_pendingEvent;
+  s_pendingEvent = ButtonEvent::None;
+  return event;
 }
 
 } // namespace input

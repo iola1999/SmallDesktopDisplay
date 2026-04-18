@@ -32,7 +32,8 @@ struct ActionList
 
   void push(AppActionType type)
   {
-    items[count++] = AppAction{type};
+    items[count].type = type;
+    ++count;
   }
 
   const AppAction &operator[](std::size_t index) const

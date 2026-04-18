@@ -7,8 +7,6 @@
 #include <TimeLib.h>
 
 #include "AppConfig.h"
-#include "AppState.h"
-#include "Screen.h"
 
 namespace weather
 {
@@ -35,69 +33,92 @@ int httpGet(const String &url, String &out)
   return code;
 }
 
-bool renderPayload(const String &payload)
+int parseHumidityPercent(const String &humidityText)
+{
+  String value = humidityText;
+  value.replace("%", "");
+  return value.toInt();
+}
+
+const char *aqiText(int aqi)
+{
+  if (aqi > 200)
+    return "重度";
+  if (aqi > 150)
+    return "中度";
+  if (aqi > 100)
+    return "轻度";
+  if (aqi > 50)
+    return "良";
+  return "优";
+}
+
+bool parsePayload(const String &payload, app::WeatherSnapshot &snapshot)
 {
   int indexStart = payload.indexOf("weatherinfo\":");
   int indexEnd = payload.indexOf("};var alarmDZ");
   if (indexStart < 0 || indexEnd < 0)
     return false;
-  String jsonCityDZ = payload.substring(indexStart + 13, indexEnd);
+  const String jsonCityDZ = payload.substring(indexStart + 13, indexEnd);
 
   indexStart = payload.indexOf("dataSK =");
   indexEnd = payload.indexOf(";var dataZS");
   if (indexStart < 0 || indexEnd < 0)
     return false;
-  String jsonDataSK = payload.substring(indexStart + 8, indexEnd);
+  const String jsonDataSK = payload.substring(indexStart + 8, indexEnd);
 
   indexStart = payload.indexOf("\"f\":[");
   indexEnd = payload.indexOf(",{\"fa");
   if (indexStart < 0 || indexEnd < 0)
     return false;
-  String jsonFC = payload.substring(indexStart + 5, indexEnd);
+  const String jsonForecast = payload.substring(indexStart + 5, indexEnd);
 
   DynamicJsonDocument doc(1024);
   if (deserializeJson(doc, jsonDataSK))
     return false;
-  JsonObject sk = doc.as<JsonObject>();
 
-  int tempValue = sk["temp"].as<int>();
-  int huminum = atoi((sk["SD"].as<String>()).substring(0, 2).c_str());
-  int aqi = sk["aqi"].as<int>();
-  String cityName = sk["cityname"].as<String>();
-  int weatherCode = atoi((sk["weathercode"].as<String>()).substring(1, 3).c_str());
-  String weatherText = sk["weather"].as<String>();
-  String windDir = sk["WD"].as<String>();
-  String windSpeed = sk["WS"].as<String>();
+  const JsonObject sk = doc.as<JsonObject>();
+  const String temperatureText = sk["temp"].as<String>();
+  const String humidityText = sk["SD"].as<String>();
+  const String cityName = sk["cityname"].as<String>();
+  const String weatherCodeText = sk["weathercode"].as<String>();
+  const String weatherText = sk["weather"].as<String>();
+  const String windDir = sk["WD"].as<String>();
+  const String windSpeed = sk["WS"].as<String>();
 
-  screen::drawWeatherMain(sk["temp"].as<String>(), tempValue,
-                          sk["SD"].as<String>(), huminum,
-                          cityName, aqi, weatherCode);
+  snapshot.valid = true;
+  snapshot.cityName = cityName.c_str();
+  snapshot.temperatureText = temperatureText.c_str();
+  snapshot.humidityText = humidityText.c_str();
+  snapshot.temperatureC = temperatureText.toInt();
+  snapshot.humidityPercent = parseHumidityPercent(humidityText);
+  snapshot.aqi = sk["aqi"].as<int>();
+  snapshot.weatherCode = weatherCodeText.length() >= 3 ? weatherCodeText.substring(1, 3).toInt() : 99;
 
-  // 构造 banner 文本
-  g_app.bannerText[0] = "实时天气 " + weatherText;
-  const char *aqiTxt = "优";
-  if (aqi > 200)
-    aqiTxt = "重度";
-  else if (aqi > 150)
-    aqiTxt = "中度";
-  else if (aqi > 100)
-    aqiTxt = "轻度";
-  else if (aqi > 50)
-    aqiTxt = "良";
-  g_app.bannerText[1] = String("空气质量 ") + aqiTxt;
-  g_app.bannerText[2] = "风向 " + windDir + windSpeed;
+  for (size_t index = 0; index < snapshot.bannerLines.size(); ++index)
+  {
+    snapshot.bannerLines[index].clear();
+  }
 
+  snapshot.bannerLines[0] = (String("实时天气 ") + weatherText).c_str();
+  snapshot.bannerLines[1] = (String("空气质量 ") + aqiText(snapshot.aqi)).c_str();
+  snapshot.bannerLines[2] = (String("风向 ") + windDir + windSpeed).c_str();
+
+  doc.clear();
   if (!deserializeJson(doc, jsonCityDZ))
   {
-    JsonObject dz = doc.as<JsonObject>();
-    g_app.bannerText[3] = "今日" + dz["weather"].as<String>();
+    const JsonObject dz = doc.as<JsonObject>();
+    snapshot.bannerLines[3] = (String("今日") + dz["weather"].as<String>()).c_str();
   }
-  if (!deserializeJson(doc, jsonFC))
+
+  doc.clear();
+  if (!deserializeJson(doc, jsonForecast))
   {
-    JsonObject fc = doc.as<JsonObject>();
-    g_app.bannerText[4] = "最低温度" + fc["fd"].as<String>() + "℃";
-    g_app.bannerText[5] = "最高温度" + fc["fc"].as<String>() + "℃";
+    const JsonObject fc = doc.as<JsonObject>();
+    snapshot.bannerLines[4] = (String("最低温度") + fc["fd"].as<String>() + "℃").c_str();
+    snapshot.bannerLines[5] = (String("最高温度") + fc["fc"].as<String>() + "℃").c_str();
   }
+
   return true;
 }
 
@@ -120,16 +141,16 @@ bool fetchCityCode(String &outCode)
   return true;
 }
 
-bool fetchAndRender()
+bool fetchWeatherData(const String &cityCode, app::WeatherSnapshot &snapshot)
 {
-  String url = String("http://d1.weather.com.cn/weather_index/") + g_app.cityCode +
+  String url = String("http://d1.weather.com.cn/weather_index/") + cityCode +
                ".html?_=" + String(now());
   String payload;
 
   for (uint8_t attempt = 0; attempt < app_config::kWeatherMaxRetries; attempt++)
   {
     int code = httpGet(url, payload);
-    if (code == HTTP_CODE_OK && renderPayload(payload))
+    if (code == HTTP_CODE_OK && parsePayload(payload, snapshot))
     {
       Serial.println(F("[Weather] ok"));
       return true;
@@ -137,7 +158,6 @@ bool fetchAndRender()
     Serial.printf("[Weather] attempt %u failed (http %d)\n", attempt + 1, code);
     delay(500 * (attempt + 1));
   }
-  screen::drawWeatherError("HTTP");
   return false;
 }
 

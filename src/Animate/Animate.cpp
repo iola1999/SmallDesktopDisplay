@@ -4,7 +4,6 @@
 #include <TJpg_Decoder.h>
 
 #include "../AppConfig.h"
-#include "../AppState.h"
 
 #if ANIMATE_CHOICE == 1
 #include "img/astronaut.h"
@@ -17,6 +16,8 @@ namespace animate
 
 namespace
 {
+bool s_dhtEnabled = false;
+
 #if ANIMATE_CHOICE != 0
 int s_frame = -1;
 uint32_t s_lastTick = 0;
@@ -43,12 +44,17 @@ void nextFrame(const uint8_t *&buf, uint32_t &size)
 #endif
 } // namespace
 
+void setDhtEnabled(bool enabled)
+{
+  s_dhtEnabled = enabled;
+}
+
 bool enabled()
 {
 #if ANIMATE_CHOICE == 0
   return false;
 #else
-  return g_app.dhtEnabled == 0;
+  return !s_dhtEnabled;
 #endif
 }
 

@@ -1,14 +1,30 @@
 #ifndef CLI_H
 #define CLI_H
 
-// ============================================================
-// 串口调试 CLI: 修改亮度 / 城市 / 方向 / 更新时间 / 重置 WiFi
-// ============================================================
+#include <string>
 
 namespace cli
 {
 
-void tick(); // 在 loop 里轮询
+enum class CommandType
+{
+  None,
+  SetBrightness,
+  SetCityCode,
+  AutoDetectCity,
+  SetRotation,
+  SetWeatherUpdateMinutes,
+  ResetWifi,
+};
+
+struct Command
+{
+  CommandType type = CommandType::None;
+  int value = 0;
+  std::string text;
+};
+
+bool poll(Command &command);
 
 } // namespace cli
 

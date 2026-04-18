@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概要
 
-ESP8266 (NodeMCU v2 / esp12e) 桌面小屏显示器，基于 PlatformIO + Arduino framework。显示时钟、天气、滚动横幅、动图，可选 DHT11 温湿度。当前代码已经拆成多模块，入口在 [src/main.cpp](src/main.cpp)。
+ESP-12E 模块桌面小屏显示器，基于 PlatformIO + Arduino framework。固件当前仍通过 `espressif8266` 平台和 `nodemcuv2` 板型配置构建。显示时钟、天气、滚动横幅、动图，可选 DHT11 温湿度。入口在 [src/main.cpp](src/main.cpp)。
 
 ## 构建 / 烧录 / 串口
 
@@ -32,14 +32,15 @@ ESP8266 (NodeMCU v2 / esp12e) 桌面小屏显示器，基于 PlatformIO + Arduin
 
 ## 目录说明
 
-- [src/main.cpp](src/main.cpp) — 启动入口与 Thread 调度
-- [src/AppConfig.h](src/AppConfig.h) / [src/AppState.h](src/AppState.h) — 编译期常量与全局运行时状态
-- [src/Display.cpp](src/Display.cpp) / [src/Screen.cpp](src/Screen.cpp) — 底层显示封装与高层界面渲染
-- [src/Net.cpp](src/Net.cpp) / [src/Ntp.cpp](src/Ntp.cpp) / [src/Weather.cpp](src/Weather.cpp) — 联网、授时、天气
-- [src/Storage.cpp](src/Storage.cpp) — EEPROM 持久化
-- [src/Input.cpp](src/Input.cpp) / [src/Cli.cpp](src/Cli.cpp) — 按键和串口交互
+- [src/main.cpp](src/main.cpp) — 设备入口、定时调度、输入/CLI 编排
+- [src/app](src/app) — 纯 C++ 应用核心、状态机、动作驱动
+- [src/ports](src/ports) — 抽象能力边界
+- [src/adapters](src/adapters) — EEPROM、WiFi、天气、NTP、DHT11 的硬件适配器
+- [src/ui](src/ui) — `AppViewModel` 到 TFT 的 UI 桥接
+- [src/Display.cpp](src/Display.cpp) / [src/Screen.cpp](src/Screen.cpp) — 底层显示封装与高层页面绘制
+- [src/Input.cpp](src/Input.cpp) / [src/Cli.cpp](src/Cli.cpp) — 按键事件与串口命令解析
 - [src/Dht11.cpp](src/Dht11.cpp) / [src/Animate/Animate.cpp](src/Animate/Animate.cpp) — 可选传感器与动图模块
-- `test/` — 预留给 PlatformIO 单元测试；当前仓库不再保存历史归档代码。
+- `test/test_native_app_core` — Host 侧 `AppCore` / `AppDriver` 测试
 
 ## 代码风格
 

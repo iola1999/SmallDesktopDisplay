@@ -15,6 +15,8 @@
 namespace app
 {
 
+class AppCore;
+
 class AppDriver
 {
 public:
@@ -36,8 +38,11 @@ public:
   }
 
   void execute(const ActionList &actions, const AppConfigData &config, const AppViewModel &view);
+  void dispatch(AppCore &core, const ActionList &actions);
 
 private:
+  void appendActions(ActionList &target, const ActionList &source);
+
   ports::StoragePort &storage_;
   ports::NetworkPort &network_;
   ports::WeatherPort &weather_;

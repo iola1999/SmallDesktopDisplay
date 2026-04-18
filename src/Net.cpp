@@ -3,14 +3,9 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
-#include <string.h>
 
-#include "AppState.h"
 #include "Display.h"
-#include "Ntp.h"
-#include "Screen.h"
 #include "Storage.h"
-#include "Weather.h"
 
 #if WM_EN
 #include <WiFiManager.h>
@@ -22,16 +17,16 @@ namespace net
 namespace
 {
 
+bool s_wifiAwake = true;
+app::AppConfigData *s_config = nullptr;
+
 #if WM_EN
 WiFiManager s_wm;
 #endif
 
-void copyWifiField(char *dest, size_t size, const String &value)
+long parseCityCode(const String &value)
 {
-  if (size == 0)
-    return;
-  strncpy(dest, value.c_str(), size - 1);
-  dest[size - 1] = '\0';
+  return value.toInt();
 }
 
 void loadingUntilConnected()
@@ -42,45 +37,61 @@ void loadingUntilConnected()
     display::drawLoading(30, step);
     step = 1;
   }
-  // 让动画走完
-  for (int i = 0; i < 194; i++)
+  for (int index = 0; index < 194; ++index)
+  {
     display::drawLoading(1, 1);
+  }
 }
 
 #if WM_EN
 void onSaveParam()
 {
-  Serial.println(F("[Net] saveParamCallback"));
+  if (!s_config)
+    return;
 
+  app::AppConfigData &config = *s_config;
 #if DHT_EN
-  g_app.dhtEnabled = String(s_wm.server->arg("DHT11_en")).toInt();
+  config.dhtEnabled = String(s_wm.server->arg("DHT11_en")).toInt() != 0;
 #endif
-  g_app.weatherUpdateMinutes = String(s_wm.server->arg("WeaterUpdateTime")).toInt();
-  long cc = String(s_wm.server->arg("CityCode")).toInt();
-  g_app.lcdRotation = String(s_wm.server->arg("set_rotation")).toInt();
-  g_app.lcdBrightness = String(s_wm.server->arg("LCDBL")).toInt();
+  config.weatherUpdateMinutes = String(s_wm.server->arg("WeaterUpdateTime")).toInt();
+  config.lcdRotation = String(s_wm.server->arg("set_rotation")).toInt();
+  config.lcdBrightness = String(s_wm.server->arg("LCDBL")).toInt();
 
-  if ((cc >= 101000000 && cc <= 102000000) || cc == 0)
+  const long cityCode = parseCityCode(String(s_wm.server->arg("CityCode")));
+  if (cityCode == 0)
   {
-    char buf[12];
-    snprintf(buf, sizeof(buf), "%ld", cc);
-    g_app.cityCode = String(buf);
+    config.cityCode.clear();
+  }
+  else if (cityCode >= 101000000L && cityCode <= 102000000L)
+  {
+    char buffer[12];
+    snprintf(buffer, sizeof(buffer), "%ld", cityCode);
+    config.cityCode = buffer;
   }
 
-  storage::save(g_app);
-
-  display::setRotation(g_app.lcdRotation);
+  storage::saveConfig(config);
+  display::setRotation(config.lcdRotation);
   display::clear();
-  screen::drawConfigFailed();
-
-  display::setBrightness(g_app.lcdBrightness);
-  Serial.printf("[Net] 亮度=%u 方向=%u 更新=%u 分钟 城市=%s\n",
-                g_app.lcdBrightness, g_app.lcdRotation, g_app.weatherUpdateMinutes,
-                g_app.cityCode.c_str());
+  display::setBrightness(config.lcdBrightness);
 }
 
-void runWebConfig()
+void runWebConfig(app::AppConfigData &config)
 {
+  s_config = &config;
+
+  char brightness[4];
+  char weatherUpdateMinutes[4];
+  char cityCode[10];
+#if DHT_EN
+  char dhtEnabled[2];
+  snprintf(dhtEnabled, sizeof(dhtEnabled), "%u", config.dhtEnabled ? 1 : 0);
+#endif
+  snprintf(brightness, sizeof(brightness), "%u", config.lcdBrightness);
+  snprintf(weatherUpdateMinutes, sizeof(weatherUpdateMinutes), "%lu",
+           static_cast<unsigned long>(config.weatherUpdateMinutes));
+  strncpy(cityCode, config.cityCode.c_str(), sizeof(cityCode) - 1);
+  cityCode[sizeof(cityCode) - 1] = '\0';
+
   WiFi.mode(WIFI_STA);
   delay(500);
   s_wm.resetSettings();
@@ -93,12 +104,12 @@ void runWebConfig()
       "<input type='radio' name='set_rotation' value='3'> USB接口朝左<br>";
 
   WiFiManagerParameter paramRotation(rotationHtml);
-  WiFiManagerParameter paramBrightness("LCDBL", "屏幕亮度（1-100）", "10", 3);
+  WiFiManagerParameter paramBrightness("LCDBL", "屏幕亮度（1-100）", brightness, 3);
 #if DHT_EN
-  WiFiManagerParameter paramDht("DHT11_en", "Enable DHT11 sensor", "0", 1);
+  WiFiManagerParameter paramDht("DHT11_en", "Enable DHT11 sensor", dhtEnabled, 1);
 #endif
-  WiFiManagerParameter paramWeather("WeaterUpdateTime", "天气刷新时间（分钟）", "10", 3);
-  WiFiManagerParameter paramCity("CityCode", "城市代码", "0", 9);
+  WiFiManagerParameter paramWeather("WeaterUpdateTime", "天气刷新时间（分钟）", weatherUpdateMinutes, 3);
+  WiFiManagerParameter paramCity("CityCode", "城市代码", cityCode, 9);
   WiFiManagerParameter br("<p></p>");
 
   s_wm.addParameter(&br);
@@ -120,27 +131,24 @@ void runWebConfig()
   s_wm.setClass("invert");
   s_wm.setMinimumSignalQuality(20);
 
-  bool ok = s_wm.autoConnect("AutoConnectAP");
+  const bool ok = s_wm.autoConnect("AutoConnectAP");
+  s_config = nullptr;
   if (!ok)
   {
-    Serial.println(F("[Net] WM autoConnect failed, restarting"));
     delay(1000);
     ESP.restart();
   }
 }
 #else
-// SmartConfig 路径
 void runSmartConfig()
 {
   WiFi.mode(WIFI_STA);
-  Serial.println(F("[Net] Wait for Smartconfig..."));
   WiFi.beginSmartConfig();
   while (true)
   {
     delay(100);
     if (WiFi.smartConfigDone())
     {
-      Serial.println(F("[Net] SmartConfig done"));
       break;
     }
   }
@@ -149,16 +157,11 @@ void runSmartConfig()
 
 } // namespace
 
-void begin()
+bool connect(app::AppConfigData &config)
 {
-  WiFi.begin(g_app.wifi.ssid, g_app.wifi.psk);
-  Serial.printf("[Net] connecting to %s\n", g_app.wifi.ssid);
-}
+  WiFi.begin(config.wifiSsid.c_str(), config.wifiPsk.c_str());
 
-bool ensureConnected()
-{
-  // 先等着普通连接
-  uint32_t start = millis();
+  const uint32_t start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 12000)
   {
     display::drawLoading(30, 1);
@@ -167,7 +170,7 @@ bool ensureConnected()
   if (WiFi.status() != WL_CONNECTED)
   {
 #if WM_EN
-    runWebConfig();
+    runWebConfig(config);
 #else
     runSmartConfig();
 #endif
@@ -177,10 +180,11 @@ bool ensureConnected()
 
   if (WiFi.status() == WL_CONNECTED)
   {
-    copyWifiField(g_app.wifi.ssid, sizeof(g_app.wifi.ssid), WiFi.SSID());
-    copyWifiField(g_app.wifi.psk, sizeof(g_app.wifi.psk), WiFi.psk());
-    storage::saveWifi(g_app.wifi);
-    Serial.printf("[Net] connected: %s\n", g_app.wifi.ssid);
+    config.wifiSsid = WiFi.SSID().c_str();
+    config.wifiPsk = WiFi.psk().c_str();
+    storage::saveConfig(config);
+    display::setRotation(config.lcdRotation);
+    display::setBrightness(config.lcdBrightness);
     return true;
   }
 
@@ -190,28 +194,14 @@ bool ensureConnected()
 void sleep()
 {
   WiFi.forceSleepBegin();
-  g_app.wifiAwake = false;
-  Serial.println(F("[Net] sleep"));
+  s_wifiAwake = false;
 }
 
 void wake()
 {
   WiFi.forceSleepWake();
-  g_app.wifiAwake = true;
-  Serial.println(F("[Net] wake"));
-}
-
-void tickOnlineTasks()
-{
-  if (!g_app.wifiAwake)
-    return;
-  if (WiFi.status() != WL_CONNECTED)
-    return;
-
-  Serial.println(F("[Net] online, refresh data"));
-  weather::fetchAndRender();
-  ntp::syncOnce();
-  sleep();
+  s_wifiAwake = true;
+  delay(1);
 }
 
 void resetAndRestart()
@@ -219,9 +209,8 @@ void resetAndRestart()
 #if WM_EN
   s_wm.resetSettings();
 #endif
-  storage::clearWifi();
+  storage::clearWifiCredentials();
   delay(200);
-  Serial.println(F("[Net] reset + restart"));
   ESP.restart();
 }
 

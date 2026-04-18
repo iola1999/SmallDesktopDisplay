@@ -1,77 +1,88 @@
-/* *****************************************************************
- * SmallDesktopDisplay — 主入口
- *
- * 硬件: ESP8266 (NodeMCU v2 / esp12e)
- * 功能: 时钟、天气、滚动横幅、(可选) DHT11 室内温湿度、(可选) 动图
- *
- * 引脚分配:
- *   SCK   GPIO14
- *   MOSI  GPIO13
- *   RES   GPIO2
- *   DC    GPIO0
- *   LCDBL GPIO5 (见 AppConfig::kPinLcdBacklight)
- *   BTN   GPIO4 (AppConfig::kPinButton)
- *   DHT11 GPIO12 (AppConfig::kPinDht, DHT_EN=1 时才使用)
- *
- * TFT_eSPI 像素引脚由库自身的 User_Setup.h 配置, 不在本仓库内。
- * *****************************************************************/
-
 #include <Arduino.h>
-#include <ESP8266WiFi.h>
-#include <StaticThreadController.h>
-#include <Thread.h>
+#include <TimeLib.h>
 
-#include "AppConfig.h"
-#include "AppState.h"
 #include "Animate/Animate.h"
 #include "Cli.h"
-#include "Dht11.h"
-#include "Display.h"
 #include "Input.h"
-#include "Net.h"
-#include "Ntp.h"
-#include "Screen.h"
-#include "Storage.h"
-#include "Weather.h"
+#include "adapters/Dht11SensorPort.h"
+#include "adapters/EepromStoragePort.h"
+#include "adapters/Esp8266NetworkPort.h"
+#include "adapters/NtpTimeSyncPort.h"
+#include "adapters/WeatherServicePort.h"
+#include "app/AppCore.h"
+#include "app/AppDriver.h"
+#include "ui/TftDisplayPort.h"
 
-// ============================================================
-// 全局状态唯一实例
-// ============================================================
-AppState g_app;
-
-// ============================================================
-// 协程线程
-// ============================================================
 namespace
 {
 
-Thread t_clock;
-Thread t_banner;
-Thread t_wifiWake;
-Thread t_animate;
-StaticThreadController<4> g_controller(&t_clock, &t_banner, &t_wifiWake, &t_animate);
+adapters::EepromStoragePort g_storage;
+adapters::Esp8266NetworkPort g_network;
+adapters::WeatherServicePort g_weather;
+adapters::NtpTimeSyncPort g_timeSync;
+adapters::Dht11SensorPort g_sensor;
+ui::TftDisplayPort g_display;
+app::AppCore g_core;
+app::AppDriver g_driver(g_storage, g_network, g_weather, g_timeSync, g_sensor, g_display, nullptr);
 
-void taskClock()
+uint32_t g_lastSecondTickMs = 0;
+uint32_t g_lastBannerTickMs = 0;
+
+void dispatch(const app::ActionList &actions)
 {
-  screen::refreshClock();
+  g_driver.dispatch(g_core, actions);
+  animate::setDhtEnabled(g_core.config().dhtEnabled);
 }
 
-void taskBanner()
+void applyCliCommand(const cli::Command &command)
 {
-#if DHT_EN
-  dht11::readAndRender();
-#endif
-  screen::refreshBanner();
-}
+  app::AppConfigData &config = g_core.configMutable();
 
-void taskWakeWifi()
-{
-  net::wake();
-}
+  switch (command.type)
+  {
+    case cli::CommandType::SetBrightness:
+      config.lcdBrightness = static_cast<uint8_t>(command.value);
+      g_storage.save(config);
+      g_display.setBrightness(config.lcdBrightness);
+      break;
 
-void taskAnimate()
-{
-  animate::tick();
+    case cli::CommandType::SetRotation:
+      config.lcdRotation = static_cast<uint8_t>(command.value);
+      g_storage.save(config);
+      g_display.setRotation(config.lcdRotation);
+      g_display.render(g_core.view());
+      break;
+
+    case cli::CommandType::SetWeatherUpdateMinutes:
+      config.weatherUpdateMinutes = static_cast<uint32_t>(command.value);
+      g_storage.save(config);
+      break;
+
+    case cli::CommandType::SetCityCode:
+      config.cityCode = command.text;
+      g_storage.save(config);
+      if (g_core.runtime().mode == app::AppMode::Operational)
+      {
+        dispatch(g_core.handle(app::AppEvent::refreshDue(static_cast<uint32_t>(now()))));
+      }
+      break;
+
+    case cli::CommandType::AutoDetectCity:
+      config.cityCode.clear();
+      g_storage.save(config);
+      if (g_core.runtime().mode == app::AppMode::Operational)
+      {
+        dispatch(g_core.handle(app::AppEvent::refreshDue(static_cast<uint32_t>(now()))));
+      }
+      break;
+
+    case cli::CommandType::ResetWifi:
+      g_network.resetAndRestart();
+      break;
+
+    case cli::CommandType::None:
+      break;
+  }
 }
 
 } // namespace
@@ -83,61 +94,61 @@ void setup()
   Serial.printf("[%s] booting\n", app_config::kVersion);
 
   input::begin();
-  storage::begin();
-  storage::load(g_app);
 
-  display::begin(g_app.lcdRotation);
-  display::setBrightness(g_app.lcdBrightness);
+  app::AppConfigData config;
+  g_storage.load(config);
+  g_core.setConfig(config);
+  g_display.begin(config.lcdRotation, config.lcdBrightness);
+  animate::setDhtEnabled(config.dhtEnabled);
 
-#if DHT_EN
-  dht11::begin();
-#endif
-
-  // 连 WiFi (连不上则进配网)
-  net::begin();
-  net::ensureConnected();
-
-  Serial.printf("本地 IP: %s\n", WiFi.localIP().toString().c_str());
-  ntp::begin();
-
-  // 首次数据拉取
-  if (g_app.cityCode.length() < 9)
-  {
-    String code;
-    if (weather::fetchCityCode(code))
-      g_app.cityCode = code;
-  }
-
-  display::clear();
-  display::drawTempHumidityIcons();
-  weather::fetchAndRender();
-#if DHT_EN
-  dht11::readAndRender();
-#endif
-
-  net::sleep();
-
-  // 线程周期
-  t_clock.setInterval(app_config::kClockRefreshMs);
-  t_clock.onRun(taskClock);
-
-  t_banner.setInterval(app_config::kBannerRefreshMs);
-  t_banner.onRun(taskBanner);
-
-  t_wifiWake.setInterval(g_app.weatherUpdateMinutes * 60UL * app_config::kTickMs);
-  t_wifiWake.onRun(taskWakeWifi);
-
-  t_animate.setInterval(app_config::kAnimateRefreshMs);
-  t_animate.onRun(taskAnimate);
-
-  g_controller.run();
+  dispatch(g_core.handle(app::AppEvent::bootRequested()));
 }
 
 void loop()
 {
-  if (g_controller.shouldRun())
-    g_controller.run();
-  net::tickOnlineTasks();
-  cli::tick();
   input::tick();
+
+  switch (input::consumeEvent())
+  {
+    case input::ButtonEvent::ShortPress:
+      ESP.reset();
+      break;
+
+    case input::ButtonEvent::LongPress:
+      g_network.resetAndRestart();
+      break;
+
+    case input::ButtonEvent::None:
+      break;
+  }
+
+  cli::Command command;
+  if (cli::poll(command))
+  {
+    applyCliCommand(command);
+  }
+
+  const uint32_t nowMs = millis();
+  if (nowMs - g_lastSecondTickMs >= app_config::kTickMs)
+  {
+    g_lastSecondTickMs = nowMs;
+    g_display.tickClock();
+  }
+
+  if (nowMs - g_lastBannerTickMs >= app_config::kBannerRefreshMs)
+  {
+    g_lastBannerTickMs = nowMs;
+    g_display.tickBanner();
+  }
+
+  animate::tick();
+
+  const uint32_t nowEpoch = static_cast<uint32_t>(now());
+  if (g_core.runtime().mode == app::AppMode::Operational &&
+      !g_core.runtime().backgroundSyncInProgress &&
+      g_core.runtime().nextRefreshDueEpoch > 0 &&
+      nowEpoch >= g_core.runtime().nextRefreshDueEpoch)
+  {
+    dispatch(g_core.handle(app::AppEvent::refreshDue(nowEpoch)));
+  }
 }

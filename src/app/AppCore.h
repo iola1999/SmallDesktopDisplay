@@ -17,9 +17,11 @@ public:
   AppCore() = default;
 
   ActionList handle(const AppEvent &event);
+  void setConfig(const AppConfigData &config) { config_ = config; }
 
   const AppRuntimeState &runtime() const { return runtime_; }
   const AppConfigData &config() const { return config_; }
+  AppConfigData &configMutable() { return config_; }
   const AppDataCache &cache() const { return cache_; }
   const AppViewModel &view() const { return view_; }
 

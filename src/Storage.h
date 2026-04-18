@@ -1,7 +1,7 @@
 #ifndef STORAGE_H
 #define STORAGE_H
 
-#include "AppState.h"
+#include "app/AppConfigData.h"
 
 #include <stdint.h>
 
@@ -27,18 +27,18 @@ struct PersistedConfig
   uint32_t weatherUpdateMinutes;
   char cityCode[10]; // 9 字节 + NUL
 
-  WifiCredentials wifi;
+  char wifiSsid[32];
+  char wifiPsk[64];
 };
 
 constexpr uint16_t kMagic = 0x5344;
 constexpr uint8_t kVersion = 1;
 constexpr size_t kEepromSize = 1024;
 
-void begin();                 // EEPROM.begin(kEepromSize)
-bool load(AppState &state);   // 读取, 无效配置时回退到默认值并重写
-void save(const AppState &state);
-void saveWifi(const WifiCredentials &wifi);
-void clearWifi();
+void begin();
+bool loadConfig(app::AppConfigData &config);
+void saveConfig(const app::AppConfigData &config);
+void clearWifiCredentials();
 
 } // namespace storage
 

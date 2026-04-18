@@ -7,7 +7,7 @@ namespace ntp
 {
 
 void begin();
-time_t syncOnce(); // 同步一次, 返回 epoch 或 0 失败
+bool syncOnce(uint32_t &epochSeconds);
 
 } // namespace ntp
 

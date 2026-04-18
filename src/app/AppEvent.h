@@ -28,34 +28,44 @@ struct AppEvent
 
   static AppEvent bootRequested()
   {
-    return AppEvent{AppEventType::BootRequested};
+    AppEvent event;
+    event.type = AppEventType::BootRequested;
+    return event;
   }
 
   static AppEvent wifiConnected()
   {
-    return AppEvent{AppEventType::WifiConnected};
+    AppEvent event;
+    event.type = AppEventType::WifiConnected;
+    return event;
   }
 
   static AppEvent wifiConnectionFailed()
   {
-    return AppEvent{AppEventType::WifiConnectionFailed};
+    AppEvent event;
+    event.type = AppEventType::WifiConnectionFailed;
+    return event;
   }
 
   static AppEvent timeSynced(uint32_t epoch)
   {
-    AppEvent event{AppEventType::TimeSynced};
+    AppEvent event;
+    event.type = AppEventType::TimeSynced;
     event.epochSeconds = epoch;
     return event;
   }
 
   static AppEvent timeSyncFailed()
   {
-    return AppEvent{AppEventType::TimeSyncFailed};
+    AppEvent event;
+    event.type = AppEventType::TimeSyncFailed;
+    return event;
   }
 
   static AppEvent weatherFetched(const WeatherSnapshot &snapshot, uint32_t epoch)
   {
-    AppEvent event{AppEventType::WeatherFetched};
+    AppEvent event;
+    event.type = AppEventType::WeatherFetched;
     event.weather = snapshot;
     event.epochSeconds = epoch;
     return event;
@@ -63,12 +73,15 @@ struct AppEvent
 
   static AppEvent weatherFetchFailed()
   {
-    return AppEvent{AppEventType::WeatherFetchFailed};
+    AppEvent event;
+    event.type = AppEventType::WeatherFetchFailed;
+    return event;
   }
 
   static AppEvent refreshDue(uint32_t epoch)
   {
-    AppEvent event{AppEventType::RefreshDue};
+    AppEvent event;
+    event.type = AppEventType::RefreshDue;
     event.epochSeconds = epoch;
     return event;
   }

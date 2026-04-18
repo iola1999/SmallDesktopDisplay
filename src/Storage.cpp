@@ -10,28 +10,37 @@ namespace storage
 namespace
 {
 
-// 把 state 打包进 PersistedConfig
-void pack(const AppState &state, PersistedConfig &cfg)
+void copyString(char *dest, size_t size, const std::string &value)
+{
+  if (size == 0)
+    return;
+  strncpy(dest, value.c_str(), size - 1);
+  dest[size - 1] = '\0';
+}
+
+void pack(const app::AppConfigData &config, PersistedConfig &cfg)
 {
   memset(&cfg, 0, sizeof(cfg));
   cfg.magic = kMagic;
   cfg.version = kVersion;
-  cfg.brightness = state.lcdBrightness;
-  cfg.rotation = state.lcdRotation;
-  cfg.dhtEnabled = state.dhtEnabled;
-  cfg.weatherUpdateMinutes = state.weatherUpdateMinutes;
-  strncpy(cfg.cityCode, state.cityCode.c_str(), sizeof(cfg.cityCode) - 1);
-  memcpy(&cfg.wifi, &state.wifi, sizeof(WifiCredentials));
+  cfg.brightness = config.lcdBrightness;
+  cfg.rotation = config.lcdRotation;
+  cfg.dhtEnabled = config.dhtEnabled ? 1 : 0;
+  cfg.weatherUpdateMinutes = config.weatherUpdateMinutes;
+  copyString(cfg.cityCode, sizeof(cfg.cityCode), config.cityCode);
+  copyString(cfg.wifiSsid, sizeof(cfg.wifiSsid), config.wifiSsid);
+  copyString(cfg.wifiPsk, sizeof(cfg.wifiPsk), config.wifiPsk);
 }
 
-void unpack(const PersistedConfig &cfg, AppState &state)
+void unpack(const PersistedConfig &cfg, app::AppConfigData &config)
 {
-  state.lcdBrightness = cfg.brightness;
-  state.lcdRotation = cfg.rotation;
-  state.dhtEnabled = cfg.dhtEnabled;
-  state.weatherUpdateMinutes = cfg.weatherUpdateMinutes;
-  state.cityCode = String(cfg.cityCode);
-  memcpy(&state.wifi, &cfg.wifi, sizeof(WifiCredentials));
+  config.lcdBrightness = cfg.brightness;
+  config.lcdRotation = cfg.rotation;
+  config.dhtEnabled = cfg.dhtEnabled != 0;
+  config.weatherUpdateMinutes = cfg.weatherUpdateMinutes;
+  config.cityCode = cfg.cityCode;
+  config.wifiSsid = cfg.wifiSsid;
+  config.wifiPsk = cfg.wifiPsk;
 }
 
 void writeBlob(const void *buf, size_t len)
@@ -60,47 +69,37 @@ void begin()
   EEPROM.begin(kEepromSize);
 }
 
-bool load(AppState &state)
+bool loadConfig(app::AppConfigData &config)
 {
   PersistedConfig cfg;
   readBlob(&cfg, sizeof(cfg));
   if (cfg.magic == kMagic && cfg.version == kVersion)
   {
-    unpack(cfg, state);
+    unpack(cfg, config);
     Serial.println(F("[Storage] loaded"));
     return true;
   }
 
-  state = AppState{};
-  save(state);
+  config = app::AppConfigData{};
+  saveConfig(config);
   Serial.println(F("[Storage] invalid config, reset to defaults"));
   return false;
 }
 
-void save(const AppState &state)
+void saveConfig(const app::AppConfigData &config)
 {
   PersistedConfig cfg;
-  pack(state, cfg);
+  pack(config, cfg);
   writeBlob(&cfg, sizeof(cfg));
 }
 
-void saveWifi(const WifiCredentials &wifi)
+void clearWifiCredentials()
 {
-  PersistedConfig cfg;
-  readBlob(&cfg, sizeof(cfg));
-  if (cfg.magic != kMagic || cfg.version != kVersion)
-  {
-    AppState defaults;
-    pack(defaults, cfg);
-  }
-  memcpy(&cfg.wifi, &wifi, sizeof(WifiCredentials));
-  writeBlob(&cfg, sizeof(cfg));
-}
-
-void clearWifi()
-{
-  WifiCredentials empty{};
-  saveWifi(empty);
+  app::AppConfigData config;
+  loadConfig(config);
+  config.wifiSsid.clear();
+  config.wifiPsk.clear();
+  saveConfig(config);
 }
 
 } // namespace storage

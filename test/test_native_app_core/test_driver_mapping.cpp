@@ -28,9 +28,10 @@ struct FakeNetworkPort : ports::NetworkPort
     sleepCalled = true;
   }
 
-  void connect(const app::AppConfigData &) override
+  bool connect(app::AppConfigData &) override
   {
     connectCalled = true;
+    return true;
   }
 
   void resetAndRestart() override {}

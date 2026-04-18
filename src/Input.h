@@ -4,8 +4,16 @@
 namespace input
 {
 
+enum class ButtonEvent
+{
+  None,
+  ShortPress,
+  LongPress,
+};
+
 void begin();
-void tick(); // 在 loop 里轮询
+void tick();
+ButtonEvent consumeEvent();
 
 } // namespace input
 

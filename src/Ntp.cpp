@@ -67,9 +67,18 @@ void begin()
   setSyncInterval(app_config::kNtpSyncIntervalSec);
 }
 
-time_t syncOnce()
+bool syncOnce(uint32_t &epochSeconds)
 {
-  return fetch();
+  const time_t value = fetch();
+  if (value <= 0)
+  {
+    epochSeconds = 0;
+    return false;
+  }
+
+  setTime(value);
+  epochSeconds = static_cast<uint32_t>(value);
+  return true;
 }
 
 } // namespace ntp

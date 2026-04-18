@@ -1,7 +1,17 @@
 #include "app/AppDriver.h"
 
+#include "app/AppCore.h"
+
 namespace app
 {
+
+void AppDriver::appendActions(ActionList &target, const ActionList &source)
+{
+  for (std::size_t index = 0; index < source.count; ++index)
+  {
+    target.push(source[index].type);
+  }
+}
 
 void AppDriver::execute(const ActionList &actions, const AppConfigData &config, const AppViewModel &view)
 {
@@ -14,8 +24,11 @@ void AppDriver::execute(const ActionList &actions, const AppConfigData &config, 
         break;
 
       case AppActionType::ConnectWifi:
-        network_.connect(config);
+      {
+        AppConfigData configCopy = config;
+        (void)network_.connect(configCopy);
         break;
+      }
 
       case AppActionType::WakeWifi:
         network_.wake();
@@ -39,6 +52,108 @@ void AppDriver::execute(const ActionList &actions, const AppConfigData &config, 
       default:
         break;
     }
+  }
+}
+
+void AppDriver::dispatch(AppCore &core, const ActionList &actions)
+{
+  ActionList pending = actions;
+
+  while (pending.count > 0)
+  {
+    ActionList next;
+
+    for (std::size_t index = 0; index < pending.count; ++index)
+    {
+      switch (pending[index].type)
+      {
+        case AppActionType::RenderRequested:
+        {
+          AppViewModel renderedView = core.view();
+          if (renderedView.kind == ViewKind::Main && core.config().dhtEnabled)
+          {
+            IndoorClimateSnapshot indoor;
+            if (sensor_.read(indoor))
+            {
+              renderedView.main.showIndoorClimate = indoor.valid;
+              renderedView.main.indoorTemperatureC = indoor.temperatureC;
+              renderedView.main.indoorHumidityPercent = indoor.humidityPercent;
+            }
+          }
+          display_.render(renderedView);
+          break;
+        }
+
+        case AppActionType::ConnectWifi:
+          if (network_.connect(core.configMutable()))
+          {
+            storage_.save(core.config());
+            appendActions(next, core.handle(AppEvent::wifiConnected()));
+          }
+          else
+          {
+            appendActions(next, core.handle(AppEvent::wifiConnectionFailed()));
+          }
+          break;
+
+        case AppActionType::SyncTime:
+        {
+          uint32_t epochSeconds = 0;
+          if (timeSync_.sync(epochSeconds))
+          {
+            appendActions(next, core.handle(AppEvent::timeSynced(epochSeconds)));
+          }
+          else
+          {
+            appendActions(next, core.handle(AppEvent::timeSyncFailed()));
+          }
+          break;
+        }
+
+        case AppActionType::FetchWeather:
+        {
+          std::string cityCode = core.config().cityCode;
+          if (cityCode.length() != 9 && weather_.resolveCityCode(cityCode))
+          {
+            core.configMutable().cityCode = cityCode;
+            storage_.save(core.config());
+          }
+
+          WeatherSnapshot snapshot;
+          if (weather_.fetchWeather(core.config().cityCode, snapshot))
+          {
+            appendActions(next, core.handle(AppEvent::weatherFetched(snapshot, core.runtime().lastTimeSyncEpoch)));
+          }
+          else
+          {
+            appendActions(next, core.handle(AppEvent::weatherFetchFailed()));
+          }
+          break;
+        }
+
+        case AppActionType::WakeWifi:
+          network_.wake();
+          break;
+
+        case AppActionType::SleepWifi:
+          network_.sleep();
+          break;
+
+        case AppActionType::PersistConfig:
+          storage_.save(core.config());
+          break;
+
+        case AppActionType::ResetWifiAndRestart:
+          network_.resetAndRestart();
+          break;
+
+        case AppActionType::ResolveCityCode:
+        default:
+          break;
+      }
+    }
+
+    pending = next;
   }
 }
 
