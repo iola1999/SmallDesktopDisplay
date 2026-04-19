@@ -1,6 +1,8 @@
 #ifndef APP_UI_MOTION_H
 #define APP_UI_MOTION_H
 
+#include "AppViewModel.h"
+
 #include <cstddef>
 #include <cstdint>
 
@@ -89,6 +91,11 @@ inline int16_t adjustFillWidth(int value, int minValue, int maxValue, int totalW
   const int clampedValue = value < minValue ? minValue : (value > maxValue ? maxValue : value);
   const int adjusted = ((clampedValue - minValue) * totalWidth) / range;
   return static_cast<int16_t>(adjusted);
+}
+
+inline bool shouldInvalidateHomeMotionOnViewTransition(ViewKind previousKind, ViewKind nextKind)
+{
+  return previousKind == ViewKind::Main && nextKind != ViewKind::Main;
 }
 
 } // namespace app

@@ -1,5 +1,6 @@
 #include <doctest.h>
 
+#include "app/AppViewModel.h"
 #include "app/UiMotion.h"
 
 TEST_CASE("motion values ease toward their targets and settle inside snap distance")
@@ -69,4 +70,13 @@ TEST_CASE("ui motion geometry helpers stay aligned with the current layout")
   CHECK(app::adjustFillWidth(120, 10, 100, 192) == 192);
   CHECK(app::adjustFillWidth(55, 10, 100, 0) == 0);
   CHECK(app::adjustFillWidth(55, 10, 10, 192) == 0);
+}
+
+TEST_CASE("home motion invalidation only triggers when leaving the main view")
+{
+  CHECK(app::shouldInvalidateHomeMotionOnViewTransition(app::ViewKind::Main, app::ViewKind::Splash) == true);
+  CHECK(app::shouldInvalidateHomeMotionOnViewTransition(app::ViewKind::Main, app::ViewKind::Error) == true);
+  CHECK(app::shouldInvalidateHomeMotionOnViewTransition(app::ViewKind::Main, app::ViewKind::Main) == false);
+  CHECK(app::shouldInvalidateHomeMotionOnViewTransition(app::ViewKind::Splash, app::ViewKind::Main) == false);
+  CHECK(app::shouldInvalidateHomeMotionOnViewTransition(app::ViewKind::Error, app::ViewKind::Main) == false);
 }

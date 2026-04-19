@@ -986,6 +986,11 @@ void refreshBanner()
   display::tft.drawString(text, 120, 63, 2);
 }
 
+void invalidateHomeMotion()
+{
+  s_homeMotion.initialized = false;
+}
+
 void drawSplashPage(const app::SplashViewData &view)
 {
   s_mainPageActive = false;

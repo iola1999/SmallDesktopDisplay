@@ -5,6 +5,7 @@
 #include "Display.h"
 #include "Screen.h"
 #include "app/RenderPlan.h"
+#include "app/UiMotion.h"
 
 namespace ui
 {
@@ -68,6 +69,11 @@ void TftDisplayPort::render(const app::AppViewModel &view)
   Serial.printf("[DisplayPort] render kind=%d region=%d\n",
                 static_cast<int>(view.kind),
                 static_cast<int>(plan.region));
+
+  if (hasLastView_ && app::shouldInvalidateHomeMotionOnViewTransition(lastView_.kind, view.kind))
+  {
+    screen::invalidateHomeMotion();
+  }
 
   if (view.kind == app::ViewKind::Main)
   {

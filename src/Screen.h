@@ -10,6 +10,7 @@ namespace screen
 
 void refreshClock();
 void refreshBanner();
+void invalidateHomeMotion();
 void syncMotionTargets(const app::MainViewData &view, app::RenderRegion region);
 void refreshMotion(const app::MainViewData &view, uint32_t nowMs);
 void refreshHoldFeedback(const app::HoldFeedbackViewData &hold, uint32_t nowMs);
