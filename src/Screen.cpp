@@ -5,6 +5,7 @@
 
 #include "AppConfig.h"
 #include "Display.h"
+#include "app/UiMotion.h"
 #include "app/TransientUi.h"
 #include "font/timeClockFont.h"
 #include "weatherNum/weatherNum.h"
@@ -14,6 +15,22 @@ namespace screen
 
 namespace
 {
+
+struct MenuMotionState
+{
+  app::MotionValue boxY;
+  app::MotionValue boxWidth;
+  std::size_t selectedIndex = 0;
+  bool active = false;
+};
+
+struct InfoMotionState
+{
+  app::MotionValue scrollOffset;
+  app::MotionValue selectionY;
+  std::size_t selectedIndex = 0;
+  bool active = false;
+};
 
 WeatherNum s_weather;
 std::array<String, app_config::kBannerSlotCount> s_bannerLines{};
@@ -35,6 +52,9 @@ bool s_holdArmed = false;
 app::GestureFeedbackKind s_gestureFeedbackKind = app::GestureFeedbackKind::None;
 uint32_t s_gestureFeedbackStartedMs = 0;
 bool s_gestureFeedbackDrawn = false;
+MenuMotionState s_menuMotion;
+InfoMotionState s_infoMotion;
+app::OperationalPageKind s_motionPageKind = app::OperationalPageKind::Home;
 
 constexpr int kHoldLineX = 14;
 constexpr int kHoldLineY = 4;
@@ -48,6 +68,8 @@ constexpr int kGestureFeedbackWidth = 76;
 constexpr int kGestureFeedbackHeight = 11;
 constexpr int kPageBodyY = 44;
 constexpr int kPageBodyHeight = 180;
+constexpr uint8_t kMotionDivisor = 4;
+constexpr int16_t kMotionSnapDistance = 1;
 
 String weekText()
 {
@@ -479,22 +501,135 @@ void drawPageChrome(const std::string &title, const app::FooterHints &footer)
   drawFooterHints(footer);
 }
 
-void drawMenuItems(const app::MenuBodyData &menu)
+std::size_t selectedMenuIndex(const app::MenuBodyData &menu)
 {
   for (std::size_t index = 0; index < menu.itemCount; ++index)
   {
-    const int y = 56 + static_cast<int>(index) * 38;
-    const bool selected = menu.items[index].selected;
-    const uint16_t fillColor = selected ? TFT_YELLOW : TFT_BLACK;
-    const uint16_t borderColor = selected ? TFT_WHITE : TFT_DARKGREY;
-    const uint16_t textColor = selected ? TFT_BLACK : TFT_WHITE;
+    if (menu.items[index].selected)
+    {
+      return index;
+    }
+  }
 
-    display::tft.fillRoundRect(16, y, 208, 30, 6, fillColor);
-    display::tft.drawRoundRect(16, y, 208, 30, 6, borderColor);
+  return 0;
+}
+
+int16_t menuSelectionWidth(const app::MenuBodyData &menu, std::size_t index)
+{
+  if (menu.itemCount == 0)
+  {
+    return 0;
+  }
+
+  const std::size_t safeIndex = (index < menu.itemCount) ? index : (menu.itemCount - 1);
+  const int width = display::tft.textWidth(menu.items[safeIndex].label.c_str(), 2) + 24;
+  return static_cast<int16_t>(width > 208 ? 208 : width);
+}
+
+void syncMenuMotion(const app::MenuBodyData &menu, bool snap)
+{
+  const std::size_t selectedIndex = selectedMenuIndex(menu);
+  s_menuMotion.selectedIndex = selectedIndex;
+
+  const int16_t yTarget = app::menuBoxYForIndex(selectedIndex);
+  const int16_t widthTarget = menuSelectionWidth(menu, selectedIndex);
+  if (snap)
+  {
+    app::snapMotion(s_menuMotion.boxY, yTarget);
+    app::snapMotion(s_menuMotion.boxWidth, widthTarget);
+    s_menuMotion.active = false;
+    return;
+  }
+
+  app::retargetMotion(s_menuMotion.boxY, yTarget);
+  app::retargetMotion(s_menuMotion.boxWidth, widthTarget);
+  s_menuMotion.active = !s_menuMotion.boxY.settled || !s_menuMotion.boxWidth.settled;
+}
+
+void syncInfoMotion(const app::InfoBodyData &info, bool snap)
+{
+  const std::size_t selectedIndex = (info.rowCount == 0 || info.selectedRowIndex < info.rowCount)
+                                      ? info.selectedRowIndex
+                                      : (info.rowCount - 1);
+  s_infoMotion.selectedIndex = selectedIndex;
+
+  const int16_t scrollTarget = app::infoScrollOffsetForFirstVisible(info.firstVisibleRowIndex);
+  const int16_t selectionTarget = app::infoSelectionBoxY(info.firstVisibleRowIndex, selectedIndex);
+  if (snap)
+  {
+    app::snapMotion(s_infoMotion.scrollOffset, scrollTarget);
+    app::snapMotion(s_infoMotion.selectionY, selectionTarget);
+    s_infoMotion.active = false;
+    return;
+  }
+
+  app::retargetMotion(s_infoMotion.scrollOffset, scrollTarget);
+  app::retargetMotion(s_infoMotion.selectionY, selectionTarget);
+  s_infoMotion.active = !s_infoMotion.scrollOffset.settled || !s_infoMotion.selectionY.settled;
+}
+
+bool tickMenuMotion(const app::MenuBodyData &menu)
+{
+  if (menu.itemCount == 0)
+  {
+    s_menuMotion.active = false;
+    return false;
+  }
+
+  const bool movedY = app::advanceMotion(s_menuMotion.boxY, kMotionDivisor, kMotionSnapDistance);
+  const bool movedWidth = app::advanceMotion(s_menuMotion.boxWidth, kMotionDivisor, kMotionSnapDistance);
+  s_menuMotion.active = !s_menuMotion.boxY.settled || !s_menuMotion.boxWidth.settled;
+  return movedY || movedWidth;
+}
+
+bool tickInfoMotion(const app::InfoBodyData &info)
+{
+  if (info.rowCount == 0)
+  {
+    s_infoMotion.active = false;
+    return false;
+  }
+
+  const bool movedScroll = app::advanceMotion(s_infoMotion.scrollOffset, kMotionDivisor, kMotionSnapDistance);
+  const bool movedSelection = app::advanceMotion(s_infoMotion.selectionY, kMotionDivisor, kMotionSnapDistance);
+  s_infoMotion.active = !s_infoMotion.scrollOffset.settled || !s_infoMotion.selectionY.settled;
+  return movedScroll || movedSelection;
+}
+
+void drawMenuItemsBase(const app::MenuBodyData &menu)
+{
+  for (std::size_t index = 0; index < menu.itemCount; ++index)
+  {
+    const int y = app::menuBoxYForIndex(index);
+
+    display::tft.fillRoundRect(16, y, 208, 30, 6, TFT_BLACK);
+    display::tft.drawRoundRect(16, y, 208, 30, 6, TFT_DARKGREY);
     display::tft.setTextDatum(ML_DATUM);
-    display::tft.setTextColor(textColor, fillColor);
+    display::tft.setTextColor(TFT_WHITE, TFT_BLACK);
     display::tft.drawString(menu.items[index].label.c_str(), 28, y + 15, 2);
   }
+}
+
+void drawAnimatedMenuSelection(const app::MenuBodyData &menu)
+{
+  if (menu.itemCount == 0)
+  {
+    return;
+  }
+
+  const std::size_t selectedIndex =
+    (s_menuMotion.selectedIndex < menu.itemCount) ? s_menuMotion.selectedIndex : (menu.itemCount - 1);
+  const int16_t boxWidth = s_menuMotion.boxWidth.current;
+  if (boxWidth <= 0)
+  {
+    return;
+  }
+
+  display::tft.fillRoundRect(16, s_menuMotion.boxY.current, boxWidth, 30, 6, TFT_YELLOW);
+  display::tft.drawRoundRect(16, s_menuMotion.boxY.current, boxWidth, 30, 6, TFT_WHITE);
+  display::tft.setTextDatum(ML_DATUM);
+  display::tft.setTextColor(TFT_BLACK, TFT_YELLOW);
+  display::tft.drawString(menu.items[selectedIndex].label.c_str(), 28, s_menuMotion.boxY.current + 15, 2);
 }
 
 void drawToast(const app::ToastData &toast)
@@ -514,52 +649,69 @@ void drawToast(const app::ToastData &toast)
 void drawMenuPage(const app::MenuBodyData &menu, const app::FooterHints &footer)
 {
   drawPageChrome(menu.title, footer);
-  drawMenuItems(menu);
+  drawMenuItemsBase(menu);
+  drawAnimatedMenuSelection(menu);
 }
 
 void drawMenuBody(const app::MenuBodyData &menu)
 {
   clearPageBody();
-  drawMenuItems(menu);
+  drawMenuItemsBase(menu);
+  drawAnimatedMenuSelection(menu);
 }
 
-void drawInfoRows(const app::InfoBodyData &info)
+void drawAnimatedInfoRows(const app::InfoBodyData &info)
 {
-  for (std::size_t visibleIndex = 0; visibleIndex < info.visibleRowCount; ++visibleIndex)
+  display::tft.setViewport(0, kPageBodyY, 240, kPageBodyHeight, false);
+
+  for (std::size_t rowIndex = 0; rowIndex < info.rowCount; ++rowIndex)
   {
-    const std::size_t rowIndex = info.firstVisibleRowIndex + visibleIndex;
-    if (rowIndex >= info.rowCount)
+    const int y = 58 + static_cast<int>(rowIndex * 36) - s_infoMotion.scrollOffset.current;
+    const int top = y - 6;
+    const int bottom = top + 30;
+    if (bottom < kPageBodyY || top > (kPageBodyY + kPageBodyHeight))
     {
-      break;
+      continue;
     }
 
-    const int y = 58 + static_cast<int>(visibleIndex) * 36;
-    const bool selected = (rowIndex == info.selectedRowIndex);
-    const uint16_t fillColor = selected ? TFT_DARKGREY : app_config::kColorBg;
-    const uint16_t borderColor = selected ? TFT_YELLOW : TFT_DARKGREY;
-    const uint16_t valueColor = selected ? TFT_WHITE : TFT_YELLOW;
-
-    display::tft.fillRoundRect(14, y - 6, 212, 30, 6, fillColor);
-    display::tft.drawRoundRect(14, y - 6, 212, 30, 6, borderColor);
+    display::tft.fillRoundRect(14, top, 212, 30, 6, app_config::kColorBg);
+    display::tft.drawRoundRect(14, top, 212, 30, 6, TFT_DARKGREY);
     display::tft.setTextDatum(TL_DATUM);
-    display::tft.setTextColor(TFT_WHITE, fillColor);
+    display::tft.setTextColor(TFT_WHITE, app_config::kColorBg);
     display::tft.drawString(info.rows[rowIndex].label.c_str(), 20, y, 2);
     display::tft.setTextDatum(TR_DATUM);
-    display::tft.setTextColor(valueColor, fillColor);
+    display::tft.setTextColor(TFT_YELLOW, app_config::kColorBg);
     display::tft.drawString(info.rows[rowIndex].value.c_str(), 220, y, 2);
   }
+
+  if (info.rowCount > 0)
+  {
+    const std::size_t selectedIndex =
+      (s_infoMotion.selectedIndex < info.rowCount) ? s_infoMotion.selectedIndex : (info.rowCount - 1);
+    const int y = s_infoMotion.selectionY.current + 6;
+    display::tft.fillRoundRect(14, s_infoMotion.selectionY.current, 212, 30, 6, TFT_DARKGREY);
+    display::tft.drawRoundRect(14, s_infoMotion.selectionY.current, 212, 30, 6, TFT_YELLOW);
+    display::tft.setTextDatum(TL_DATUM);
+    display::tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+    display::tft.drawString(info.rows[selectedIndex].label.c_str(), 20, y, 2);
+    display::tft.setTextDatum(TR_DATUM);
+    display::tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
+    display::tft.drawString(info.rows[selectedIndex].value.c_str(), 220, y, 2);
+  }
+
+  display::tft.resetViewport();
 }
 
 void drawInfoPage(const app::InfoBodyData &info, const app::FooterHints &footer)
 {
   drawPageChrome(info.title, footer);
-  drawInfoRows(info);
+  drawAnimatedInfoRows(info);
 }
 
 void drawInfoBody(const app::InfoBodyData &info)
 {
   clearPageBody();
-  drawInfoRows(info);
+  drawAnimatedInfoRows(info);
 }
 
 void drawAdjustBodyContent(const app::AdjustBodyData &adjust)
@@ -762,9 +914,70 @@ void drawMainPageRegion(const app::MainViewData &view, app::RenderRegion region)
   }
 }
 
-void syncMotionTargets(const app::MainViewData &, app::RenderRegion) {}
+void syncMotionTargets(const app::MainViewData &view, app::RenderRegion region)
+{
+  const bool snap = (region == app::RenderRegion::FullScreen) || (s_motionPageKind != view.pageKind);
+  if (snap)
+  {
+    syncMenuMotion(view.menu, true);
+    syncInfoMotion(view.info, true);
+  }
+  else
+  {
+    switch (view.pageKind)
+    {
+      case app::OperationalPageKind::Menu:
+        syncMenuMotion(view.menu, false);
+        break;
 
-void refreshMotion(const app::MainViewData &, uint32_t) {}
+      case app::OperationalPageKind::Info:
+        syncInfoMotion(view.info, false);
+        break;
+
+      case app::OperationalPageKind::Adjust:
+      case app::OperationalPageKind::Home:
+        break;
+    }
+  }
+
+  if (view.pageKind != app::OperationalPageKind::Menu)
+  {
+    s_menuMotion.active = false;
+  }
+
+  if (view.pageKind != app::OperationalPageKind::Info)
+  {
+    s_infoMotion.active = false;
+  }
+
+  s_motionPageKind = view.pageKind;
+}
+
+void refreshMotion(const app::MainViewData &view, uint32_t nowMs)
+{
+  (void)nowMs;
+
+  switch (view.pageKind)
+  {
+    case app::OperationalPageKind::Menu:
+      if (s_menuMotion.active && tickMenuMotion(view.menu))
+      {
+        drawMainPageRegion(view, app::RenderRegion::MenuBody);
+      }
+      break;
+
+    case app::OperationalPageKind::Info:
+      if (s_infoMotion.active && tickInfoMotion(view.info))
+      {
+        drawMainPageRegion(view, app::RenderRegion::InfoBody);
+      }
+      break;
+
+    case app::OperationalPageKind::Adjust:
+    case app::OperationalPageKind::Home:
+      break;
+  }
+}
 
 void refreshHoldFeedback(const app::HoldFeedbackViewData &hold, uint32_t nowMs)
 {
