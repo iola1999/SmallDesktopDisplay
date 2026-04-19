@@ -627,9 +627,11 @@ void drawAnimatedMenuSelection(const app::MenuBodyData &menu)
 
   display::tft.fillRoundRect(16, s_menuMotion.boxY.current, boxWidth, 30, 6, TFT_YELLOW);
   display::tft.drawRoundRect(16, s_menuMotion.boxY.current, boxWidth, 30, 6, TFT_WHITE);
+  display::tft.setViewport(16, s_menuMotion.boxY.current, boxWidth, 30, false);
   display::tft.setTextDatum(ML_DATUM);
   display::tft.setTextColor(TFT_BLACK, TFT_YELLOW);
   display::tft.drawString(menu.items[selectedIndex].label.c_str(), 28, s_menuMotion.boxY.current + 15, 2);
+  display::tft.resetViewport();
 }
 
 void drawToast(const app::ToastData &toast)
