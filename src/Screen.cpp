@@ -45,6 +45,15 @@ struct TransientMotionState
   app::MotionValue holdFillWidth;
 };
 
+struct HomeMotionState
+{
+  app::MotionValue weatherPanelOffsetX;
+  app::MotionValue aqiOffsetY;
+  app::MotionValue tempBarWidth;
+  app::MotionValue humidityBarWidth;
+  bool initialized = false;
+};
+
 WeatherNum s_weather;
 std::array<String, app_config::kBannerSlotCount> s_bannerLines{};
 int s_bannerIndex = 0;
@@ -69,6 +78,7 @@ MenuMotionState s_menuMotion;
 InfoMotionState s_infoMotion;
 AdjustMotionState s_adjustMotion;
 TransientMotionState s_transientMotion;
+HomeMotionState s_homeMotion;
 app::OperationalPageKind s_motionPageKind = app::OperationalPageKind::Home;
 
 constexpr int kHoldLineX = 14;
@@ -85,6 +95,22 @@ constexpr int kPageBodyY = 44;
 constexpr int kPageBodyHeight = 180;
 constexpr uint8_t kMotionDivisor = 4;
 constexpr int16_t kMotionSnapDistance = 1;
+constexpr int kHomeAqiX = 14;
+constexpr int kHomeAqiBaseY = 16;
+constexpr int kHomeAqiWidth = 72;
+constexpr int kHomeAqiHeight = 20;
+constexpr int16_t kHomeAqiEntryOffsetY = -4;
+constexpr int kHomeTempBarX = 42;
+constexpr int kHomeTempBarY = 195;
+constexpr int kHomeHumidityBarX = 42;
+constexpr int kHomeHumidityBarY = 223;
+constexpr int kHomeBarWidth = 52;
+constexpr int kHomeBarHeight = 6;
+constexpr int kHomeWeatherPanelX = 148;
+constexpr int kHomeWeatherPanelY = 154;
+constexpr int kHomeWeatherPanelWidth = 80;
+constexpr int kHomeWeatherPanelHeight = 74;
+constexpr int16_t kHomeWeatherPanelEntryOffsetX = 8;
 
 String weekText()
 {
@@ -197,23 +223,24 @@ void drawDate()
 void drawTempBar()
 {
   display::clk.setColorDepth(8);
-  display::clk.createSprite(52, 6);
+  display::clk.createSprite(kHomeBarWidth, kHomeBarHeight);
   display::clk.fillSprite(app_config::kColorBg);
-  display::clk.drawRoundRect(0, 0, 52, 6, 3, 0xFFFF);
-  display::clk.fillRoundRect(1, 1, s_tempPercent, 4, 2, s_tempColor);
-  display::clk.pushSprite(42, 195);
+  display::clk.drawRoundRect(0, 0, kHomeBarWidth, kHomeBarHeight, 3, 0xFFFF);
+  const int fillWidth = s_homeMotion.initialized ? s_homeMotion.tempBarWidth.current : s_tempPercent;
+  display::clk.fillRoundRect(1, 1, fillWidth > 0 ? fillWidth : 0, 4, 2, s_tempColor);
+  display::clk.pushSprite(kHomeTempBarX, kHomeTempBarY);
   display::clk.deleteSprite();
 }
 
 void drawHumidityBar()
 {
-  const int halfBar = s_humidityPercent / 2;
   display::clk.setColorDepth(8);
-  display::clk.createSprite(52, 6);
+  display::clk.createSprite(kHomeBarWidth, kHomeBarHeight);
   display::clk.fillSprite(app_config::kColorBg);
-  display::clk.drawRoundRect(0, 0, 52, 6, 3, 0xFFFF);
-  display::clk.fillRoundRect(1, 1, halfBar, 4, 2, s_humidityColor);
-  display::clk.pushSprite(42, 223);
+  display::clk.drawRoundRect(0, 0, kHomeBarWidth, kHomeBarHeight, 3, 0xFFFF);
+  const int fillWidth = s_homeMotion.initialized ? s_homeMotion.humidityBarWidth.current : (s_humidityPercent / 2);
+  display::clk.fillRoundRect(1, 1, fillWidth > 0 ? fillWidth : 0, 4, 2, s_humidityColor);
+  display::clk.pushSprite(kHomeHumidityBarX, kHomeHumidityBarY);
   display::clk.deleteSprite();
 }
 
@@ -419,10 +446,10 @@ const char *aqiLabel(int aqi, uint16_t &aqiBg)
 
 void drawWeatherIconPanel(int weatherCode)
 {
-  const int panelX = 148;
-  const int panelY = 154;
-  const int panelW = 80;
-  const int panelH = 74;
+  const int panelX = kHomeWeatherPanelX + s_homeMotion.weatherPanelOffsetX.current;
+  const int panelY = kHomeWeatherPanelY;
+  const int panelW = kHomeWeatherPanelWidth;
+  const int panelH = kHomeWeatherPanelHeight;
 
   display::tft.fillRoundRect(panelX, panelY, panelW, panelH, 10, display::tft.color565(18, 18, 18));
   display::tft.drawRoundRect(panelX, panelY, panelW, panelH, 10, TFT_DARKGREY);
@@ -430,6 +457,116 @@ void drawWeatherIconPanel(int weatherCode)
   display::tft.setTextColor(TFT_LIGHTGREY, display::tft.color565(18, 18, 18));
   display::tft.drawString("NOW", panelX + (panelW / 2), panelY + 12, 1);
   s_weather.printfweather(panelX + 14, panelY + 18, weatherCode);
+}
+
+int16_t targetTempBarWidth(int temperatureC)
+{
+  int value = temperatureC + 10;
+  if (value < 0)
+  {
+    value = 0;
+  }
+  if (value > 50)
+  {
+    value = 50;
+  }
+  return static_cast<int16_t>(value);
+}
+
+int16_t targetHumidityBarWidth(int humidityPercent)
+{
+  if (humidityPercent < 0)
+  {
+    humidityPercent = 0;
+  }
+  if (humidityPercent > 100)
+  {
+    humidityPercent = 100;
+  }
+  return static_cast<int16_t>(humidityPercent / 2);
+}
+
+void drawAqiBadge(int aqi)
+{
+  uint16_t aqiBg = 0;
+  const char *aqiText = aqiLabel(aqi, aqiBg);
+  display::clk.setColorDepth(8);
+  display::clk.createSprite(kHomeAqiWidth, kHomeAqiHeight);
+  display::clk.fillSprite(app_config::kColorBg);
+  display::clk.fillRoundRect(0, 0, kHomeAqiWidth, kHomeAqiHeight, 5, aqiBg);
+  display::clk.setTextDatum(CC_DATUM);
+  display::clk.setTextColor(0x0000);
+  display::clk.drawString(aqiText, kHomeAqiWidth / 2, kHomeAqiHeight / 2, 2);
+  display::clk.pushSprite(kHomeAqiX, kHomeAqiBaseY + s_homeMotion.aqiOffsetY.current);
+  display::clk.deleteSprite();
+}
+
+void drawHomeAqiRegion(const app::MainViewData &view)
+{
+  const int top = kHomeAqiBaseY + (kHomeAqiEntryOffsetY < 0 ? kHomeAqiEntryOffsetY : 0);
+  const int height = kHomeAqiHeight + (kHomeAqiEntryOffsetY < 0 ? -kHomeAqiEntryOffsetY : kHomeAqiEntryOffsetY);
+  display::tft.fillRect(kHomeAqiX, top, kHomeAqiWidth, height, app_config::kColorBg);
+  drawAqiBadge(view.aqi);
+}
+
+void drawHomeWeatherPanelRegion(const app::MainViewData &view)
+{
+  display::tft.fillRect(
+    kHomeWeatherPanelX,
+    kHomeWeatherPanelY,
+    kHomeWeatherPanelWidth + kHomeWeatherPanelEntryOffsetX,
+    kHomeWeatherPanelHeight,
+    app_config::kColorBg);
+  drawWeatherIconPanel(view.weatherCode);
+}
+
+void drawHomeTempBarRegion(const app::MainViewData &view)
+{
+  updateTemperatureBar(view.temperatureC);
+  drawTempBar();
+}
+
+void drawHomeHumidityBarRegion(const app::MainViewData &view)
+{
+  updateHumidityBar(view.humidityPercent);
+  drawHumidityBar();
+}
+
+void syncHomeMotion(const app::MainViewData &view, bool enteringHome)
+{
+  if (enteringHome || !s_homeMotion.initialized)
+  {
+    app::snapMotion(s_homeMotion.weatherPanelOffsetX, kHomeWeatherPanelEntryOffsetX);
+    app::snapMotion(s_homeMotion.aqiOffsetY, kHomeAqiEntryOffsetY);
+    app::snapMotion(s_homeMotion.tempBarWidth, 0);
+    app::snapMotion(s_homeMotion.humidityBarWidth, 0);
+    s_homeMotion.initialized = true;
+  }
+
+  app::retargetMotion(s_homeMotion.weatherPanelOffsetX, 0);
+  app::retargetMotion(s_homeMotion.aqiOffsetY, 0);
+  app::retargetMotion(s_homeMotion.tempBarWidth, targetTempBarWidth(view.temperatureC));
+  app::retargetMotion(s_homeMotion.humidityBarWidth, targetHumidityBarWidth(view.humidityPercent));
+}
+
+void tickHomeMotion(bool &movedWeather, bool &movedAqi, bool &movedTemp, bool &movedHumidity)
+{
+  movedWeather = app::advanceMotion(
+    s_homeMotion.weatherPanelOffsetX,
+    kMotionDivisor,
+    kMotionSnapDistance);
+  movedAqi = app::advanceMotion(
+    s_homeMotion.aqiOffsetY,
+    kMotionDivisor,
+    kMotionSnapDistance);
+  movedTemp = app::advanceMotion(
+    s_homeMotion.tempBarWidth,
+    kMotionDivisor,
+    kMotionSnapDistance);
+  movedHumidity = app::advanceMotion(
+    s_homeMotion.humidityBarWidth,
+    kMotionDivisor,
+    kMotionSnapDistance);
 }
 
 void drawWeatherMain(const app::MainViewData &view)
@@ -463,17 +600,7 @@ void drawWeatherMain(const app::MainViewData &view)
   updateHumidityBar(view.humidityPercent);
   drawHumidityBar();
 
-  uint16_t aqiBg = 0;
-  const char *aqiText = aqiLabel(view.aqi, aqiBg);
-  display::clk.createSprite(72, 20);
-  display::clk.fillSprite(app_config::kColorBg);
-  display::clk.fillRoundRect(0, 0, 72, 20, 5, aqiBg);
-  display::clk.setTextDatum(CC_DATUM);
-  display::clk.setTextColor(0x0000);
-  display::clk.drawString(aqiText, 36, 10, 2);
-  display::clk.pushSprite(14, 16);
-  display::clk.deleteSprite();
-
+  drawAqiBadge(view.aqi);
   drawWeatherIconPanel(view.weatherCode);
 }
 
@@ -971,8 +1098,13 @@ void drawMainPageRegion(const app::MainViewData &view, app::RenderRegion region)
 
 void syncMotionTargets(const app::MainViewData &view, app::RenderRegion region)
 {
-  const bool snap = (region == app::RenderRegion::FullScreen) || (s_motionPageKind != view.pageKind);
-  if (snap)
+  const bool enteringNewPage = s_motionPageKind != view.pageKind;
+  const bool snap = (region == app::RenderRegion::FullScreen) || enteringNewPage;
+  if (view.pageKind == app::OperationalPageKind::Home)
+  {
+    syncHomeMotion(view, enteringNewPage);
+  }
+  else if (snap)
   {
     syncMenuMotion(view.menu, true);
     syncInfoMotion(view.info, true);
@@ -1014,6 +1146,11 @@ void syncMotionTargets(const app::MainViewData &view, app::RenderRegion region)
     s_adjustMotion.active = false;
   }
 
+  if (view.pageKind != app::OperationalPageKind::Home)
+  {
+    s_homeMotion.initialized = false;
+  }
+
   s_motionPageKind = view.pageKind;
 }
 
@@ -1045,7 +1182,30 @@ void refreshMotion(const app::MainViewData &view, uint32_t nowMs)
       break;
 
     case app::OperationalPageKind::Home:
+    {
+      bool movedWeather = false;
+      bool movedAqi = false;
+      bool movedTemp = false;
+      bool movedHumidity = false;
+      tickHomeMotion(movedWeather, movedAqi, movedTemp, movedHumidity);
+      if (movedAqi)
+      {
+        drawHomeAqiRegion(view);
+      }
+      if (movedWeather)
+      {
+        drawHomeWeatherPanelRegion(view);
+      }
+      if (movedTemp)
+      {
+        drawHomeTempBarRegion(view);
+      }
+      if (movedHumidity)
+      {
+        drawHomeHumidityBarRegion(view);
+      }
       break;
+    }
   }
 
   if (view.holdFeedback.visible &&

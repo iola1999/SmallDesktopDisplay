@@ -76,6 +76,12 @@ Update it whenever behavior, architecture, or interaction details change.
 - Top gesture feedback no longer clears and redraws on every transient UI tick while visible; it now draws once when triggered and clears once when it expires.
 - Fixed the follow-up conflict where hidden hold-feedback cleanup could still clear the shared top transient strip and erase a visible gesture capsule on the next tick.
 
+### 2026-04-19 UI Motion Upgrade
+
+- Added a lightweight shared motion layer for menu, diagnostics, adjust-page, transient, and home-page micro-interactions.
+- Kept the implementation on the existing ESP8266 TFT path without introducing a full-screen frame buffer or LVGL.
+- Left strip buffering as a follow-up experiment only if hardware still shows visible flicker after the no-buffer motion pass.
+
 ### Follow-Up Candidate
 
 - Evaluate strip-based double buffering for page body regions if partial redraw still shows visible flicker on hardware; avoid full-screen frame buffers on ESP-12E due to RAM pressure.
