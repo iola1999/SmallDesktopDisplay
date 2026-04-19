@@ -19,6 +19,15 @@ app::DiagnosticsSnapshot Esp8266SystemStatusPort::capture(const app::AppConfigDa
   snapshot.savedWifiSsid = config.wifiSsid;
   snapshot.wifiLinkConnected = (WiFi.status() == WL_CONNECTED);
   snapshot.activeWifiSsid = snapshot.wifiLinkConnected ? WiFi.SSID().c_str() : "-";
+  if (snapshot.wifiLinkConnected)
+  {
+    const String wifiLocalIp = WiFi.localIP().toString();
+    snapshot.wifiLocalIp = wifiLocalIp.c_str();
+  }
+  else
+  {
+    snapshot.wifiLocalIp = "disconnected";
+  }
   snapshot.wifiRadioAwake = net::isWifiAwake();
   snapshot.lastWeatherSyncEpoch = runtime.lastWeatherSyncEpoch;
   snapshot.refreshIntervalMinutes = config.weatherUpdateMinutes;

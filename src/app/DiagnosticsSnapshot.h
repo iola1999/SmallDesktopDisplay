@@ -15,6 +15,7 @@ struct DiagnosticsSnapshot
   uint32_t programFlashTotalBytes = 0;
   std::string savedWifiSsid;
   std::string activeWifiSsid;
+  std::string wifiLocalIp;
   bool wifiLinkConnected = false;
   bool wifiRadioAwake = false;
   uint32_t lastWeatherSyncEpoch = 0;

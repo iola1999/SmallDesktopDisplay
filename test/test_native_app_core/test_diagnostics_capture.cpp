@@ -35,6 +35,7 @@ struct FakeSystemStatusPort : ports::SystemStatusPort
     snapshot.valid = true;
     snapshot.savedWifiSsid = config.wifiSsid;
     snapshot.activeWifiSsid = runtime.backgroundSyncInProgress ? "BackgroundSSID" : "-";
+    snapshot.wifiLocalIp = runtime.backgroundSyncInProgress ? "192.168.1.50" : "disconnected";
     snapshot.wifiLinkConnected = runtime.backgroundSyncInProgress;
     snapshot.wifiRadioAwake = runtime.backgroundSyncInProgress;
     snapshot.lastWeatherSyncEpoch = runtime.lastWeatherSyncEpoch;
@@ -132,6 +133,7 @@ TEST_CASE("captured snapshot renders the diagnostics info page")
   snapshot.valid = true;
   snapshot.savedWifiSsid = "StudioWiFi";
   snapshot.activeWifiSsid = "-";
+  snapshot.wifiLocalIp = "disconnected";
   snapshot.wifiLinkConnected = false;
   snapshot.wifiRadioAwake = false;
   snapshot.lastWeatherSyncEpoch = 1710000000;
@@ -146,11 +148,13 @@ TEST_CASE("captured snapshot renders the diagnostics info page")
   CHECK(actions[0].type == app::AppActionType::RenderRequested);
   CHECK(core.ui().route == app::UiRoute::DiagnosticsPage);
   CHECK(core.view().main.pageKind == app::OperationalPageKind::Info);
-  CHECK(core.view().main.info.rowCount == 9);
+  CHECK(core.view().main.info.rowCount == 10);
   CHECK(core.view().main.info.visibleRowCount == 4);
   CHECK(core.view().main.info.rows[0].label == "Saved SSID");
   CHECK(core.view().main.info.rows[1].value == "sleeping");
-  CHECK(core.view().main.info.rows[4].label == "Last Sync");
+  CHECK(core.view().main.info.rows[4].label == "LAN IP");
+  CHECK(core.view().main.info.rows[4].value == "disconnected");
+  CHECK(core.view().main.info.rows[5].label == "Last Sync");
 }
 
 TEST_CASE("content-page short press scrolls and long press returns")
@@ -163,6 +167,7 @@ TEST_CASE("content-page short press scrolls and long press returns")
   snapshot.valid = true;
   snapshot.savedWifiSsid = "StudioWiFi";
   snapshot.activeWifiSsid = "-";
+  snapshot.wifiLocalIp = "disconnected";
   snapshot.wifiLinkConnected = false;
   snapshot.wifiRadioAwake = false;
   snapshot.lastWeatherSyncEpoch = 1710000000;
@@ -205,7 +210,8 @@ TEST_CASE("driver dispatch captures diagnostics with config and runtime context"
   driver.dispatch(core, diagnostics);
   CHECK(core.ui().route == app::UiRoute::DiagnosticsPage);
   CHECK(core.view().main.info.rows[0].value == "StudioWiFi");
-  CHECK(core.view().main.info.rows[5].value == "15m");
+  CHECK(core.view().main.info.rows[4].value == "disconnected");
+  CHECK(core.view().main.info.rows[6].value == "15m");
 
   app::ActionList restart;
   restart.push(app::AppActionType::RestartDevice);
