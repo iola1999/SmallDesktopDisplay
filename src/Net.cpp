@@ -1,15 +1,12 @@
 #include "Net.h"
 
 #include <Arduino.h>
-#include <ESP8266WiFi.h>
+#include <DNSServer.h>
 #include <ESP8266WebServer.h>
+#include <ESP8266WiFi.h>
 
 #include "Display.h"
 #include "Storage.h"
-
-#if WM_EN
-#include <WiFiManager.h>
-#endif
 
 namespace net
 {
@@ -17,17 +14,14 @@ namespace net
 namespace
 {
 
+constexpr uint16_t kPortalDnsPort = 53;
+
 bool s_wifiAwake = true;
 app::AppConfigData *s_config = nullptr;
-
-#if WM_EN
-WiFiManager s_wm;
-#endif
-
-long parseCityCode(const String &value)
-{
-  return value.toInt();
-}
+DNSServer s_dnsServer;
+ESP8266WebServer s_server(80);
+IPAddress s_portalIp;
+bool s_portalRestartRequested = false;
 
 void loadingUntilConnected()
 {
@@ -43,117 +37,131 @@ void loadingUntilConnected()
   }
 }
 
-#if WM_EN
-void onSaveParam()
+void drawPortalInstructions()
+{
+  display::clear();
+  display::tft.setTextColor(TFT_WHITE, app_config::kColorBg);
+  display::tft.setTextDatum(CC_DATUM);
+  display::tft.drawString("WiFi Setup", 120, 40, 4);
+  display::tft.setTextColor(TFT_YELLOW, app_config::kColorBg);
+  display::tft.drawString("Join AP", 120, 88, 2);
+  display::tft.drawString(app_config::kWifiPortalApSsid, 120, 112, 4);
+  display::tft.setTextColor(TFT_WHITE, app_config::kColorBg);
+  display::tft.drawString("Open", 120, 156, 2);
+  display::tft.drawString(s_portalIp.toString(), 120, 182, 4);
+  display::tft.drawString("Save credentials to reboot", 120, 220, 2);
+}
+
+String portalPage(const String &message)
+{
+  String html;
+  html.reserve(900);
+  html += F(
+    "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>"
+    "<title>SmallDesktopDisplay WiFi Setup</title></head>"
+    "<body style='font-family:sans-serif;background:#111;color:#eee;padding:16px'>"
+    "<h2>SmallDesktopDisplay WiFi Setup</h2>"
+    "<p>Connect to AP <b>");
+  html += app_config::kWifiPortalApSsid;
+  html += F("</b> and open <b>");
+  html += s_portalIp.toString();
+  html += F(
+    "</b>.</p>"
+    "<form method='post' action='/save'>"
+    "<p><label>SSID<br><input name='ssid' maxlength='31' style='width:100%;padding:10px'></label></p>"
+    "<p><label>Password<br><input name='psk' type='password' maxlength='63' style='width:100%;padding:10px'></label></p>"
+    "<p><button type='submit' style='padding:10px 14px'>Save and Restart</button></p>");
+  if (message.length() > 0)
+  {
+    html += F("<p><b>");
+    html += message;
+    html += F("</b></p>");
+  }
+  html += F("</form></body></html>");
+  return html;
+}
+
+void sendPortalPage(const String &message)
+{
+  s_server.send(200, "text/html", portalPage(message));
+}
+
+void handlePortalRoot()
+{
+  sendPortalPage(String());
+}
+
+void handlePortalSave()
 {
   if (!s_config)
+  {
+    s_server.send(500, "text/plain", "Portal state unavailable");
     return;
-
-  app::AppConfigData &config = *s_config;
-#if DHT_EN
-  config.dhtEnabled = String(s_wm.server->arg("DHT11_en")).toInt() != 0;
-#endif
-  config.weatherUpdateMinutes = String(s_wm.server->arg("WeaterUpdateTime")).toInt();
-  config.lcdRotation = String(s_wm.server->arg("set_rotation")).toInt();
-  config.lcdBrightness = String(s_wm.server->arg("LCDBL")).toInt();
-
-  const long cityCode = parseCityCode(String(s_wm.server->arg("CityCode")));
-  if (cityCode == 0)
-  {
-    config.cityCode.clear();
-  }
-  else if (cityCode >= 101000000L && cityCode <= 102000000L)
-  {
-    char buffer[12];
-    snprintf(buffer, sizeof(buffer), "%ld", cityCode);
-    config.cityCode = buffer;
   }
 
-  storage::saveConfig(config);
-  display::setRotation(config.lcdRotation);
-  display::clear();
-  display::setBrightness(config.lcdBrightness);
+  String ssid = s_server.arg("ssid");
+  String psk = s_server.arg("psk");
+  ssid.trim();
+  psk.trim();
+
+  if (ssid.length() == 0)
+  {
+    sendPortalPage("SSID is required.");
+    return;
+  }
+
+  s_config->wifiSsid = ssid.c_str();
+  s_config->wifiPsk = psk.c_str();
+  storage::saveConfig(*s_config);
+
+  s_server.send(
+    200,
+    "text/html",
+    F("<!doctype html><html><body style='font-family:sans-serif;background:#111;color:#eee;padding:16px'>"
+      "<h2>Saved</h2><p>Credentials stored. The device will reboot now.</p></body></html>"));
+  s_portalRestartRequested = true;
 }
 
 void runWebConfig(app::AppConfigData &config)
 {
   s_config = &config;
+  s_portalRestartRequested = false;
 
-  char brightness[4];
-  char weatherUpdateMinutes[4];
-  char cityCode[10];
-#if DHT_EN
-  char dhtEnabled[2];
-  snprintf(dhtEnabled, sizeof(dhtEnabled), "%u", config.dhtEnabled ? 1 : 0);
-#endif
-  snprintf(brightness, sizeof(brightness), "%u", config.lcdBrightness);
-  snprintf(weatherUpdateMinutes, sizeof(weatherUpdateMinutes), "%lu",
-           static_cast<unsigned long>(config.weatherUpdateMinutes));
-  strncpy(cityCode, config.cityCode.c_str(), sizeof(cityCode) - 1);
-  cityCode[sizeof(cityCode) - 1] = '\0';
+  WiFi.persistent(false);
+  WiFi.disconnect(true);
+  delay(200);
+  WiFi.mode(WIFI_AP);
+  WiFi.softAPdisconnect(true);
+  delay(100);
+  WiFi.softAP(app_config::kWifiPortalApSsid);
+  delay(200);
 
-  WiFi.mode(WIFI_STA);
-  delay(500);
-  s_wm.resetSettings();
+  s_portalIp = WiFi.softAPIP();
+  drawPortalInstructions();
+  Serial.printf("[Net] setup portal AP=%s ip=%s\n",
+                app_config::kWifiPortalApSsid,
+                s_portalIp.toString().c_str());
 
-  const char *rotationHtml =
-      "<br/><label for='set_rotation'>显示方向设置</label>"
-      "<input type='radio' name='set_rotation' value='0' checked> USB接口朝下<br>"
-      "<input type='radio' name='set_rotation' value='1'> USB接口朝右<br>"
-      "<input type='radio' name='set_rotation' value='2'> USB接口朝上<br>"
-      "<input type='radio' name='set_rotation' value='3'> USB接口朝左<br>";
+  s_dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+  s_dnsServer.start(kPortalDnsPort, "*", s_portalIp);
+  s_server.on("/", HTTP_GET, handlePortalRoot);
+  s_server.on("/save", HTTP_POST, handlePortalSave);
+  s_server.onNotFound(handlePortalRoot);
+  s_server.begin();
 
-  WiFiManagerParameter paramRotation(rotationHtml);
-  WiFiManagerParameter paramBrightness("LCDBL", "屏幕亮度（1-100）", brightness, 3);
-#if DHT_EN
-  WiFiManagerParameter paramDht("DHT11_en", "Enable DHT11 sensor", dhtEnabled, 1);
-#endif
-  WiFiManagerParameter paramWeather("WeaterUpdateTime", "天气刷新时间（分钟）", weatherUpdateMinutes, 3);
-  WiFiManagerParameter paramCity("CityCode", "城市代码", cityCode, 9);
-  WiFiManagerParameter br("<p></p>");
+  while (!s_portalRestartRequested)
+  {
+    s_dnsServer.processNextRequest();
+    s_server.handleClient();
+    delay(2);
+  }
 
-  s_wm.addParameter(&br);
-  s_wm.addParameter(&paramCity);
-  s_wm.addParameter(&br);
-  s_wm.addParameter(&paramBrightness);
-  s_wm.addParameter(&br);
-  s_wm.addParameter(&paramWeather);
-  s_wm.addParameter(&br);
-  s_wm.addParameter(&paramRotation);
-#if DHT_EN
-  s_wm.addParameter(&br);
-  s_wm.addParameter(&paramDht);
-#endif
-  s_wm.setSaveParamsCallback(onSaveParam);
-
-  std::vector<const char *> menu = {"wifi", "restart"};
-  s_wm.setMenu(menu);
-  s_wm.setClass("invert");
-  s_wm.setMinimumSignalQuality(20);
-
-  const bool ok = s_wm.autoConnect("AutoConnectAP");
+  s_server.stop();
+  s_dnsServer.stop();
   s_config = nullptr;
-  if (!ok)
-  {
-    delay(1000);
-    ESP.restart();
-  }
+  delay(1200);
+  ESP.restart();
 }
-#else
-void runSmartConfig()
-{
-  WiFi.mode(WIFI_STA);
-  WiFi.beginSmartConfig();
-  while (true)
-  {
-    delay(100);
-    if (WiFi.smartConfigDone())
-    {
-      break;
-    }
-  }
-}
-#endif
 
 } // namespace
 
@@ -171,54 +179,47 @@ bool connect(app::AppConfigData &config, app::WifiConnectMode mode)
     return true;
   }
 
-  WiFi.begin(config.wifiSsid.c_str(), config.wifiPsk.c_str());
-
-  const uint32_t start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 12000)
+  if (!config.wifiSsid.empty())
   {
-    if (blockingUi)
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(config.wifiSsid.c_str(), config.wifiPsk.c_str());
+
+    const uint32_t start = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - start < 12000)
     {
-      display::drawLoading(30, 1);
-    }
-    else
-    {
-      delay(30);
+      if (blockingUi)
+      {
+        display::drawLoading(30, 1);
+      }
+      else
+      {
+        delay(30);
+      }
     }
   }
 
   if (WiFi.status() != WL_CONNECTED)
   {
-#if WM_EN
     if (!blockingUi)
     {
       return false;
     }
+
     runWebConfig(config);
-#else
-    if (!blockingUi)
-    {
-      return false;
-    }
-    runSmartConfig();
-#endif
+    return false;
   }
 
-  if (blockingUi && WiFi.status() != WL_CONNECTED)
+  if (blockingUi)
   {
     loadingUntilConnected();
   }
 
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    config.wifiSsid = WiFi.SSID().c_str();
-    config.wifiPsk = WiFi.psk().c_str();
-    storage::saveConfig(config);
-    display::setRotation(config.lcdRotation);
-    display::setBrightness(config.lcdBrightness);
-    return true;
-  }
-
-  return false;
+  config.wifiSsid = WiFi.SSID().c_str();
+  config.wifiPsk = WiFi.psk().c_str();
+  storage::saveConfig(config);
+  display::setRotation(config.lcdRotation);
+  display::setBrightness(config.lcdBrightness);
+  return true;
 }
 
 bool isWifiAwake()
@@ -256,9 +257,6 @@ void restart()
 
 void resetAndRestart()
 {
-#if WM_EN
-  s_wm.resetSettings();
-#endif
   storage::clearWifiCredentials();
   delay(200);
   ESP.restart();

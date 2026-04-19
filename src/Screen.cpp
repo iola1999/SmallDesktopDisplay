@@ -1,13 +1,11 @@
 #include "Screen.h"
 
 #include <Arduino.h>
-#include <TJpg_Decoder.h>
 #include <TimeLib.h>
 
 #include "AppConfig.h"
 #include "Display.h"
 #include "app/TransientUi.h"
-#include "font/ZdyLwFont_20.h"
 #include "font/timeClockFont.h"
 #include "weatherNum/weatherNum.h"
 
@@ -50,16 +48,22 @@ constexpr int kPageBodyHeight = 180;
 
 String weekText()
 {
-  const char *wk[7] = {"日", "一", "二", "三", "四", "五", "六"};
+  static constexpr const char *kWeekdays[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
   const int weekIndex = weekday();
   if (weekIndex < 1 || weekIndex > 7)
-    return "周-";
-  return String("周") + wk[weekIndex - 1];
+    return "---";
+  return kWeekdays[weekIndex - 1];
 }
 
 String monthDayText()
 {
-  return String(month()) + "月" + day() + "日";
+  static constexpr const char *kMonths[] = {
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+  const int monthIndex = month();
+  if (monthIndex < 1 || monthIndex > 12)
+    return String(day());
+  return String(kMonths[monthIndex - 1]) + " " + day();
 }
 
 void drawLineFont(uint32_t x, uint32_t y, uint32_t num, uint32_t size, uint32_t color)
@@ -128,25 +132,22 @@ void drawClockDigits(bool force)
 void drawDate()
 {
   display::clk.setColorDepth(8);
-  display::clk.loadFont(ZdyLwFont_20);
 
-  display::clk.createSprite(58, 30);
+  display::clk.createSprite(60, 18);
   display::clk.fillSprite(app_config::kColorBg);
   display::clk.setTextDatum(CC_DATUM);
   display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawString(weekText(), 29, 16);
-  display::clk.pushSprite(102, 150);
+  display::clk.drawString(weekText(), 30, 9, 2);
+  display::clk.pushSprite(104, 156);
   display::clk.deleteSprite();
 
-  display::clk.createSprite(95, 30);
+  display::clk.createSprite(88, 18);
   display::clk.fillSprite(app_config::kColorBg);
   display::clk.setTextDatum(CC_DATUM);
   display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawString(monthDayText(), 49, 16);
-  display::clk.pushSprite(5, 150);
+  display::clk.drawString(monthDayText(), 44, 9, 2);
+  display::clk.pushSprite(6, 156);
   display::clk.deleteSprite();
-
-  display::clk.unloadFont();
 }
 
 void drawTempBar()
@@ -354,108 +355,64 @@ const char *aqiLabel(int aqi, uint16_t &aqiBg)
   if (aqi > 200)
   {
     aqiBg = display::tft.color565(136, 11, 32);
-    return "重度";
+    return "SEV";
   }
   if (aqi > 150)
   {
     aqiBg = display::tft.color565(186, 55, 121);
-    return "中度";
+    return "POOR";
   }
   if (aqi > 100)
   {
     aqiBg = display::tft.color565(242, 159, 57);
-    return "轻度";
+    return "MOD";
   }
   if (aqi > 50)
   {
     aqiBg = display::tft.color565(247, 219, 100);
-    return "良";
+    return "FAIR";
   }
-  return "优";
+  return "GOOD";
 }
 
 void drawWeatherMain(const app::MainViewData &view)
 {
   display::clk.setColorDepth(8);
-  display::clk.loadFont(ZdyLwFont_20);
 
-  display::clk.createSprite(58, 24);
+  display::clk.createSprite(60, 18);
   display::clk.fillSprite(app_config::kColorBg);
   display::clk.setTextDatum(CC_DATUM);
   display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawString(String(view.temperatureText.c_str()) + "℃", 28, 13);
+  display::clk.drawString(String(view.temperatureText.c_str()) + "C", 30, 9, 2);
   display::clk.pushSprite(100, 184);
   display::clk.deleteSprite();
 
   updateTemperatureBar(view.temperatureC);
   drawTempBar();
 
-  display::clk.createSprite(58, 24);
+  display::clk.createSprite(60, 18);
   display::clk.fillSprite(app_config::kColorBg);
   display::clk.setTextDatum(CC_DATUM);
   display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawString(view.humidityText.c_str(), 28, 13);
+  display::clk.drawString(view.humidityText.c_str(), 30, 9, 2);
   display::clk.pushSprite(100, 214);
   display::clk.deleteSprite();
 
   updateHumidityBar(view.humidityPercent);
   drawHumidityBar();
 
-  display::clk.createSprite(94, 30);
-  display::clk.fillSprite(app_config::kColorBg);
-  display::clk.setTextDatum(CC_DATUM);
-  display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawString(view.cityName.c_str(), 44, 16);
-  display::clk.pushSprite(15, 15);
-  display::clk.deleteSprite();
-
   uint16_t aqiBg = 0;
   const char *aqiText = aqiLabel(view.aqi, aqiBg);
-  display::clk.createSprite(56, 24);
+  display::clk.createSprite(66, 18);
   display::clk.fillSprite(app_config::kColorBg);
-  display::clk.fillRoundRect(0, 0, 50, 24, 4, aqiBg);
+  display::clk.fillRoundRect(0, 0, 66, 18, 4, aqiBg);
   display::clk.setTextDatum(CC_DATUM);
   display::clk.setTextColor(0x0000);
-  display::clk.drawString(aqiText, 25, 13);
-  display::clk.pushSprite(104, 18);
+  display::clk.drawString(aqiText, 33, 9, 2);
+  display::clk.pushSprite(14, 18);
   display::clk.deleteSprite();
 
-  display::clk.unloadFont();
   s_weather.printfweather(170, 15, view.weatherCode);
-}
-
-void drawIndoorClimate(float temperatureC, float humidityPercent)
-{
-  display::clk.setColorDepth(8);
-  display::clk.loadFont(ZdyLwFont_20);
-
-  display::clk.createSprite(58, 30);
-  display::clk.fillSprite(app_config::kColorBg);
-  display::clk.setTextDatum(CC_DATUM);
-  display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawString("内温", 29, 16);
-  display::clk.pushSprite(172, 150);
-  display::clk.deleteSprite();
-
-  display::clk.createSprite(60, 24);
-  display::clk.fillSprite(app_config::kColorBg);
-  display::clk.setTextDatum(CC_DATUM);
-  display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawFloat(temperatureC, 1, 20, 13);
-  display::clk.drawString("℃", 50, 13);
-  display::clk.pushSprite(170, 184);
-  display::clk.deleteSprite();
-
-  display::clk.createSprite(60, 24);
-  display::clk.fillSprite(app_config::kColorBg);
-  display::clk.setTextDatum(CC_DATUM);
-  display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawFloat(humidityPercent, 1, 20, 13);
-  display::clk.drawString("%", 50, 13);
-  display::clk.pushSprite(170, 214);
-  display::clk.deleteSprite();
-
-  display::clk.unloadFont();
 }
 
 void drawFooterHints(const app::FooterHints &footer)
@@ -660,16 +617,14 @@ void refreshBanner()
     return;
 
   display::clk.setColorDepth(8);
-  display::clk.loadFont(ZdyLwFont_20);
-  display::clk.createSprite(150, 30);
+  display::clk.createSprite(220, 18);
   display::clk.fillSprite(app_config::kColorBg);
   display::clk.setTextWrap(false);
   display::clk.setTextDatum(CC_DATUM);
   display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawString(text, 74, 16);
+  display::clk.drawString(text, 110, 9, 2);
   display::clk.pushSprite(10, 45);
   display::clk.deleteSprite();
-  display::clk.unloadFont();
 }
 
 void drawSplashPage(const app::SplashViewData &view)
@@ -720,10 +675,6 @@ void drawMainPage(const app::MainViewData &view)
     display::drawTempHumidityIcons();
     copyBannerLines(view.bannerLines);
     drawWeatherMain(view);
-    if (view.showIndoorClimate)
-    {
-      drawIndoorClimate(view.indoorTemperatureC, view.indoorHumidityPercent);
-    }
     forceClockRedraw();
     refreshBanner();
     drawToast(view.toast);

@@ -139,14 +139,14 @@ int parseHumidityPercent(const std::string &humidityText)
 const char *aqiText(int aqi)
 {
   if (aqi > 200)
-    return "重度";
+    return "Severe";
   if (aqi > 150)
-    return "中度";
+    return "Poor";
   if (aqi > 100)
-    return "轻度";
+    return "Moderate";
   if (aqi > 50)
-    return "良";
-  return "优";
+    return "Fair";
+  return "Good";
 }
 
 int parseWeatherCode(const std::string &weatherCodeText)
@@ -163,11 +163,9 @@ int parseWeatherCode(const std::string &weatherCodeText)
 
 bool parseWeatherPayload(const std::string &payload, WeatherSnapshot &snapshot)
 {
-  std::string cityDz;
   std::string dataSk;
   std::string forecast;
-  if (!findSection(payload, "weatherinfo\":", "};var alarmDZ", cityDz) ||
-      !findSection(payload, "dataSK =", ";var dataZS", dataSk) ||
+  if (!findSection(payload, "dataSK =", ";var dataZS", dataSk) ||
       !findSection(payload, "\"f\":[", ",{\"fa", forecast))
   {
     return false;
@@ -181,19 +179,17 @@ bool parseWeatherPayload(const std::string &payload, WeatherSnapshot &snapshot)
   std::string weatherText;
   std::string windDir;
   std::string windSpeed;
-  std::string todayWeatherText;
   std::string lowTempText;
   std::string highTempText;
 
-  if (!extractJsonString(dataSk, "cityname", cityName) ||
+  if (!extractJsonString(dataSk, "nameen", cityName) ||
       !extractJsonString(dataSk, "temp", temperatureText) ||
       !extractJsonString(dataSk, "SD", humidityText) ||
       !extractJsonString(dataSk, "aqi", aqiTextValue) ||
       !extractJsonString(dataSk, "weathercode", weatherCodeText) ||
-      !extractJsonString(dataSk, "weather", weatherText) ||
-      !extractJsonString(dataSk, "WD", windDir) ||
-      !extractJsonString(dataSk, "WS", windSpeed) ||
-      !extractJsonString(cityDz, "weather", todayWeatherText) ||
+      !extractJsonString(dataSk, "weathere", weatherText) ||
+      !extractJsonString(dataSk, "wde", windDir) ||
+      !extractJsonString(dataSk, "wse", windSpeed) ||
       !extractJsonString(forecast, "fd", lowTempText) ||
       !extractJsonString(forecast, "fc", highTempText))
   {
@@ -214,12 +210,12 @@ bool parseWeatherPayload(const std::string &payload, WeatherSnapshot &snapshot)
     snapshot.bannerLines[index].clear();
   }
 
-  snapshot.bannerLines[0] = "实时天气 " + weatherText;
-  snapshot.bannerLines[1] = std::string("空气质量 ") + aqiText(snapshot.aqi);
-  snapshot.bannerLines[2] = "风向 " + windDir + windSpeed;
-  snapshot.bannerLines[3] = "今日" + todayWeatherText;
-  snapshot.bannerLines[4] = "最低温度" + lowTempText + "℃";
-  snapshot.bannerLines[5] = "最高温度" + highTempText + "℃";
+  snapshot.bannerLines[0] = "Now " + weatherText;
+  snapshot.bannerLines[1] = std::string("AQI ") + aqiText(snapshot.aqi);
+  snapshot.bannerLines[2] = "Wind " + windDir + " " + windSpeed;
+  snapshot.bannerLines[3] = "Temp " + temperatureText + "C";
+  snapshot.bannerLines[4] = "Low " + lowTempText + "C";
+  snapshot.bannerLines[5] = "High " + highTempText + "C";
   return true;
 }
 

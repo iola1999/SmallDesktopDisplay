@@ -17,7 +17,6 @@ struct AppConfigData
   uint32_t weatherUpdateMinutes = app_config::kDefaultWeatherUpdateMinutes;
   uint8_t lcdBrightness = app_config::kDefaultLcdBrightness;
   uint8_t lcdRotation = app_config::kDefaultLcdRotation;
-  bool dhtEnabled = false;
 };
 
 } // namespace app

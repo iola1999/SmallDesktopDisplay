@@ -90,14 +90,6 @@ struct NullTimeSyncPort : ports::TimeSyncPort
   }
 };
 
-struct NullSensorPort : ports::SensorPort
-{
-  bool read(app::IndoorClimateSnapshot &) override
-  {
-    return false;
-  }
-};
-
 TEST_CASE("driver execute forwards wifi connect mode through the port")
 {
   FakeDisplayPort display;
@@ -105,11 +97,10 @@ TEST_CASE("driver execute forwards wifi connect mode through the port")
   NullStoragePort storage;
   NullWeatherPort weather;
   NullTimeSyncPort timeSync;
-  NullSensorPort sensor;
   NullSystemStatusPort systemStatus;
   ports::ClockPort *clock = nullptr;
 
-  app::AppDriver driver(storage, network, weather, timeSync, sensor, systemStatus, display, clock);
+  app::AppDriver driver(storage, network, weather, timeSync, systemStatus, display, clock);
   app::ActionList actions;
   actions.push(app::AppActionType::RenderRequested);
   actions.pushConnectWifi(app::WifiConnectMode::BackgroundSilent);
@@ -130,11 +121,10 @@ TEST_CASE("driver applies preview and persistent brightness actions")
   NullStoragePort storage;
   NullWeatherPort weather;
   NullTimeSyncPort timeSync;
-  NullSensorPort sensor;
   NullSystemStatusPort systemStatus;
   ports::ClockPort *clock = nullptr;
 
-  app::AppDriver driver(storage, network, weather, timeSync, sensor, systemStatus, display, clock);
+  app::AppDriver driver(storage, network, weather, timeSync, systemStatus, display, clock);
   app::ActionList actions;
   actions.push(app::AppActionType::PreviewBrightness, 55);
   actions.push(app::AppActionType::ApplyBrightness, 70);

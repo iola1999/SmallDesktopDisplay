@@ -132,18 +132,7 @@ void AppDriver::dispatch(AppCore &core, const ActionList &actions)
       {
         case AppActionType::RenderRequested:
         {
-          AppViewModel renderedView = core.view();
-          if (renderedView.kind == ViewKind::Main && core.config().dhtEnabled)
-          {
-            IndoorClimateSnapshot indoor;
-            if (sensor_.read(indoor))
-            {
-              renderedView.main.showIndoorClimate = indoor.valid;
-              renderedView.main.indoorTemperatureC = indoor.temperatureC;
-              renderedView.main.indoorHumidityPercent = indoor.humidityPercent;
-            }
-          }
-          display_.render(renderedView);
+          display_.render(core.view());
           break;
         }
 

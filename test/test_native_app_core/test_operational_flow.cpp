@@ -44,7 +44,6 @@ TEST_CASE("background refresh stays on the current route and uses silent connect
   CHECK(core.runtime().backgroundSyncInProgress == true);
   CHECK(core.ui().route == app::UiRoute::SettingsMenu);
   CHECK(core.view().main.pageKind == app::OperationalPageKind::Menu);
-  CHECK(core.view().main.homeAnimationEnabled == false);
 }
 
 TEST_CASE("weather fetch failure during background sync keeps the last main view")

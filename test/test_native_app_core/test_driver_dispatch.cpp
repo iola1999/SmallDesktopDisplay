@@ -83,14 +83,6 @@ struct DispatchTimeSyncPort : ports::TimeSyncPort
   }
 };
 
-struct DispatchSensorPort : ports::SensorPort
-{
-  bool read(app::IndoorClimateSnapshot &) override
-  {
-    return false;
-  }
-};
-
 struct NullSystemStatusPort : ports::SystemStatusPort
 {
   app::DiagnosticsSnapshot capture(const app::AppConfigData &, const app::AppRuntimeState &) const override
@@ -125,12 +117,11 @@ TEST_CASE("driver dispatch defers the boot sync stage until the next pass")
   DispatchNetworkPort network;
   DispatchWeatherPort weather;
   DispatchTimeSyncPort timeSync;
-  DispatchSensorPort sensor;
   NullSystemStatusPort systemStatus;
   DispatchDisplayPort display;
 
   app::AppCore core;
-  app::AppDriver driver(storage, network, weather, timeSync, sensor, systemStatus, display, nullptr);
+  app::AppDriver driver(storage, network, weather, timeSync, systemStatus, display, nullptr);
 
   driver.dispatch(core, core.handle(app::AppEvent::bootRequested()));
 
@@ -161,12 +152,11 @@ TEST_CASE("driver dispatch stages background sync across connect time and weathe
   DispatchNetworkPort network;
   DispatchWeatherPort weather;
   DispatchTimeSyncPort timeSync;
-  DispatchSensorPort sensor;
   NullSystemStatusPort systemStatus;
   DispatchDisplayPort display;
 
   app::AppCore core;
-  app::AppDriver driver(storage, network, weather, timeSync, sensor, systemStatus, display, nullptr);
+  app::AppDriver driver(storage, network, weather, timeSync, systemStatus, display, nullptr);
 
   driver.dispatch(core, core.handle(app::AppEvent::bootRequested()));
   driver.dispatchPending(core);

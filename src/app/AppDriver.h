@@ -7,7 +7,6 @@
 #include "ports/ClockPort.h"
 #include "ports/DisplayPort.h"
 #include "ports/NetworkPort.h"
-#include "ports/SensorPort.h"
 #include "ports/StoragePort.h"
 #include "ports/SystemStatusPort.h"
 #include "ports/TimeSyncPort.h"
@@ -25,7 +24,6 @@ public:
             ports::NetworkPort &network,
             ports::WeatherPort &weather,
             ports::TimeSyncPort &timeSync,
-            ports::SensorPort &sensor,
             ports::SystemStatusPort &systemStatus,
             ports::DisplayPort &display,
             ports::ClockPort *clock)
@@ -33,7 +31,6 @@ public:
       network_(network),
       weather_(weather),
       timeSync_(timeSync),
-      sensor_(sensor),
       systemStatus_(systemStatus),
       display_(display),
       clock_(clock)
@@ -53,7 +50,6 @@ private:
   ports::NetworkPort &network_;
   ports::WeatherPort &weather_;
   ports::TimeSyncPort &timeSync_;
-  ports::SensorPort &sensor_;
   ports::SystemStatusPort &systemStatus_;
   ports::DisplayPort &display_;
   ports::ClockPort *clock_;

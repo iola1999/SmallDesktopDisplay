@@ -82,16 +82,6 @@ TEST_CASE("press lifecycle events drive hold feedback without changing route")
   CHECK(core.ui().route == app::UiRoute::Home);
 }
 
-TEST_CASE("home is the only page that enables the right-bottom animation")
-{
-  auto core = operationalCore();
-
-  CHECK(core.view().main.homeAnimationEnabled == true);
-
-  core.handle(app::AppEvent::longPressed(1000));
-  CHECK(core.view().main.homeAnimationEnabled == false);
-}
-
 TEST_CASE("double press returns from settings menu to home but does nothing on home")
 {
   auto core = operationalCore();

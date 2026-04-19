@@ -156,7 +156,6 @@ void AppCore::refreshOperationalView()
   view_.main.holdFeedback.armed = ui_.holdFeedback.armed;
   view_.main.holdFeedback.pressStartedMs = ui_.holdFeedback.pressStartedMs;
   view_.main.holdFeedback.progressPercent = ui_.holdFeedback.progressPercent;
-  view_.main.homeAnimationEnabled = (ui_.route == UiRoute::Home);
 
   switch (ui_.route)
   {

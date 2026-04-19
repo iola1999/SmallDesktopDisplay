@@ -42,26 +42,20 @@ int parseHumidityPercent(const String &humidityText)
 const char *aqiText(int aqi)
 {
   if (aqi > 200)
-    return "重度";
+    return "Severe";
   if (aqi > 150)
-    return "中度";
+    return "Poor";
   if (aqi > 100)
-    return "轻度";
+    return "Moderate";
   if (aqi > 50)
-    return "良";
-  return "优";
+    return "Fair";
+  return "Good";
 }
 
 bool parsePayload(const String &payload, app::WeatherSnapshot &snapshot)
 {
-  int indexStart = payload.indexOf("weatherinfo\":");
-  int indexEnd = payload.indexOf("};var alarmDZ");
-  if (indexStart < 0 || indexEnd < 0)
-    return false;
-  const String jsonCityDZ = payload.substring(indexStart + 13, indexEnd);
-
-  indexStart = payload.indexOf("dataSK =");
-  indexEnd = payload.indexOf(";var dataZS");
+  int indexStart = payload.indexOf("dataSK =");
+  int indexEnd = payload.indexOf(";var dataZS");
   if (indexStart < 0 || indexEnd < 0)
     return false;
   const String jsonDataSK = payload.substring(indexStart + 8, indexEnd);
@@ -79,11 +73,11 @@ bool parsePayload(const String &payload, app::WeatherSnapshot &snapshot)
   const JsonObject sk = doc.as<JsonObject>();
   const String temperatureText = sk["temp"].as<String>();
   const String humidityText = sk["SD"].as<String>();
-  const String cityName = sk["cityname"].as<String>();
+  const String cityName = sk["nameen"].as<String>();
   const String weatherCodeText = sk["weathercode"].as<String>();
-  const String weatherText = sk["weather"].as<String>();
-  const String windDir = sk["WD"].as<String>();
-  const String windSpeed = sk["WS"].as<String>();
+  const String weatherText = sk["weathere"].as<String>();
+  const String windDir = sk["wde"].as<String>();
+  const String windSpeed = sk["wse"].as<String>();
 
   snapshot.valid = true;
   snapshot.cityName = cityName.c_str();
@@ -99,23 +93,17 @@ bool parsePayload(const String &payload, app::WeatherSnapshot &snapshot)
     snapshot.bannerLines[index].clear();
   }
 
-  snapshot.bannerLines[0] = (String("实时天气 ") + weatherText).c_str();
-  snapshot.bannerLines[1] = (String("空气质量 ") + aqiText(snapshot.aqi)).c_str();
-  snapshot.bannerLines[2] = (String("风向 ") + windDir + windSpeed).c_str();
-
-  doc.clear();
-  if (!deserializeJson(doc, jsonCityDZ))
-  {
-    const JsonObject dz = doc.as<JsonObject>();
-    snapshot.bannerLines[3] = (String("今日") + dz["weather"].as<String>()).c_str();
-  }
+  snapshot.bannerLines[0] = (String("Now ") + weatherText).c_str();
+  snapshot.bannerLines[1] = (String("AQI ") + aqiText(snapshot.aqi)).c_str();
+  snapshot.bannerLines[2] = (String("Wind ") + windDir + " " + windSpeed).c_str();
+  snapshot.bannerLines[3] = (String("Temp ") + temperatureText + "C").c_str();
 
   doc.clear();
   if (!deserializeJson(doc, jsonForecast))
   {
     const JsonObject fc = doc.as<JsonObject>();
-    snapshot.bannerLines[4] = (String("最低温度") + fc["fd"].as<String>() + "℃").c_str();
-    snapshot.bannerLines[5] = (String("最高温度") + fc["fc"].as<String>() + "℃").c_str();
+    snapshot.bannerLines[4] = (String("Low ") + fc["fd"].as<String>() + "C").c_str();
+    snapshot.bannerLines[5] = (String("High ") + fc["fc"].as<String>() + "C").c_str();
   }
 
   return true;

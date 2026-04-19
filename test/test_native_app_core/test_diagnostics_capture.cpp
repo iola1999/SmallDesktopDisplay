@@ -102,14 +102,6 @@ struct NullTimeSyncPort : ports::TimeSyncPort
   }
 };
 
-struct NullSensorPort : ports::SensorPort
-{
-  bool read(app::IndoorClimateSnapshot &) override
-  {
-    return false;
-  }
-};
-
 } // namespace
 
 TEST_CASE("diagnostics menu entry requests a single captured snapshot")
@@ -198,12 +190,11 @@ TEST_CASE("driver dispatch captures diagnostics with config and runtime context"
   NullStoragePort storage;
   NullWeatherPort weather;
   NullTimeSyncPort timeSync;
-  NullSensorPort sensor;
   FakeSystemStatusPort systemStatus;
   app::AppCore core = diagnosticsCore();
   core.configMutable().wifiSsid = "StudioWiFi";
   core.configMutable().weatherUpdateMinutes = 15;
-  app::AppDriver driver(storage, network, weather, timeSync, sensor, systemStatus, display, nullptr);
+  app::AppDriver driver(storage, network, weather, timeSync, systemStatus, display, nullptr);
 
   app::ActionList diagnostics;
   diagnostics.push(app::AppActionType::CaptureDiagnosticsSnapshot);

@@ -13,19 +13,19 @@ TEST_CASE("weather payload parser extracts current weather fields from upstream 
   app::WeatherSnapshot snapshot;
   CHECK(app::parseWeatherPayload(payload, snapshot) == true);
   CHECK(snapshot.valid == true);
-  CHECK(snapshot.cityName == "三河");
+  CHECK(snapshot.cityName == "sanhe");
   CHECK(snapshot.temperatureText == "16.5");
   CHECK(snapshot.humidityText == "73%");
   CHECK(snapshot.temperatureC == 16);
   CHECK(snapshot.humidityPercent == 73);
   CHECK(snapshot.aqi == 72);
   CHECK(snapshot.weatherCode == 0);
-  CHECK(snapshot.bannerLines[0] == "实时天气 晴");
-  CHECK(snapshot.bannerLines[1] == "空气质量 良");
-  CHECK(snapshot.bannerLines[2] == "风向 东风1级");
-  CHECK(snapshot.bannerLines[3] == "今日多云");
-  CHECK(snapshot.bannerLines[4] == "最低温度14℃");
-  CHECK(snapshot.bannerLines[5] == "最高温度26℃");
+  CHECK(snapshot.bannerLines[0] == "Now Sunny");
+  CHECK(snapshot.bannerLines[1] == "AQI Fair");
+  CHECK(snapshot.bannerLines[2] == "Wind E 3km/h");
+  CHECK(snapshot.bannerLines[3] == "Temp 16.5C");
+  CHECK(snapshot.bannerLines[4] == "Low 14C");
+  CHECK(snapshot.bannerLines[5] == "High 26C");
 }
 
 TEST_CASE("weather payload parser rejects payloads missing required sections")

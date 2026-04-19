@@ -21,7 +21,7 @@ struct PersistedConfig
 
   uint8_t brightness;
   uint8_t rotation;
-  uint8_t dhtEnabled;
+  uint8_t reserved1;
   uint8_t reserved2;
 
   uint32_t weatherUpdateMinutes;

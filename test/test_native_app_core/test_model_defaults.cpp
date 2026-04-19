@@ -12,7 +12,6 @@ TEST_CASE("default config uses firmware defaults for esp12e module")
   CHECK(app_config::kWeatherFetchEnabled == true);
   CHECK(config.lcdBrightness == app_config::kDefaultLcdBrightness);
   CHECK(config.lcdRotation == app_config::kDefaultLcdRotation);
-  CHECK(config.dhtEnabled == false);
 }
 
 TEST_CASE("default runtime starts in booting mode with splash view")

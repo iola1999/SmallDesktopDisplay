@@ -111,7 +111,6 @@ struct MainViewData
   InfoBodyData info;
   AdjustBodyData adjust;
   HoldFeedbackViewData holdFeedback;
-  bool homeAnimationEnabled = false;
 
   std::string timeText = "--:--:--";
   std::string dateText;
@@ -124,9 +123,6 @@ struct MainViewData
   int weatherCode = 99;
   std::array<std::string, app_config::kBannerSlotCount> bannerLines{};
   bool showSyncInProgress = false;
-  bool showIndoorClimate = false;
-  float indoorTemperatureC = 0.0f;
-  float indoorHumidityPercent = 0.0f;
 };
 
 struct AppViewModel

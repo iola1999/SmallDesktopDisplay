@@ -13,12 +13,12 @@ String s_pendingMode;
 void printMenu()
 {
   Serial.println();
-  Serial.println(F("请输入需要修改的代码："));
-  Serial.println(F("亮度设置输入        0x01"));
-  Serial.println(F("地址设置输入        0x02"));
-  Serial.println(F("屏幕方向设置输入    0x03"));
-  Serial.println(F("更改天气更新时间    0x04"));
-  Serial.println(F("重置WiFi(会重启)    0x05"));
+  Serial.println(F("Enter the setting code:"));
+  Serial.println(F("Brightness          0x01"));
+  Serial.println(F("City code           0x02"));
+  Serial.println(F("Screen rotation     0x03"));
+  Serial.println(F("Weather interval    0x04"));
+  Serial.println(F("Reset WiFi          0x05"));
   Serial.println();
 }
 
@@ -34,7 +34,7 @@ bool handlePendingValue(const String &line, Command &command)
       s_pendingMode = "";
       return true;
     }
-    Serial.println(F("亮度调整错误，请输入 0-100"));
+    Serial.println(F("Invalid brightness. Enter 0-100."));
     s_pendingMode = "";
     return false;
   }
@@ -54,7 +54,7 @@ bool handlePendingValue(const String &line, Command &command)
       s_pendingMode = "";
       return true;
     }
-    Serial.println(F("城市调整错误，请输入 9 位城市代码，自动获取请输入 0"));
+    Serial.println(F("Invalid city code. Enter 9 digits, or 0 for auto detect."));
     s_pendingMode = "";
     return false;
   }
@@ -69,7 +69,7 @@ bool handlePendingValue(const String &line, Command &command)
       s_pendingMode = "";
       return true;
     }
-    Serial.println(F("屏幕方向值错误，请输入 0-3 内的值"));
+    Serial.println(F("Invalid rotation. Enter a value from 0 to 3."));
     s_pendingMode = "";
     return false;
   }
@@ -84,7 +84,7 @@ bool handlePendingValue(const String &line, Command &command)
       s_pendingMode = "";
       return true;
     }
-    Serial.println(F("更新时间太长，请重新设置（1-60）"));
+    Serial.println(F("Invalid update interval. Enter 1-60 minutes."));
     s_pendingMode = "";
     return false;
   }
@@ -104,26 +104,26 @@ bool handleLine(const String &line, Command &command)
   s_pendingMode = line;
   if (s_pendingMode == "0x01")
   {
-    Serial.println(F("请输入亮度值，范围 0-100"));
+    Serial.println(F("Enter brightness in the range 0-100."));
     return false;
   }
   if (s_pendingMode == "0x02")
   {
-    Serial.println(F("请输入 9 位城市代码，自动获取请输入 0"));
+    Serial.println(F("Enter a 9-digit city code, or 0 for auto detect."));
     return false;
   }
   if (s_pendingMode == "0x03")
   {
-    Serial.println(F("请输入屏幕方向值,"));
-    Serial.println(F("0-USB接口朝下"));
-    Serial.println(F("1-USB接口朝右"));
-    Serial.println(F("2-USB接口朝上"));
-    Serial.println(F("3-USB接口朝左"));
+    Serial.println(F("Enter the screen rotation value:"));
+    Serial.println(F("0 - USB down"));
+    Serial.println(F("1 - USB right"));
+    Serial.println(F("2 - USB up"));
+    Serial.println(F("3 - USB left"));
     return false;
   }
   if (s_pendingMode == "0x04")
   {
-    Serial.println(F("请输入天气更新时间（1-60）分钟"));
+    Serial.println(F("Enter the weather update interval in minutes (1-60)."));
     return false;
   }
   if (s_pendingMode == "0x05")

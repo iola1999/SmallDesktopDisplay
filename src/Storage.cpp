@@ -25,7 +25,6 @@ void pack(const app::AppConfigData &config, PersistedConfig &cfg)
   cfg.version = kVersion;
   cfg.brightness = config.lcdBrightness;
   cfg.rotation = config.lcdRotation;
-  cfg.dhtEnabled = config.dhtEnabled ? 1 : 0;
   cfg.weatherUpdateMinutes = config.weatherUpdateMinutes;
   copyString(cfg.cityCode, sizeof(cfg.cityCode), config.cityCode);
   copyString(cfg.wifiSsid, sizeof(cfg.wifiSsid), config.wifiSsid);
@@ -36,7 +35,6 @@ void unpack(const PersistedConfig &cfg, app::AppConfigData &config)
 {
   config.lcdBrightness = cfg.brightness;
   config.lcdRotation = cfg.rotation;
-  config.dhtEnabled = cfg.dhtEnabled != 0;
   config.weatherUpdateMinutes = cfg.weatherUpdateMinutes;
   config.cityCode = cfg.cityCode;
   config.wifiSsid = cfg.wifiSsid;

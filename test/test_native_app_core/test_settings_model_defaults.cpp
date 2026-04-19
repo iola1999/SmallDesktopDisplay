@@ -41,7 +41,6 @@ TEST_CASE("ui session defaults to home route with no toast")
   CHECK(view.main.adjust.value == 0);
   CHECK(view.main.holdFeedback.visible == false);
   CHECK(view.main.holdFeedback.progressPercent == 0);
-  CHECK(view.main.homeAnimationEnabled == false);
 }
 
 TEST_CASE("connect-wifi actions keep mode in a structured payload")

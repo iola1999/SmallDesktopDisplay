@@ -6,9 +6,6 @@
 // ============================================================
 // 功能开关 (保持 #define 以便 #if 条件编译)
 // ============================================================
-#define WM_EN 1          // 1: WiFiManager Web 配网; 0: SmartConfig (两者互斥)
-#define DHT_EN 0         // 1: 启用 DHT11 温湿度传感器 (GPIO12)
-#define ANIMATE_CHOICE 2 // 右下角动图: 0 关闭 / 1 太空人 / 2 胡桃
 
 // ============================================================
 // 编译期常量
@@ -34,13 +31,13 @@ constexpr const char *kDefaultCityCode = "101210102";
 // 引脚
 constexpr uint8_t kPinLcdBacklight = 5;  // LCD 背光
 constexpr uint8_t kPinButton = 4;        // 按键
-constexpr uint8_t kPinDht = 12;          // DHT11
 constexpr bool kKeepWifiAwake = true;
 constexpr uint32_t kButtonDoubleClickMs = 300;
 constexpr uint32_t kButtonLongPressMs = 500;
 constexpr uint32_t kHoldFeedbackDelayMs = kButtonDoubleClickMs;
 constexpr uint32_t kGestureFeedbackDurationMs = 420;
 constexpr uint32_t kHoldFeedbackRefreshMs = 16;
+constexpr const char *kWifiPortalApSsid = "SDD-Setup";
 
 // UI 坐标 / 尺寸
 constexpr uint16_t kTimeY = 82; // 时钟字体 y 坐标

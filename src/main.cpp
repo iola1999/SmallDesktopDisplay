@@ -1,10 +1,8 @@
 #include <Arduino.h>
 #include <TimeLib.h>
 
-#include "Animate/Animate.h"
 #include "Cli.h"
 #include "Input.h"
-#include "adapters/Dht11SensorPort.h"
 #include "adapters/EepromStoragePort.h"
 #include "adapters/Esp8266NetworkPort.h"
 #include "adapters/Esp8266SystemStatusPort.h"
@@ -13,7 +11,6 @@
 #include "app/BackgroundRefreshPolicy.h"
 #include "app/AppCore.h"
 #include "app/AppDriver.h"
-#include "app/HomeAnimationTransition.h"
 #include "ui/TftDisplayPort.h"
 
 namespace
@@ -23,11 +20,10 @@ adapters::EepromStoragePort g_storage;
 adapters::Esp8266NetworkPort g_network;
 adapters::WeatherServicePort g_weather;
 adapters::NtpTimeSyncPort g_timeSync;
-adapters::Dht11SensorPort g_sensor;
 adapters::Esp8266SystemStatusPort g_systemStatus;
 ui::TftDisplayPort g_display;
 app::AppCore g_core;
-app::AppDriver g_driver(g_storage, g_network, g_weather, g_timeSync, g_sensor, g_systemStatus, g_display, nullptr);
+app::AppDriver g_driver(g_storage, g_network, g_weather, g_timeSync, g_systemStatus, g_display, nullptr);
 
 uint32_t g_lastSecondTickMs = 0;
 uint32_t g_lastBannerTickMs = 0;
@@ -35,46 +31,12 @@ uint32_t g_lastHoldFeedbackTickMs = 0;
 
 void dispatch(const app::ActionList &actions)
 {
-  const bool wasHomeAnimationActive = animate::enabled();
-  animate::setDhtEnabled(g_core.config().dhtEnabled);
-
-  if (app::homeAnimationTransitionPhase(wasHomeAnimationActive, g_core.view()) ==
-      app::HomeAnimationTransitionPhase::BeforeRender)
-  {
-    animate::setHomeActive(g_core.view().kind == app::ViewKind::Main &&
-                           g_core.view().main.homeAnimationEnabled);
-  }
-
   g_driver.dispatch(g_core, actions);
-
-  if (app::homeAnimationTransitionPhase(wasHomeAnimationActive, g_core.view()) ==
-      app::HomeAnimationTransitionPhase::AfterRender)
-  {
-    animate::setHomeActive(g_core.view().kind == app::ViewKind::Main &&
-                           g_core.view().main.homeAnimationEnabled);
-  }
 }
 
 void dispatchPending()
 {
-  const bool wasHomeAnimationActive = animate::enabled();
-  animate::setDhtEnabled(g_core.config().dhtEnabled);
-
-  if (app::homeAnimationTransitionPhase(wasHomeAnimationActive, g_core.view()) ==
-      app::HomeAnimationTransitionPhase::BeforeRender)
-  {
-    animate::setHomeActive(g_core.view().kind == app::ViewKind::Main &&
-                           g_core.view().main.homeAnimationEnabled);
-  }
-
   g_driver.dispatchPending(g_core);
-
-  if (app::homeAnimationTransitionPhase(wasHomeAnimationActive, g_core.view()) ==
-      app::HomeAnimationTransitionPhase::AfterRender)
-  {
-    animate::setHomeActive(g_core.view().kind == app::ViewKind::Main &&
-                           g_core.view().main.homeAnimationEnabled);
-  }
 }
 
 void showGestureFeedbackIfHandled(input::ButtonEvent inputEvent,
@@ -177,7 +139,6 @@ void setup()
   Serial.println(F("[Setup] display begin"));
   g_display.begin(config.lcdRotation, config.lcdBrightness);
   Serial.println(F("[Setup] display ready"));
-  animate::setDhtEnabled(config.dhtEnabled);
 
   Serial.println(F("[Setup] boot dispatch"));
   dispatch(g_core.handle(app::AppEvent::bootRequested()));
@@ -263,8 +224,6 @@ void loop()
     g_lastBannerTickMs = nowMs;
     g_display.tickBanner();
   }
-
-  animate::tick();
 
   const uint32_t nowEpoch = static_cast<uint32_t>(now());
   const app::AppRuntimeState &runtime = g_core.runtime();

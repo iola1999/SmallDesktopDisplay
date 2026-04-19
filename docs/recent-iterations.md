@@ -48,6 +48,15 @@ Update it whenever behavior, architecture, or interaction details change.
 
 ## 2026-04-19
 
+### Firmware Slimming Pass
+
+- Removed the right-bottom home animation and deleted the bundled frame assets.
+- Removed the unused DHT11 firmware path, related adapter code, and the old DHT library dependencies.
+- Replaced the large Chinese smooth font with built-in English bitmap fonts on the main screen.
+- Hid the city-name label on the home page, kept the weather icon set, and switched weather banners/AQI labels to English text.
+- Replaced `WiFiManager` with a minimal in-firmware web setup portal that only collects SSID and password, then stores credentials and reboots.
+- Kept `TJpg_Decoder` because the temperature/humidity JPEG icons remain in use and future image rendering work is still expected.
+
 ### Render Transition Fixes
 
 - Fixed the right-bottom home animation teardown ordering bug.
@@ -66,3 +75,4 @@ Update it whenever behavior, architecture, or interaction details change.
 ### Follow-Up Candidate
 
 - Evaluate strip-based double buffering for page body regions if partial redraw still shows visible flicker on hardware; avoid full-screen frame buffers on ESP-12E due to RAM pressure.
+- Evaluate server-rendered text or image tiles for low-frequency dynamic labels if local flash pressure returns. If implemented later, prefer raw bitmap or RGB565/RLE payloads over PNG/JPEG so the device can blit without adding new decode overhead.
