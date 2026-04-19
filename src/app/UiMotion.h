@@ -35,8 +35,8 @@ inline bool advanceMotion(MotionValue &value, uint8_t divisor, int16_t snapDista
     return false;
   }
 
-  const int16_t delta = static_cast<int16_t>(value.target - value.current);
-  const int16_t magnitude = (delta >= 0) ? delta : static_cast<int16_t>(-delta);
+  const int32_t delta = static_cast<int32_t>(value.target) - static_cast<int32_t>(value.current);
+  const int32_t magnitude = (delta >= 0) ? delta : -delta;
   if (magnitude <= snapDistance)
   {
     value.current = value.target;
@@ -44,9 +44,10 @@ inline bool advanceMotion(MotionValue &value, uint8_t divisor, int16_t snapDista
     return true;
   }
 
-  const int16_t safeDivisor = static_cast<int16_t>(divisor > 0 ? divisor : 1);
-  const int16_t step = static_cast<int16_t>(delta / safeDivisor);
-  value.current = static_cast<int16_t>(value.current + (step == 0 ? (delta > 0 ? 1 : -1) : step));
+  const int32_t safeDivisor = (divisor > 0) ? divisor : 1;
+  const int32_t step = delta / safeDivisor;
+  const int32_t appliedStep = (step == 0) ? (delta > 0 ? 1 : -1) : step;
+  value.current = static_cast<int16_t>(static_cast<int32_t>(value.current) + appliedStep);
   value.settled = (value.current == value.target);
   return true;
 }

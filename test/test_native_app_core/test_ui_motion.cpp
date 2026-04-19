@@ -42,6 +42,18 @@ TEST_CASE("motion values can be retargeted while still in flight")
   CHECK(value.settled == true);
 }
 
+TEST_CASE("motion values use widened arithmetic for large deltas")
+{
+  app::MotionValue value;
+  app::snapMotion(value, static_cast<int16_t>(-32768));
+  app::retargetMotion(value, static_cast<int16_t>(32767));
+
+  CHECK(app::advanceMotion(value, 4, 1) == true);
+  CHECK(value.current > static_cast<int16_t>(-32768));
+  CHECK(value.current < static_cast<int16_t>(32767));
+  CHECK(value.settled == false);
+}
+
 TEST_CASE("ui motion geometry helpers stay aligned with the current layout")
 {
   CHECK(app::menuBoxYForIndex(0) == 56);
@@ -51,6 +63,10 @@ TEST_CASE("ui motion geometry helpers stay aligned with the current layout")
   CHECK(app::infoSelectionBoxY(0, 0) == 52);
   CHECK(app::infoSelectionBoxY(1, 3) == 124);
   CHECK(app::adjustFillWidth(10, 10, 100, 192) == 0);
+  CHECK(app::adjustFillWidth(5, 10, 100, 192) == 0);
   CHECK(app::adjustFillWidth(55, 10, 100, 192) == 96);
   CHECK(app::adjustFillWidth(100, 10, 100, 192) == 192);
+  CHECK(app::adjustFillWidth(120, 10, 100, 192) == 192);
+  CHECK(app::adjustFillWidth(55, 10, 100, 0) == 0);
+  CHECK(app::adjustFillWidth(55, 10, 10, 192) == 0);
 }
