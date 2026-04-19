@@ -38,6 +38,7 @@ constexpr uint32_t kButtonLongPressMs = 500;
 constexpr uint32_t kHoldFeedbackDelayMs = kButtonDoubleClickMs;
 constexpr uint32_t kGestureFeedbackDurationMs = 420;
 constexpr uint32_t kHoldFeedbackRefreshMs = 16;
+constexpr uint32_t kUiMotionTickMs = 16;
 constexpr const char *kWifiPortalApSsid = "SDD-Setup";
 
 // UI 坐标 / 尺寸

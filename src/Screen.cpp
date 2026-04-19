@@ -762,6 +762,10 @@ void drawMainPageRegion(const app::MainViewData &view, app::RenderRegion region)
   }
 }
 
+void syncMotionTargets(const app::MainViewData &, app::RenderRegion) {}
+
+void refreshMotion(const app::MainViewData &, uint32_t) {}
+
 void refreshHoldFeedback(const app::HoldFeedbackViewData &hold, uint32_t nowMs)
 {
   drawHoldLine(hold, nowMs);

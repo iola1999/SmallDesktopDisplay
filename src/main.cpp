@@ -29,6 +29,7 @@ app::AppDriver g_driver(g_storage, g_network, g_weather, g_timeSync, g_systemSta
 uint32_t g_lastSecondTickMs = 0;
 uint32_t g_lastBannerTickMs = 0;
 uint32_t g_lastHoldFeedbackTickMs = 0;
+uint32_t g_lastUiMotionTickMs = 0;
 
 void dispatch(const app::ActionList &actions)
 {
@@ -202,6 +203,12 @@ void loop()
   {
     g_lastHoldFeedbackTickMs = nowMs;
     g_display.tickTransientUi(g_core.view(), nowMs);
+  }
+
+  if (nowMs - g_lastUiMotionTickMs >= app_config::kUiMotionTickMs)
+  {
+    g_lastUiMotionTickMs = nowMs;
+    g_display.tickMotion(g_core.view(), nowMs);
   }
 
   if (g_core.ui().toastVisible && nowMs >= g_core.ui().toastDeadlineMs)

@@ -19,6 +19,7 @@ public:
   void tickClock();
   void tickBanner();
   void tickTransientUi(const app::AppViewModel &view, uint32_t nowMs);
+  void tickMotion(const app::AppViewModel &view, uint32_t nowMs);
   void showGestureFeedback(app::GestureFeedbackKind kind, uint32_t nowMs);
   void render(const app::AppViewModel &view) override;
 

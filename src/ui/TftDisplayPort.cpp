@@ -47,6 +47,16 @@ void TftDisplayPort::tickTransientUi(const app::AppViewModel &view, uint32_t now
   screen::refreshHoldFeedback(view.main.holdFeedback, nowMs);
 }
 
+void TftDisplayPort::tickMotion(const app::AppViewModel &view, uint32_t nowMs)
+{
+  if (view.kind != app::ViewKind::Main)
+  {
+    return;
+  }
+
+  screen::refreshMotion(view.main, nowMs);
+}
+
 void TftDisplayPort::showGestureFeedback(app::GestureFeedbackKind kind, uint32_t nowMs)
 {
   screen::showGestureFeedback(kind, nowMs);
@@ -58,6 +68,11 @@ void TftDisplayPort::render(const app::AppViewModel &view)
   Serial.printf("[DisplayPort] render kind=%d region=%d\n",
                 static_cast<int>(view.kind),
                 static_cast<int>(plan.region));
+
+  if (view.kind == app::ViewKind::Main)
+  {
+    screen::syncMotionTargets(view.main, plan.region);
+  }
 
   switch (plan.region)
   {
