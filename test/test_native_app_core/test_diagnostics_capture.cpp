@@ -40,7 +40,10 @@ struct FakeSystemStatusPort : ports::SystemStatusPort
     snapshot.wifiRadioAwake = runtime.backgroundSyncInProgress;
     snapshot.lastWeatherSyncEpoch = runtime.lastWeatherSyncEpoch;
     snapshot.refreshIntervalMinutes = config.weatherUpdateMinutes;
+    snapshot.ramTotalBytes = 81920;
     snapshot.freeHeapBytes = 1111;
+    snapshot.maxFreeBlockBytes = 777;
+    snapshot.heapFragmentationPercent = 23;
     snapshot.programFlashUsedBytes = 2222;
     snapshot.programFlashTotalBytes = 3333;
     return snapshot;
@@ -130,7 +133,10 @@ TEST_CASE("captured snapshot renders the diagnostics info page")
   snapshot.wifiRadioAwake = false;
   snapshot.lastWeatherSyncEpoch = 1710000000;
   snapshot.refreshIntervalMinutes = 15;
+  snapshot.ramTotalBytes = 81920;
   snapshot.freeHeapBytes = 32768;
+  snapshot.maxFreeBlockBytes = 24576;
+  snapshot.heapFragmentationPercent = 11;
   snapshot.programFlashUsedBytes = 846012;
   snapshot.programFlashTotalBytes = 1044464;
 
@@ -140,13 +146,21 @@ TEST_CASE("captured snapshot renders the diagnostics info page")
   CHECK(actions[0].type == app::AppActionType::RenderRequested);
   CHECK(core.ui().route == app::UiRoute::DiagnosticsPage);
   CHECK(core.view().main.pageKind == app::OperationalPageKind::Info);
-  CHECK(core.view().main.info.rowCount == 10);
+  CHECK(core.view().main.info.rowCount == 13);
   CHECK(core.view().main.info.visibleRowCount == 4);
   CHECK(core.view().main.info.rows[0].label == "Saved SSID");
   CHECK(core.view().main.info.rows[1].value == "sleeping");
   CHECK(core.view().main.info.rows[4].label == "LAN IP");
   CHECK(core.view().main.info.rows[4].value == "disconnected");
   CHECK(core.view().main.info.rows[5].label == "Last Sync");
+  CHECK(core.view().main.info.rows[7].label == "RAM Total");
+  CHECK(core.view().main.info.rows[7].value == "81920");
+  CHECK(core.view().main.info.rows[8].label == "Free Heap");
+  CHECK(core.view().main.info.rows[8].value == "32768");
+  CHECK(core.view().main.info.rows[9].label == "Max Block");
+  CHECK(core.view().main.info.rows[9].value == "24576");
+  CHECK(core.view().main.info.rows[10].label == "Heap Frag");
+  CHECK(core.view().main.info.rows[10].value == "11%");
 }
 
 TEST_CASE("content-page short press scrolls and long press returns")
@@ -164,7 +178,10 @@ TEST_CASE("content-page short press scrolls and long press returns")
   snapshot.wifiRadioAwake = false;
   snapshot.lastWeatherSyncEpoch = 1710000000;
   snapshot.refreshIntervalMinutes = 15;
+  snapshot.ramTotalBytes = 81920;
   snapshot.freeHeapBytes = 32768;
+  snapshot.maxFreeBlockBytes = 24576;
+  snapshot.heapFragmentationPercent = 11;
   snapshot.programFlashUsedBytes = 846012;
   snapshot.programFlashTotalBytes = 1044464;
   core.handle(app::AppEvent::diagnosticsSnapshotCaptured(snapshot));
@@ -203,6 +220,10 @@ TEST_CASE("driver dispatch captures diagnostics with config and runtime context"
   CHECK(core.view().main.info.rows[0].value == "StudioWiFi");
   CHECK(core.view().main.info.rows[4].value == "disconnected");
   CHECK(core.view().main.info.rows[6].value == "15m");
+  CHECK(core.view().main.info.rows[7].value == "81920");
+  CHECK(core.view().main.info.rows[8].value == "1111");
+  CHECK(core.view().main.info.rows[9].value == "777");
+  CHECK(core.view().main.info.rows[10].value == "23%");
 
   app::ActionList restart;
   restart.push(app::AppActionType::RestartDevice);

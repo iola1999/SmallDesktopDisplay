@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 
+#include "AppConfig.h"
 #include "Net.h"
 
 namespace adapters
@@ -13,7 +14,10 @@ app::DiagnosticsSnapshot Esp8266SystemStatusPort::capture(const app::AppConfigDa
 {
   app::DiagnosticsSnapshot snapshot;
   snapshot.valid = true;
+  snapshot.ramTotalBytes = app_config::kEsp8266RamTotalBytes;
   snapshot.freeHeapBytes = ESP.getFreeHeap();
+  snapshot.maxFreeBlockBytes = ESP.getMaxFreeBlockSize();
+  snapshot.heapFragmentationPercent = ESP.getHeapFragmentation();
   snapshot.programFlashUsedBytes = ESP.getSketchSize();
   snapshot.programFlashTotalBytes = ESP.getSketchSize() + ESP.getFreeSketchSpace();
   snapshot.savedWifiSsid = config.wifiSsid;

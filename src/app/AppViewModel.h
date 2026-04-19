@@ -77,7 +77,7 @@ struct InfoBodyData
 {
   std::string title;
   std::string subtitle;
-  std::array<InfoRowData, 10> rows{};
+  std::array<InfoRowData, 13> rows{};
   std::size_t rowCount = 0;
   std::size_t visibleRowCount = 4;
   std::size_t firstVisibleRowIndex = 0;

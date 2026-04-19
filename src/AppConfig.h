@@ -27,6 +27,7 @@ constexpr uint8_t  kDefaultLcdBrightness = 50;     // 0-100
 constexpr uint8_t  kDefaultLcdRotation = 0;        // 0-3
 constexpr uint32_t kDefaultWeatherUpdateMinutes = 1;
 constexpr const char *kDefaultCityCode = "101210102";
+constexpr uint32_t kEsp8266RamTotalBytes = 80 * 1024;
 
 // 引脚
 constexpr uint8_t kPinLcdBacklight = 5;  // LCD 背光

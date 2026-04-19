@@ -10,7 +10,10 @@ namespace app
 struct DiagnosticsSnapshot
 {
   bool valid = false;
+  uint32_t ramTotalBytes = 0;
   uint32_t freeHeapBytes = 0;
+  uint32_t maxFreeBlockBytes = 0;
+  uint8_t heapFragmentationPercent = 0;
   uint32_t programFlashUsedBytes = 0;
   uint32_t programFlashTotalBytes = 0;
   std::string savedWifiSsid;
