@@ -43,6 +43,16 @@ inline uint8_t holdFeedbackProgressPercent(uint32_t pressStartedMs, bool armed, 
   return static_cast<uint8_t>((activeElapsedMs * 100U) / activeDurationMs);
 }
 
+inline int16_t holdFeedbackFillWidth(uint8_t progressPercent, int16_t totalWidth)
+{
+  if (progressPercent >= 100)
+  {
+    return totalWidth;
+  }
+
+  return static_cast<int16_t>((static_cast<int32_t>(totalWidth) * progressPercent) / 100);
+}
+
 inline bool gestureFeedbackVisible(uint32_t triggeredMs, uint32_t nowMs)
 {
   if (triggeredMs == 0 || nowMs < triggeredMs)

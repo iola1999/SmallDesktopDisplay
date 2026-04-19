@@ -32,6 +32,19 @@ struct InfoMotionState
   bool active = false;
 };
 
+struct AdjustMotionState
+{
+  app::MotionValue displayValue;
+  app::MotionValue fillWidth;
+  bool active = false;
+};
+
+struct TransientMotionState
+{
+  app::MotionValue gestureOffsetY;
+  app::MotionValue holdFillWidth;
+};
+
 WeatherNum s_weather;
 std::array<String, app_config::kBannerSlotCount> s_bannerLines{};
 int s_bannerIndex = 0;
@@ -54,6 +67,8 @@ uint32_t s_gestureFeedbackStartedMs = 0;
 bool s_gestureFeedbackDrawn = false;
 MenuMotionState s_menuMotion;
 InfoMotionState s_infoMotion;
+AdjustMotionState s_adjustMotion;
+TransientMotionState s_transientMotion;
 app::OperationalPageKind s_motionPageKind = app::OperationalPageKind::Home;
 
 constexpr int kHoldLineX = 14;
@@ -209,6 +224,7 @@ void clearTopTransientStrip()
 
 void clearHoldLine()
 {
+  app::snapMotion(s_transientMotion.holdFillWidth, 0);
   clearTopTransientStrip();
   s_lastHoldFillWidth = -1;
   s_holdVisible = false;
@@ -269,26 +285,18 @@ void refreshGestureFeedback(uint32_t nowMs)
     return;
   }
 
-  if (!app::gestureFeedbackShouldDraw(
-        s_gestureFeedbackKind,
-        s_gestureFeedbackStartedMs,
-        nowMs,
-        s_gestureFeedbackDrawn))
-  {
-    return;
-  }
-
+  const int16_t gestureY = static_cast<int16_t>(kGestureFeedbackY + s_transientMotion.gestureOffsetY.current);
   clearTopTransientStrip();
   display::tft.fillRoundRect(
     kGestureFeedbackX,
-    kGestureFeedbackY,
+    gestureY,
     kGestureFeedbackWidth,
     kGestureFeedbackHeight,
     5,
     TFT_DARKGREY);
   display::tft.drawRoundRect(
     kGestureFeedbackX,
-    kGestureFeedbackY,
+    gestureY,
     kGestureFeedbackWidth,
     kGestureFeedbackHeight,
     5,
@@ -298,7 +306,7 @@ void refreshGestureFeedback(uint32_t nowMs)
   display::tft.drawString(
     gestureFeedbackText(s_gestureFeedbackKind),
     kGestureFeedbackX + (kGestureFeedbackWidth / 2),
-    kGestureFeedbackY + (kGestureFeedbackHeight / 2) + 1,
+    gestureY + (kGestureFeedbackHeight / 2) + 1,
     1);
   s_gestureFeedbackDrawn = true;
 }
@@ -316,8 +324,10 @@ void drawHoldLine(const app::HoldFeedbackViewData &hold, uint32_t nowMs)
 
   const uint8_t progressPercent =
     app::holdFeedbackProgressPercent(hold.pressStartedMs, hold.armed, nowMs);
+  const int16_t targetFillWidth = app::holdFeedbackFillWidth(progressPercent, kHoldLineWidth);
+  app::retargetMotion(s_transientMotion.holdFillWidth, targetFillWidth);
 
-  const int fillWidth = (kHoldLineWidth * progressPercent) / 100;
+  const int fillWidth = s_transientMotion.holdFillWidth.current;
   if (s_holdVisible && fillWidth == s_lastHoldFillWidth && hold.armed == s_holdArmed)
   {
     return;
@@ -568,6 +578,27 @@ void syncInfoMotion(const app::InfoBodyData &info, bool snap)
   s_infoMotion.active = !s_infoMotion.scrollOffset.settled || !s_infoMotion.selectionY.settled;
 }
 
+void syncAdjustMotion(const app::AdjustBodyData &adjust, bool snap)
+{
+  const int16_t displayTarget = static_cast<int16_t>(adjust.value);
+  const int16_t fillTarget = app::adjustFillWidth(
+    adjust.value,
+    adjust.minValue,
+    adjust.maxValue,
+    192);
+  if (snap)
+  {
+    app::snapMotion(s_adjustMotion.displayValue, displayTarget);
+    app::snapMotion(s_adjustMotion.fillWidth, fillTarget);
+    s_adjustMotion.active = false;
+    return;
+  }
+
+  app::retargetMotion(s_adjustMotion.displayValue, displayTarget);
+  app::retargetMotion(s_adjustMotion.fillWidth, fillTarget);
+  s_adjustMotion.active = !s_adjustMotion.displayValue.settled || !s_adjustMotion.fillWidth.settled;
+}
+
 bool tickMenuMotion(const app::MenuBodyData &menu)
 {
   if (menu.itemCount == 0)
@@ -594,6 +625,14 @@ bool tickInfoMotion(const app::InfoBodyData &info)
   const bool movedSelection = app::advanceMotion(s_infoMotion.selectionY, kMotionDivisor, kMotionSnapDistance);
   s_infoMotion.active = !s_infoMotion.scrollOffset.settled || !s_infoMotion.selectionY.settled;
   return movedScroll || movedSelection;
+}
+
+bool tickAdjustMotion()
+{
+  const bool movedValue = app::advanceMotion(s_adjustMotion.displayValue, kMotionDivisor, kMotionSnapDistance);
+  const bool movedFill = app::advanceMotion(s_adjustMotion.fillWidth, kMotionDivisor, kMotionSnapDistance);
+  s_adjustMotion.active = !s_adjustMotion.displayValue.settled || !s_adjustMotion.fillWidth.settled;
+  return movedValue || movedFill;
 }
 
 void drawMenuItemsBase(const app::MenuBodyData &menu)
@@ -734,12 +773,11 @@ void drawAdjustBodyContent(const app::AdjustBodyData &adjust)
   const int barY = 170;
   const int barWidth = 192;
   const int barHeight = 18;
-  const int fillWidth = ((adjust.value - adjust.minValue) * barWidth) /
-                        ((adjust.maxValue - adjust.minValue) > 0 ? (adjust.maxValue - adjust.minValue) : 1);
+  const int fillWidth = s_adjustMotion.fillWidth.current;
 
   display::tft.setTextDatum(MC_DATUM);
   display::tft.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::tft.drawString(String(adjust.value).c_str(), 120, 108, 7);
+  display::tft.drawString(String(s_adjustMotion.displayValue.current).c_str(), 120, 108, 7);
   display::tft.setTextColor(TFT_YELLOW, app_config::kColorBg);
   display::tft.drawString(adjust.unit.c_str(), 186, 108, 4);
 
@@ -935,6 +973,7 @@ void syncMotionTargets(const app::MainViewData &view, app::RenderRegion region)
   {
     syncMenuMotion(view.menu, true);
     syncInfoMotion(view.info, true);
+    syncAdjustMotion(view.adjust, true);
   }
   else
   {
@@ -949,6 +988,9 @@ void syncMotionTargets(const app::MainViewData &view, app::RenderRegion region)
         break;
 
       case app::OperationalPageKind::Adjust:
+        syncAdjustMotion(view.adjust, false);
+        break;
+
       case app::OperationalPageKind::Home:
         break;
     }
@@ -962,6 +1004,11 @@ void syncMotionTargets(const app::MainViewData &view, app::RenderRegion region)
   if (view.pageKind != app::OperationalPageKind::Info)
   {
     s_infoMotion.active = false;
+  }
+
+  if (view.pageKind != app::OperationalPageKind::Adjust)
+  {
+    s_adjustMotion.active = false;
   }
 
   s_motionPageKind = view.pageKind;
@@ -988,8 +1035,36 @@ void refreshMotion(const app::MainViewData &view, uint32_t nowMs)
       break;
 
     case app::OperationalPageKind::Adjust:
+      if (s_adjustMotion.active && tickAdjustMotion())
+      {
+        drawMainPageRegion(view, app::RenderRegion::AdjustBody);
+      }
+      break;
+
     case app::OperationalPageKind::Home:
       break;
+  }
+
+  if (view.holdFeedback.visible &&
+      app::advanceMotion(s_transientMotion.holdFillWidth, kMotionDivisor, kMotionSnapDistance))
+  {
+    drawHoldLine(view.holdFeedback, nowMs);
+  }
+
+  const bool gestureVisible = app::gestureFeedbackVisible(s_gestureFeedbackStartedMs, nowMs) &&
+                              s_gestureFeedbackKind != app::GestureFeedbackKind::None;
+  if (gestureVisible)
+  {
+    const bool gestureMoved =
+      app::advanceMotion(s_transientMotion.gestureOffsetY, kMotionDivisor, kMotionSnapDistance);
+    if (gestureMoved || !s_transientMotion.gestureOffsetY.settled)
+    {
+      refreshGestureFeedback(nowMs);
+    }
+  }
+  else if (s_gestureFeedbackDrawn)
+  {
+    refreshGestureFeedback(nowMs);
   }
 }
 
@@ -1007,6 +1082,8 @@ void showGestureFeedback(app::GestureFeedbackKind kind, uint32_t nowMs)
   s_holdVisible = false;
   s_holdArmed = false;
   s_lastHoldFillWidth = -1;
+  app::snapMotion(s_transientMotion.gestureOffsetY, -4);
+  app::retargetMotion(s_transientMotion.gestureOffsetY, 0);
   s_gestureFeedbackKind = kind;
   s_gestureFeedbackStartedMs = nowMs;
   s_gestureFeedbackDrawn = false;

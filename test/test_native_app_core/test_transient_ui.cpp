@@ -34,3 +34,10 @@ TEST_CASE("hidden hold feedback only clears when a hold indicator was previously
   CHECK(app::holdFeedbackShouldClearWhenHidden(false, true, -1) == true);
   CHECK(app::holdFeedbackShouldClearWhenHidden(false, false, 12) == true);
 }
+
+TEST_CASE("hold feedback fill width scales with the available strip width")
+{
+  CHECK(app::holdFeedbackFillWidth(0, 212) == 0);
+  CHECK(app::holdFeedbackFillWidth(50, 212) == 106);
+  CHECK(app::holdFeedbackFillWidth(100, 212) == 212);
+}
