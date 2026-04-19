@@ -1071,10 +1071,6 @@ void refreshMotion(const app::MainViewData &view, uint32_t nowMs)
 void refreshHoldFeedback(const app::HoldFeedbackViewData &hold, uint32_t nowMs)
 {
   drawHoldLine(hold, nowMs);
-  if (!hold.visible)
-  {
-    refreshGestureFeedback(nowMs);
-  }
 }
 
 void showGestureFeedback(app::GestureFeedbackKind kind, uint32_t nowMs)
@@ -1082,6 +1078,7 @@ void showGestureFeedback(app::GestureFeedbackKind kind, uint32_t nowMs)
   s_holdVisible = false;
   s_holdArmed = false;
   s_lastHoldFillWidth = -1;
+  app::snapMotion(s_transientMotion.holdFillWidth, 0);
   app::snapMotion(s_transientMotion.gestureOffsetY, -4);
   app::retargetMotion(s_transientMotion.gestureOffsetY, 0);
   s_gestureFeedbackKind = kind;
