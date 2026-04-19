@@ -333,6 +333,9 @@ void drawHoldLine(const app::HoldFeedbackViewData &hold, uint32_t nowMs)
     return;
   }
 
+  s_gestureFeedbackDrawn = false;
+  s_gestureFeedbackKind = app::GestureFeedbackKind::None;
+  s_gestureFeedbackStartedMs = 0;
   clearTopTransientStrip();
   if (progressPercent == 0 && !hold.armed)
   {
