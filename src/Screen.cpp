@@ -598,12 +598,19 @@ bool tickInfoMotion(const app::InfoBodyData &info)
 
 void drawMenuItemsBase(const app::MenuBodyData &menu)
 {
+  const std::size_t selectedIndex = selectedMenuIndex(menu);
+
   for (std::size_t index = 0; index < menu.itemCount; ++index)
   {
     const int y = app::menuBoxYForIndex(index);
 
     display::tft.fillRoundRect(16, y, 208, 30, 6, TFT_BLACK);
     display::tft.drawRoundRect(16, y, 208, 30, 6, TFT_DARKGREY);
+    if (index == selectedIndex)
+    {
+      continue;
+    }
+
     display::tft.setTextDatum(ML_DATUM);
     display::tft.setTextColor(TFT_WHITE, TFT_BLACK);
     display::tft.drawString(menu.items[index].label.c_str(), 28, y + 15, 2);
