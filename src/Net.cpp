@@ -1,5 +1,8 @@
 #include "Net.h"
 
+#include <algorithm>
+#include <vector>
+
 #include <Arduino.h>
 #include <DNSServer.h>
 #include <ESP8266WebServer.h>
@@ -7,6 +10,7 @@
 
 #include "Display.h"
 #include "Storage.h"
+#include "app/WifiPortalPage.h"
 
 namespace net
 {
@@ -16,12 +20,46 @@ namespace
 
 constexpr uint16_t kPortalDnsPort = 53;
 
+enum class ConfigPortalMode
+{
+  None,
+  AccessPoint,
+  LocalNetwork,
+};
+
 bool s_wifiAwake = true;
 app::AppConfigData *s_config = nullptr;
 DNSServer s_dnsServer;
 ESP8266WebServer s_server(80);
 IPAddress s_portalIp;
 bool s_portalRestartRequested = false;
+std::vector<app::WifiPortalNetwork> s_networks;
+ConfigPortalMode s_portalMode = ConfigPortalMode::None;
+bool s_serverRoutesConfigured = false;
+
+void handlePortalRoot();
+void handlePortalSave();
+
+const char *portalModeName(ConfigPortalMode mode)
+{
+  switch (mode)
+  {
+    case ConfigPortalMode::AccessPoint:
+      return "ap";
+
+    case ConfigPortalMode::LocalNetwork:
+      return "lan";
+
+    case ConfigPortalMode::None:
+    default:
+      return "none";
+  }
+}
+
+bool portalUsesAccessPoint()
+{
+  return s_portalMode == ConfigPortalMode::AccessPoint;
+}
 
 void loadingUntilConnected()
 {
@@ -49,46 +87,154 @@ void drawPortalInstructions()
   display::tft.setTextColor(TFT_WHITE, app_config::kColorBg);
   display::tft.drawString("Open", 120, 156, 2);
   display::tft.drawString(s_portalIp.toString(), 120, 182, 4);
-  display::tft.drawString("Save credentials to reboot", 120, 220, 2);
+  display::tft.drawString("Pick WiFi and set city code", 120, 220, 2);
 }
 
-String portalPage(const String &message)
+void scanNearbyNetworks()
 {
-  String html;
-  html.reserve(900);
-  html += F(
-    "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>"
-    "<title>SmallDesktopDisplay WiFi Setup</title></head>"
-    "<body style='font-family:sans-serif;background:#111;color:#eee;padding:16px'>"
-    "<h2>SmallDesktopDisplay WiFi Setup</h2>"
-    "<p>Connect to AP <b>");
-  html += app_config::kWifiPortalApSsid;
-  html += F("</b> and open <b>");
-  html += s_portalIp.toString();
-  html += F(
-    "</b>.</p>"
-    "<form method='post' action='/save'>"
-    "<p><label>SSID<br><input name='ssid' maxlength='31' style='width:100%;padding:10px'></label></p>"
-    "<p><label>Password<br><input name='psk' type='password' maxlength='63' style='width:100%;padding:10px'></label></p>"
-    "<p><button type='submit' style='padding:10px 14px'>Save and Restart</button></p>");
-  if (message.length() > 0)
+  s_networks.clear();
+
+  const int count = WiFi.scanNetworks(false, true);
+  if (count <= 0)
   {
-    html += F("<p><b>");
-    html += message;
-    html += F("</b></p>");
+    WiFi.scanDelete();
+    return;
   }
-  html += F("</form></body></html>");
-  return html;
+
+  for (int index = 0; index < count; ++index)
+  {
+    const String ssid = WiFi.SSID(index);
+    if (ssid.length() == 0)
+    {
+      continue;
+    }
+
+    bool alreadyAdded = false;
+    for (const auto &network : s_networks)
+    {
+      if (network.ssid == ssid.c_str())
+      {
+        alreadyAdded = true;
+        break;
+      }
+    }
+    if (alreadyAdded)
+    {
+      continue;
+    }
+
+    app::WifiPortalNetwork network;
+    network.ssid = ssid.c_str();
+    network.rssi = WiFi.RSSI(index);
+    network.encrypted = (WiFi.encryptionType(index) != ENC_TYPE_NONE);
+    s_networks.push_back(network);
+  }
+
+  WiFi.scanDelete();
+  std::sort(s_networks.begin(), s_networks.end(), [](const app::WifiPortalNetwork &lhs,
+                                                     const app::WifiPortalNetwork &rhs) {
+    return lhs.rssi > rhs.rssi;
+  });
 }
 
-void sendPortalPage(const String &message)
+void sendPortalPage(const String &message, const String &selectedSsid, const String &cityCode)
 {
-  s_server.send(200, "text/html", portalPage(message));
+  const std::string apSsid = portalUsesAccessPoint() ? app_config::kWifiPortalApSsid : "";
+  const std::string html = app::buildWifiPortalPage(apSsid,
+                                                    s_portalIp.toString().c_str(),
+                                                    s_networks,
+                                                    selectedSsid.c_str(),
+                                                    cityCode.c_str(),
+                                                    message.c_str());
+  s_server.send(200, "text/html", html.c_str());
+}
+
+void ensurePortalRoutesConfigured()
+{
+  if (s_serverRoutesConfigured)
+  {
+    return;
+  }
+
+  s_server.on("/", HTTP_GET, handlePortalRoot);
+  s_server.on("/save", HTTP_POST, handlePortalSave);
+  s_server.onNotFound(handlePortalRoot);
+  s_serverRoutesConfigured = true;
+}
+
+void stopPortalServer()
+{
+  const bool wasApPortal = portalUsesAccessPoint();
+
+  s_server.stop();
+  s_dnsServer.stop();
+  if (wasApPortal)
+  {
+    WiFi.softAPdisconnect(true);
+  }
+
+  s_portalMode = ConfigPortalMode::None;
+  s_portalIp = IPAddress();
+}
+
+void startPortalServer(app::AppConfigData &config, ConfigPortalMode mode, const IPAddress &portalIp)
+{
+  stopPortalServer();
+  s_config = &config;
+  s_portalRestartRequested = false;
+  s_portalMode = mode;
+  s_portalIp = portalIp;
+
+  ensurePortalRoutesConfigured();
+  if (mode == ConfigPortalMode::AccessPoint)
+  {
+    s_dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+    s_dnsServer.start(kPortalDnsPort, "*", s_portalIp);
+  }
+  s_server.begin();
+
+  Serial.printf("[Net] setup portal mode=%s ip=%s\n",
+                portalModeName(mode),
+                s_portalIp.toString().c_str());
+}
+
+void processPortalClients()
+{
+  if (portalUsesAccessPoint())
+  {
+    s_dnsServer.processNextRequest();
+  }
+  s_server.handleClient();
+}
+
+void startLanConfigServer(app::AppConfigData &config)
+{
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    stopPortalServer();
+    s_config = nullptr;
+    return;
+  }
+
+  const IPAddress localIp = WiFi.localIP();
+  if (s_portalMode == ConfigPortalMode::LocalNetwork &&
+      s_config == &config &&
+      s_portalIp == localIp)
+  {
+    return;
+  }
+
+  scanNearbyNetworks();
+  startPortalServer(config, ConfigPortalMode::LocalNetwork, localIp);
 }
 
 void handlePortalRoot()
 {
-  sendPortalPage(String());
+  const String ssid = s_config ? String(s_config->wifiSsid.c_str()) : String();
+  const String cityCode = (s_config && !s_config->cityCode.empty())
+                            ? String(s_config->cityCode.c_str())
+                            : String();
+  sendPortalPage(String(), ssid, cityCode);
 }
 
 void handlePortalSave()
@@ -101,17 +247,27 @@ void handlePortalSave()
 
   String ssid = s_server.arg("ssid");
   String psk = s_server.arg("psk");
+  String cityCodeInput = s_server.arg("CityCode");
   ssid.trim();
   psk.trim();
+  cityCodeInput.trim();
 
   if (ssid.length() == 0)
   {
-    sendPortalPage("SSID is required.");
+    sendPortalPage("SSID is required.", ssid, cityCodeInput);
+    return;
+  }
+
+  const std::string normalizedCityCode = app::normalizeCityCodeInput(cityCodeInput.c_str());
+  if (cityCodeInput.length() > 0 && cityCodeInput != "0" && normalizedCityCode.empty())
+  {
+    sendPortalPage("City code must be 9 digits or 0.", ssid, cityCodeInput);
     return;
   }
 
   s_config->wifiSsid = ssid.c_str();
   s_config->wifiPsk = psk.c_str();
+  s_config->cityCode = normalizedCityCode;
   storage::saveConfig(*s_config);
 
   s_server.send(
@@ -130,34 +286,24 @@ void runWebConfig(app::AppConfigData &config)
   WiFi.persistent(false);
   WiFi.disconnect(true);
   delay(200);
-  WiFi.mode(WIFI_AP);
+  WiFi.mode(WIFI_STA);
+  scanNearbyNetworks();
+  WiFi.mode(WIFI_AP_STA);
   WiFi.softAPdisconnect(true);
   delay(100);
   WiFi.softAP(app_config::kWifiPortalApSsid);
   delay(200);
 
-  s_portalIp = WiFi.softAPIP();
+  startPortalServer(config, ConfigPortalMode::AccessPoint, WiFi.softAPIP());
   drawPortalInstructions();
-  Serial.printf("[Net] setup portal AP=%s ip=%s\n",
-                app_config::kWifiPortalApSsid,
-                s_portalIp.toString().c_str());
-
-  s_dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
-  s_dnsServer.start(kPortalDnsPort, "*", s_portalIp);
-  s_server.on("/", HTTP_GET, handlePortalRoot);
-  s_server.on("/save", HTTP_POST, handlePortalSave);
-  s_server.onNotFound(handlePortalRoot);
-  s_server.begin();
 
   while (!s_portalRestartRequested)
   {
-    s_dnsServer.processNextRequest();
-    s_server.handleClient();
+    processPortalClients();
     delay(2);
   }
 
-  s_server.stop();
-  s_dnsServer.stop();
+  stopPortalServer();
   s_config = nullptr;
   delay(1200);
   ESP.restart();
@@ -176,6 +322,7 @@ bool connect(app::AppConfigData &config, app::WifiConnectMode mode)
     storage::saveConfig(config);
     display::setRotation(config.lcdRotation);
     display::setBrightness(config.lcdBrightness);
+    startLanConfigServer(config);
     return true;
   }
 
@@ -219,12 +366,39 @@ bool connect(app::AppConfigData &config, app::WifiConnectMode mode)
   storage::saveConfig(config);
   display::setRotation(config.lcdRotation);
   display::setBrightness(config.lcdBrightness);
+  startLanConfigServer(config);
   return true;
 }
 
 bool isWifiAwake()
 {
   return s_wifiAwake;
+}
+
+void tick()
+{
+  if (s_portalMode == ConfigPortalMode::None)
+  {
+    return;
+  }
+
+  if (s_portalMode == ConfigPortalMode::LocalNetwork && WiFi.status() != WL_CONNECTED)
+  {
+    stopPortalServer();
+    s_config = nullptr;
+    return;
+  }
+
+  processPortalClients();
+  if (!s_portalRestartRequested)
+  {
+    return;
+  }
+
+  stopPortalServer();
+  s_config = nullptr;
+  delay(1200);
+  ESP.restart();
 }
 
 void sleep()
@@ -234,6 +408,8 @@ void sleep()
     s_wifiAwake = true;
     return;
   }
+  stopPortalServer();
+  s_config = nullptr;
   WiFi.forceSleepBegin();
   s_wifiAwake = false;
 }
@@ -252,11 +428,15 @@ void wake()
 
 void restart()
 {
+  stopPortalServer();
+  s_config = nullptr;
   ESP.restart();
 }
 
 void resetAndRestart()
 {
+  stopPortalServer();
+  s_config = nullptr;
   storage::clearWifiCredentials();
   delay(200);
   ESP.restart();

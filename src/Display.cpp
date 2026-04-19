@@ -112,8 +112,8 @@ void drawLoading(uint32_t delayMs, uint8_t step)
 
 void drawTempHumidityIcons()
 {
-  TJpgDec.drawJpg(15, 183, temperature, sizeof(temperature));
-  TJpgDec.drawJpg(15, 213, humidity, sizeof(humidity));
+  TJpgDec.drawJpg(12, 172, temperature, sizeof(temperature));
+  TJpgDec.drawJpg(12, 204, humidity, sizeof(humidity));
 }
 
 } // namespace display

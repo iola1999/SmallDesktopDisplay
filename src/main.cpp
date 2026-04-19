@@ -3,6 +3,7 @@
 
 #include "Cli.h"
 #include "Input.h"
+#include "Net.h"
 #include "adapters/EepromStoragePort.h"
 #include "adapters/Esp8266NetworkPort.h"
 #include "adapters/Esp8266SystemStatusPort.h"
@@ -147,6 +148,7 @@ void setup()
 
 void loop()
 {
+  net::tick();
   input::tick();
   const uint32_t nowMs = millis();
 

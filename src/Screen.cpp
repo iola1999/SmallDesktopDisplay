@@ -18,9 +18,12 @@ namespace
 WeatherNum s_weather;
 std::array<String, app_config::kBannerSlotCount> s_bannerLines{};
 int s_bannerIndex = 0;
-int s_lastHour = -1;
-int s_lastMinute = -1;
-int s_lastSecond = -1;
+int s_lastHourTens = -1;
+int s_lastHourOnes = -1;
+int s_lastMinuteTens = -1;
+int s_lastMinuteOnes = -1;
+int s_lastSecondTens = -1;
+int s_lastSecondOnes = -1;
 int s_tempPercent = 0;
 int s_humidityPercent = 0;
 uint16_t s_tempColor = 0xFFFF;
@@ -66,30 +69,35 @@ String monthDayText()
   return String(kMonths[monthIndex - 1]) + " " + day();
 }
 
-void drawLineFont(uint32_t x, uint32_t y, uint32_t num, uint32_t size, uint32_t color)
+const LineAtom *lineFontForDigit(uint32_t num, uint32_t size, uint32_t &fontSize)
 {
-  uint32_t fontSize;
-  const LineAtom *fontOne;
-
   if (size == 1)
   {
-    fontOne = smallLineFont[num];
     fontSize = smallLineFont_size[num];
-    display::tft.fillRect(x, y, 9, 14, TFT_BLACK);
+    return smallLineFont[num];
   }
-  else if (size == 2)
+
+  if (size == 2)
   {
-    fontOne = middleLineFont[num];
     fontSize = middleLineFont_size[num];
-    display::tft.fillRect(x, y, 18, 30, TFT_BLACK);
+    return middleLineFont[num];
   }
-  else if (size == 3)
+
+  if (size == 3)
   {
-    fontOne = largeLineFont[num];
     fontSize = largeLineFont_size[num];
-    display::tft.fillRect(x, y, 36, 90, TFT_BLACK);
+    return largeLineFont[num];
   }
-  else
+
+  fontSize = 0;
+  return nullptr;
+}
+
+void drawLineFont(uint32_t x, uint32_t y, uint32_t num, uint32_t size, uint32_t color)
+{
+  uint32_t fontSize = 0;
+  const LineAtom *fontOne = lineFontForDigit(num, size, fontSize);
+  if (!fontOne)
   {
     return;
   }
@@ -103,51 +111,50 @@ void drawLineFont(uint32_t x, uint32_t y, uint32_t num, uint32_t size, uint32_t 
   }
 }
 
+void updateClockDigit(uint32_t x,
+                      uint32_t y,
+                      int digit,
+                      int &lastDigit,
+                      uint32_t size,
+                      uint32_t color,
+                      bool force)
+{
+  if (!force && digit == lastDigit)
+  {
+    return;
+  }
+
+  if (lastDigit >= 0)
+  {
+    drawLineFont(x, y, static_cast<uint32_t>(lastDigit), size, app_config::kColorBg);
+  }
+
+  drawLineFont(x, y, static_cast<uint32_t>(digit), size, color);
+  lastDigit = digit;
+}
+
 void drawClockDigits(bool force)
 {
   const int h = hour();
   const int m = minute();
   const int s = second();
 
-  if (h != s_lastHour || force)
-  {
-    drawLineFont(20, app_config::kTimeY, h / 10, 3, app_config::kColorFontWhite);
-    drawLineFont(60, app_config::kTimeY, h % 10, 3, app_config::kColorFontWhite);
-    s_lastHour = h;
-  }
-  if (m != s_lastMinute || force)
-  {
-    drawLineFont(101, app_config::kTimeY, m / 10, 3, app_config::kColorFontYellow);
-    drawLineFont(141, app_config::kTimeY, m % 10, 3, app_config::kColorFontYellow);
-    s_lastMinute = m;
-  }
-  if (s != s_lastSecond || force)
-  {
-    drawLineFont(182, app_config::kTimeY + 30, s / 10, 2, app_config::kColorFontWhite);
-    drawLineFont(202, app_config::kTimeY + 30, s % 10, 2, app_config::kColorFontWhite);
-    s_lastSecond = s;
-  }
+  updateClockDigit(20, app_config::kTimeY, h / 10, s_lastHourTens, 3, app_config::kColorFontWhite, force);
+  updateClockDigit(60, app_config::kTimeY, h % 10, s_lastHourOnes, 3, app_config::kColorFontWhite, force);
+  updateClockDigit(101, app_config::kTimeY, m / 10, s_lastMinuteTens, 3, app_config::kColorFontYellow, force);
+  updateClockDigit(141, app_config::kTimeY, m % 10, s_lastMinuteOnes, 3, app_config::kColorFontYellow, force);
+  updateClockDigit(182, app_config::kTimeY + 30, s / 10, s_lastSecondTens, 2, app_config::kColorFontWhite, force);
+  updateClockDigit(202, app_config::kTimeY + 30, s % 10, s_lastSecondOnes, 2, app_config::kColorFontWhite, force);
 }
 
 void drawDate()
 {
-  display::clk.setColorDepth(8);
-
-  display::clk.createSprite(60, 18);
-  display::clk.fillSprite(app_config::kColorBg);
-  display::clk.setTextDatum(CC_DATUM);
-  display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawString(weekText(), 30, 9, 2);
-  display::clk.pushSprite(104, 156);
-  display::clk.deleteSprite();
-
-  display::clk.createSprite(88, 18);
-  display::clk.fillSprite(app_config::kColorBg);
-  display::clk.setTextDatum(CC_DATUM);
-  display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawString(monthDayText(), 44, 9, 2);
-  display::clk.pushSprite(6, 156);
-  display::clk.deleteSprite();
+  display::tft.fillRect(90, 14, 138, 34, app_config::kColorBg);
+  display::tft.setTextDatum(TR_DATUM);
+  display::tft.setTextColor(TFT_WHITE, app_config::kColorBg);
+  display::tft.drawString(weekText(), 224, 22, 2);
+  display::tft.setTextColor(TFT_LIGHTGREY, app_config::kColorBg);
+  display::tft.drawString(monthDayText(), 224, 40, 2);
 }
 
 void drawTempBar()
@@ -157,7 +164,7 @@ void drawTempBar()
   display::clk.fillSprite(app_config::kColorBg);
   display::clk.drawRoundRect(0, 0, 52, 6, 3, 0xFFFF);
   display::clk.fillRoundRect(1, 1, s_tempPercent, 4, 2, s_tempColor);
-  display::clk.pushSprite(45, 192);
+  display::clk.pushSprite(42, 195);
   display::clk.deleteSprite();
 }
 
@@ -169,7 +176,7 @@ void drawHumidityBar()
   display::clk.fillSprite(app_config::kColorBg);
   display::clk.drawRoundRect(0, 0, 52, 6, 3, 0xFFFF);
   display::clk.fillRoundRect(1, 1, halfBar, 4, 2, s_humidityColor);
-  display::clk.pushSprite(45, 222);
+  display::clk.pushSprite(42, 223);
   display::clk.deleteSprite();
 }
 
@@ -375,27 +382,47 @@ const char *aqiLabel(int aqi, uint16_t &aqiBg)
   return "GOOD";
 }
 
+void drawWeatherIconPanel(int weatherCode)
+{
+  const int panelX = 148;
+  const int panelY = 154;
+  const int panelW = 80;
+  const int panelH = 74;
+
+  display::tft.fillRoundRect(panelX, panelY, panelW, panelH, 10, display::tft.color565(18, 18, 18));
+  display::tft.drawRoundRect(panelX, panelY, panelW, panelH, 10, TFT_DARKGREY);
+  display::tft.setTextDatum(CC_DATUM);
+  display::tft.setTextColor(TFT_LIGHTGREY, display::tft.color565(18, 18, 18));
+  display::tft.drawString("NOW", panelX + (panelW / 2), panelY + 12, 1);
+  s_weather.printfweather(panelX + 14, panelY + 18, weatherCode);
+}
+
 void drawWeatherMain(const app::MainViewData &view)
 {
   display::clk.setColorDepth(8);
 
-  display::clk.createSprite(60, 18);
+  display::tft.setTextDatum(TL_DATUM);
+  display::tft.setTextColor(TFT_LIGHTGREY, app_config::kColorBg);
+  display::tft.drawString("TEMP", 44, 170, 1);
+  display::tft.drawString("HUM", 44, 202, 1);
+
+  display::clk.createSprite(64, 18);
   display::clk.fillSprite(app_config::kColorBg);
   display::clk.setTextDatum(CC_DATUM);
   display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawString(String(view.temperatureText.c_str()) + "C", 30, 9, 2);
-  display::clk.pushSprite(100, 184);
+  display::clk.drawString(String(view.temperatureText.c_str()) + "C", 32, 9, 2);
+  display::clk.pushSprite(50, 177);
   display::clk.deleteSprite();
 
   updateTemperatureBar(view.temperatureC);
   drawTempBar();
 
-  display::clk.createSprite(60, 18);
+  display::clk.createSprite(64, 18);
   display::clk.fillSprite(app_config::kColorBg);
   display::clk.setTextDatum(CC_DATUM);
   display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawString(view.humidityText.c_str(), 30, 9, 2);
-  display::clk.pushSprite(100, 214);
+  display::clk.drawString(view.humidityText.c_str(), 32, 9, 2);
+  display::clk.pushSprite(50, 209);
   display::clk.deleteSprite();
 
   updateHumidityBar(view.humidityPercent);
@@ -403,16 +430,16 @@ void drawWeatherMain(const app::MainViewData &view)
 
   uint16_t aqiBg = 0;
   const char *aqiText = aqiLabel(view.aqi, aqiBg);
-  display::clk.createSprite(66, 18);
+  display::clk.createSprite(72, 20);
   display::clk.fillSprite(app_config::kColorBg);
-  display::clk.fillRoundRect(0, 0, 66, 18, 4, aqiBg);
+  display::clk.fillRoundRect(0, 0, 72, 20, 5, aqiBg);
   display::clk.setTextDatum(CC_DATUM);
   display::clk.setTextColor(0x0000);
-  display::clk.drawString(aqiText, 33, 9, 2);
-  display::clk.pushSprite(14, 18);
+  display::clk.drawString(aqiText, 36, 10, 2);
+  display::clk.pushSprite(14, 16);
   display::clk.deleteSprite();
 
-  s_weather.printfweather(170, 15, view.weatherCode);
+  drawWeatherIconPanel(view.weatherCode);
 }
 
 void drawFooterHints(const app::FooterHints &footer)
@@ -590,9 +617,12 @@ void refreshClock()
 
 void forceClockRedraw()
 {
-  s_lastHour = -1;
-  s_lastMinute = -1;
-  s_lastSecond = -1;
+  s_lastHourTens = -1;
+  s_lastHourOnes = -1;
+  s_lastMinuteTens = -1;
+  s_lastMinuteOnes = -1;
+  s_lastSecondTens = -1;
+  s_lastSecondOnes = -1;
   drawClockDigits(true);
   drawDate();
 }
@@ -616,15 +646,10 @@ void refreshBanner()
   if (text.length() == 0)
     return;
 
-  display::clk.setColorDepth(8);
-  display::clk.createSprite(220, 18);
-  display::clk.fillSprite(app_config::kColorBg);
-  display::clk.setTextWrap(false);
-  display::clk.setTextDatum(CC_DATUM);
-  display::clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::clk.drawString(text, 110, 9, 2);
-  display::clk.pushSprite(10, 45);
-  display::clk.deleteSprite();
+  display::tft.fillRect(10, 54, 220, 18, app_config::kColorBg);
+  display::tft.setTextDatum(CC_DATUM);
+  display::tft.setTextColor(TFT_WHITE, app_config::kColorBg);
+  display::tft.drawString(text, 120, 63, 2);
 }
 
 void drawSplashPage(const app::SplashViewData &view)

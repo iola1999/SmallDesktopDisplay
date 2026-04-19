@@ -9,6 +9,7 @@ namespace net
 
 bool connect(app::AppConfigData &config, app::WifiConnectMode mode);
 bool isWifiAwake();
+void tick();
 void sleep();
 void wake();
 void restart();

@@ -56,6 +56,10 @@ Update it whenever behavior, architecture, or interaction details change.
 - Hid the city-name label on the home page, kept the weather icon set, and switched weather banners/AQI labels to English text.
 - Replaced `WiFiManager` with a minimal in-firmware web setup portal that only collects SSID and password, then stores credentials and reboots.
 - Kept `TJpg_Decoder` because the temperature/humidity JPEG icons remain in use and future image rendering work is still expected.
+- Expanded the lightweight setup portal to list nearby SSIDs and keep `CityCode` editable with `blank/0 = auto detect`.
+- Kept the same setup page for both first-time AP provisioning and post-connect LAN reconfiguration; once the device joins WiFi, the page is now reachable from other devices on the same LAN via the device IP.
+- Rebalanced the home screen after animation removal by promoting the weather panel on the right and tightening the top information band.
+- Changed clock digit refresh from fixed-box clearing to glyph-only redraw so the time ticker no longer punches black rectangles into the lower weather panel area.
 
 ### Render Transition Fixes
 
@@ -76,3 +80,4 @@ Update it whenever behavior, architecture, or interaction details change.
 
 - Evaluate strip-based double buffering for page body regions if partial redraw still shows visible flicker on hardware; avoid full-screen frame buffers on ESP-12E due to RAM pressure.
 - Evaluate server-rendered text or image tiles for low-frequency dynamic labels if local flash pressure returns. If implemented later, prefer raw bitmap or RGB565/RLE payloads over PNG/JPEG so the device can blit without adding new decode overhead.
+- Evaluate a remote-control architecture where a NAS or other always-on service computes app state and renders frames, and the display device becomes a thin client that only pulls and presents the latest image payload.
