@@ -672,9 +672,16 @@ void drawMenuBody(const app::MenuBodyData &menu)
 void drawAnimatedInfoRows(const app::InfoBodyData &info)
 {
   display::tft.setViewport(0, kPageBodyY, 240, kPageBodyHeight, false);
+  const std::size_t selectedIndex =
+    (s_infoMotion.selectedIndex < info.rowCount) ? s_infoMotion.selectedIndex : 0;
 
   for (std::size_t rowIndex = 0; rowIndex < info.rowCount; ++rowIndex)
   {
+    if (rowIndex == selectedIndex)
+    {
+      continue;
+    }
+
     const int y = 58 + static_cast<int>(rowIndex * 36) - s_infoMotion.scrollOffset.current;
     const int top = y - 6;
     const int bottom = top + 30;
@@ -695,8 +702,6 @@ void drawAnimatedInfoRows(const app::InfoBodyData &info)
 
   if (info.rowCount > 0)
   {
-    const std::size_t selectedIndex =
-      (s_infoMotion.selectedIndex < info.rowCount) ? s_infoMotion.selectedIndex : (info.rowCount - 1);
     const int y = s_infoMotion.selectionY.current + 6;
     display::tft.fillRoundRect(14, s_infoMotion.selectionY.current, 212, 30, 6, TFT_DARKGREY);
     display::tft.drawRoundRect(14, s_infoMotion.selectionY.current, 212, 30, 6, TFT_YELLOW);
