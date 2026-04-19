@@ -1,3 +1,5 @@
+#include <Arduino.h>
+
 #include "ui/TftDisplayPort.h"
 
 #include "Display.h"
@@ -53,6 +55,9 @@ void TftDisplayPort::showGestureFeedback(app::GestureFeedbackKind kind, uint32_t
 void TftDisplayPort::render(const app::AppViewModel &view)
 {
   const app::RenderPlan plan = app::planRender(hasLastView_, lastView_, view);
+  Serial.printf("[DisplayPort] render kind=%d region=%d\n",
+                static_cast<int>(view.kind),
+                static_cast<int>(plan.region));
 
   switch (plan.region)
   {
@@ -79,6 +84,8 @@ void TftDisplayPort::render(const app::AppViewModel &view)
       }
       break;
   }
+
+  Serial.println(F("[DisplayPort] render done"));
 
   lastView_ = view;
   hasLastView_ = true;

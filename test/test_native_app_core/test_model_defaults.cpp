@@ -9,6 +9,7 @@ TEST_CASE("default config uses firmware defaults for esp12e module")
   app::AppConfigData config;
   CHECK(config.cityCode == app_config::kDefaultCityCode);
   CHECK(config.weatherUpdateMinutes == app_config::kDefaultWeatherUpdateMinutes);
+  CHECK(app_config::kWeatherFetchEnabled == true);
   CHECK(config.lcdBrightness == app_config::kDefaultLcdBrightness);
   CHECK(config.lcdRotation == app_config::kDefaultLcdRotation);
   CHECK(config.dhtEnabled == false);

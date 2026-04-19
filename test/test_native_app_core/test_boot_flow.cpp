@@ -1,5 +1,6 @@
 #include <doctest.h>
 
+#include "AppConfig.h"
 #include "app/AppCore.h"
 
 TEST_CASE("boot request renders splash and starts wifi connection")
@@ -27,6 +28,22 @@ TEST_CASE("wifi failure during bootstrap enters blocking no-network error")
   CHECK(core.runtime().blockingError == app::BlockingErrorReason::NoNetwork);
   CHECK(core.view().kind == app::ViewKind::Error);
   CHECK(core.view().error.reason == app::BlockingErrorReason::NoNetwork);
+}
+
+TEST_CASE("time sync completes bootstrap and defers the first weather fetch")
+{
+  app::AppCore core;
+  core.handle(app::AppEvent::bootRequested());
+  core.handle(app::AppEvent::wifiConnected());
+
+  const auto actions = core.handle(app::AppEvent::timeSynced(1710000000));
+
+  CHECK(actions.count == 1);
+  CHECK(actions[0].type == app::AppActionType::RenderRequested);
+  CHECK(core.runtime().mode == app::AppMode::Operational);
+  CHECK(core.runtime().initialSyncComplete == false);
+  CHECK(core.runtime().nextRefreshDueEpoch == 1710000000 + app_config::kStartupWeatherDelaySec);
+  CHECK(core.view().kind == app::ViewKind::Main);
 }
 
 TEST_CASE("successful bootstrap reaches operational state")

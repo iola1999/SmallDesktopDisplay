@@ -25,4 +25,9 @@ TEST_CASE("scheduled blocking refresh only runs while home is idle")
 
   ui.holdFeedback.visible = false;
   CHECK(app::shouldTriggerScheduledRefresh(runtime, ui, 99) == false);
+
+  runtime.backgroundSyncInProgress = true;
+  runtime.syncPhase = app::SyncPhase::FetchingWeather;
+  ui.route = app::UiRoute::SettingsMenu;
+  CHECK(app::shouldTriggerScheduledRefresh(runtime, ui, 100) == true);
 }

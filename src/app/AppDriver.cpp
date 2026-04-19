@@ -5,6 +5,35 @@
 namespace app
 {
 
+namespace
+{
+
+bool isDeferredNetworkStage(AppActionType type)
+{
+  switch (type)
+  {
+    case AppActionType::ConnectWifi:
+    case AppActionType::ResolveCityCode:
+    case AppActionType::SyncTime:
+    case AppActionType::FetchWeather:
+      return true;
+
+    case AppActionType::RenderRequested:
+    case AppActionType::WakeWifi:
+    case AppActionType::SleepWifi:
+    case AppActionType::PersistConfig:
+    case AppActionType::ResetWifiAndRestart:
+    case AppActionType::CaptureDiagnosticsSnapshot:
+    case AppActionType::PreviewBrightness:
+    case AppActionType::ApplyBrightness:
+    case AppActionType::RestartDevice:
+    default:
+      return false;
+  }
+}
+
+} // namespace
+
 void AppDriver::appendActions(ActionList &target, const ActionList &source)
 {
   for (std::size_t index = 0; index < source.count; ++index)
@@ -18,6 +47,19 @@ void AppDriver::appendActions(ActionList &target, const ActionList &source)
       target.push(source[index].type, source[index].value);
     }
   }
+}
+
+bool AppDriver::containsDeferredNetworkStage(const ActionList &actions) const
+{
+  for (std::size_t index = 0; index < actions.count; ++index)
+  {
+    if (isDeferredNetworkStage(actions[index].type))
+    {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 void AppDriver::execute(const ActionList &actions, const AppConfigData &config, const AppViewModel &view)
@@ -194,8 +236,26 @@ void AppDriver::dispatch(AppCore &core, const ActionList &actions)
       }
     }
 
+    if (containsDeferredNetworkStage(next))
+    {
+      appendActions(pending_, next);
+      return;
+    }
+
     pending = next;
   }
+}
+
+void AppDriver::dispatchPending(AppCore &core)
+{
+  ActionList pending = pending_;
+  pending_ = ActionList{};
+  dispatch(core, pending);
+}
+
+bool AppDriver::hasPendingActions() const
+{
+  return pending_.count > 0;
 }
 
 } // namespace app

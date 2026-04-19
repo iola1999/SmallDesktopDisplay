@@ -4,6 +4,7 @@
 #include <TJpg_Decoder.h>
 
 #include "AppConfig.h"
+#include "app/BacklightPwm.h"
 #include "img/humidity.h"
 #include "img/temperature.h"
 
@@ -16,6 +17,7 @@ TFT_eSprite clk = TFT_eSprite(&tft);
 namespace
 {
 uint8_t s_loadingProgress = 6;
+bool s_loadingUiDrawn = false;
 }
 
 bool tftOutput(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap)
@@ -28,25 +30,37 @@ bool tftOutput(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap)
 
 void begin(uint8_t rotation)
 {
+  Serial.println(F("[Display] begin enter"));
   pinMode(app_config::kPinLcdBacklight, OUTPUT);
-  analogWrite(app_config::kPinLcdBacklight, 1023 - (app_config::kDefaultLcdBrightness * 10));
+  analogWriteRange(app::kBacklightPwmRange);
+  analogWrite(app_config::kPinLcdBacklight,
+              app::backlightPwmDutyForPercent(app_config::kDefaultLcdBrightness));
+  Serial.println(F("[Display] backlight ready"));
 
+  Serial.println(F("[Display] tft.begin"));
   tft.begin();
+  Serial.println(F("[Display] tft.begin ok"));
+  Serial.println(F("[Display] invertDisplay"));
   tft.invertDisplay(1);
+  Serial.println(F("[Display] setRotation"));
   tft.setRotation(rotation);
+  Serial.println(F("[Display] fillScreen"));
   tft.fillScreen(app_config::kColorBg);
+  s_loadingUiDrawn = false;
+  Serial.println(F("[Display] text color"));
   tft.setTextColor(TFT_BLACK, app_config::kColorBg);
 
+  Serial.println(F("[Display] jpeg setup"));
   TJpgDec.setJpgScale(1);
   TJpgDec.setSwapBytes(true);
   TJpgDec.setCallback(tftOutput);
+  Serial.println(F("[Display] begin done"));
 }
 
 void setBrightness(uint8_t percent)
 {
-  if (percent > 100)
-    percent = 100;
-  analogWrite(app_config::kPinLcdBacklight, 1023 - (percent * 10));
+  analogWriteRange(app::kBacklightPwmRange);
+  analogWrite(app_config::kPinLcdBacklight, app::backlightPwmDutyForPercent(percent));
 }
 
 void setRotation(uint8_t rotation)
@@ -57,6 +71,7 @@ void setRotation(uint8_t rotation)
 void clear()
 {
   tft.fillScreen(app_config::kColorBg);
+  s_loadingUiDrawn = false;
 }
 
 void drawLoading(uint32_t delayMs, uint8_t step)
@@ -65,20 +80,34 @@ void drawLoading(uint32_t delayMs, uint8_t step)
   if (s_loadingProgress > 194)
     s_loadingProgress = 194;
 
-  clk.setColorDepth(8);
-  clk.createSprite(200, 100);
-  clk.fillSprite(app_config::kColorBg);
-  clk.drawRoundRect(0, 0, 200, 16, 8, 0xFFFF);
-  clk.fillRoundRect(3, 3, s_loadingProgress, 10, 5, 0xFFFF);
-  clk.setTextDatum(CC_DATUM);
-  clk.setTextColor(TFT_GREEN, app_config::kColorBg);
-  clk.drawString("Connecting to WiFi......", 100, 40, 2);
-  clk.setTextColor(TFT_WHITE, app_config::kColorBg);
-  clk.drawRightString(app_config::kVersion, 180, 60, 2);
-  clk.pushSprite(20, 120);
-  clk.deleteSprite();
+  constexpr int kPanelX = 20;
+  constexpr int kPanelY = 120;
+  constexpr int kPanelWidth = 200;
+  constexpr int kPanelHeight = 100;
+  constexpr int kBarX = kPanelX;
+  constexpr int kBarY = kPanelY;
+  constexpr int kBarInnerX = kPanelX + 3;
+  constexpr int kBarInnerY = kPanelY + 3;
 
-  delay(delayMs);
+  if (!s_loadingUiDrawn)
+  {
+    tft.fillRect(kPanelX, kPanelY, kPanelWidth, kPanelHeight, app_config::kColorBg);
+    tft.drawRoundRect(kBarX, kBarY, 200, 16, 8, 0xFFFF);
+    tft.setTextDatum(CC_DATUM);
+    tft.setTextColor(TFT_GREEN, app_config::kColorBg);
+    tft.drawString("Connecting to WiFi......", 120, 160, 2);
+    tft.setTextColor(TFT_WHITE, app_config::kColorBg);
+    tft.drawRightString(app_config::kVersion, 200, 180, 2);
+    s_loadingUiDrawn = true;
+  }
+
+  // Avoid sprite push on ESP8266+WiFi: direct primitives do not hit TFT_eSPI::pushPixels().
+  tft.fillRoundRect(kBarInnerX, kBarInnerY, s_loadingProgress, 10, 5, 0xFFFF);
+
+  if (delayMs > 0)
+  {
+    delay(delayMs);
+  }
 }
 
 void drawTempHumidityIcons()

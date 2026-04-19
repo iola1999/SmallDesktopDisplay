@@ -291,7 +291,15 @@ ActionList AppCore::handle(const AppEvent &event)
       break;
 
     case AppEventType::RefreshDue:
-      if (runtime_.mode == AppMode::Operational && !runtime_.backgroundSyncInProgress)
+      if (runtime_.mode == AppMode::Operational &&
+          runtime_.backgroundSyncInProgress &&
+          runtime_.syncPhase == SyncPhase::FetchingWeather &&
+          runtime_.nextRefreshDueEpoch > 0 &&
+          event.epochSeconds >= runtime_.nextRefreshDueEpoch)
+      {
+        actions.push(AppActionType::FetchWeather);
+      }
+      else if (runtime_.mode == AppMode::Operational && !runtime_.backgroundSyncInProgress)
       {
         runtime_.backgroundSyncInProgress = true;
         runtime_.lastBackgroundSyncFailed = false;
@@ -333,7 +341,7 @@ ActionList AppCore::handle(const AppEvent &event)
       break;
 
     case AppEventType::WifiConnectionFailed:
-      if (runtime_.initialSyncComplete)
+      if (runtime_.initialSyncComplete || runtime_.mode == AppMode::Operational)
       {
         runtime_.backgroundSyncInProgress = false;
         runtime_.lastBackgroundSyncFailed = true;
@@ -356,12 +364,24 @@ ActionList AppCore::handle(const AppEvent &event)
       cache_.time.valid = true;
       cache_.time.epochSeconds = event.epochSeconds;
       runtime_.lastTimeSyncEpoch = event.epochSeconds;
-      runtime_.syncPhase = SyncPhase::FetchingWeather;
-      actions.push(AppActionType::FetchWeather);
+      if (runtime_.mode == AppMode::Booting)
+      {
+        runtime_.mode = AppMode::Operational;
+        runtime_.syncPhase = SyncPhase::Idle;
+        runtime_.nextRefreshDueEpoch = event.epochSeconds + app_config::kStartupWeatherDelaySec;
+        refreshOperationalView();
+        view_.main.showSyncInProgress = false;
+        actions.push(AppActionType::RenderRequested);
+      }
+      else
+      {
+        runtime_.syncPhase = SyncPhase::FetchingWeather;
+        runtime_.nextRefreshDueEpoch = event.epochSeconds + app_config::kPostTimeSyncWeatherDelaySec;
+      }
       break;
 
     case AppEventType::TimeSyncFailed:
-      if (runtime_.initialSyncComplete)
+      if (runtime_.initialSyncComplete || runtime_.mode == AppMode::Operational)
       {
         runtime_.backgroundSyncInProgress = false;
         runtime_.lastBackgroundSyncFailed = true;
@@ -402,7 +422,7 @@ ActionList AppCore::handle(const AppEvent &event)
     }
 
     case AppEventType::WeatherFetchFailed:
-      if (runtime_.initialSyncComplete)
+      if (runtime_.initialSyncComplete || runtime_.mode == AppMode::Operational)
       {
         runtime_.backgroundSyncInProgress = false;
         runtime_.lastBackgroundSyncFailed = true;

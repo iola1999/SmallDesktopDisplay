@@ -42,9 +42,12 @@ public:
 
   void execute(const ActionList &actions, const AppConfigData &config, const AppViewModel &view);
   void dispatch(AppCore &core, const ActionList &actions);
+  void dispatchPending(AppCore &core);
+  bool hasPendingActions() const;
 
 private:
   void appendActions(ActionList &target, const ActionList &source);
+  bool containsDeferredNetworkStage(const ActionList &actions) const;
 
   ports::StoragePort &storage_;
   ports::NetworkPort &network_;
@@ -54,6 +57,7 @@ private:
   ports::SystemStatusPort &systemStatus_;
   ports::DisplayPort &display_;
   ports::ClockPort *clock_;
+  ActionList pending_;
 };
 
 } // namespace app

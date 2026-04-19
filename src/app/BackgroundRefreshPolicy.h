@@ -13,12 +13,19 @@ inline bool shouldTriggerScheduledRefresh(const AppRuntimeState &runtime,
                                           const UiSessionState &ui,
                                           uint32_t nowEpoch)
 {
-  return runtime.mode == AppMode::Operational &&
-         !runtime.backgroundSyncInProgress &&
-         runtime.nextRefreshDueEpoch > 0 &&
-         nowEpoch >= runtime.nextRefreshDueEpoch &&
-         ui.route == UiRoute::Home &&
-         !ui.holdFeedback.visible;
+  if (runtime.mode != AppMode::Operational ||
+      runtime.nextRefreshDueEpoch == 0 ||
+      nowEpoch < runtime.nextRefreshDueEpoch)
+  {
+    return false;
+  }
+
+  if (runtime.backgroundSyncInProgress)
+  {
+    return runtime.syncPhase == SyncPhase::FetchingWeather;
+  }
+
+  return ui.route == UiRoute::Home && !ui.holdFeedback.visible;
 }
 
 } // namespace app
