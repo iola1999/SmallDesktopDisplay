@@ -29,7 +29,7 @@ constexpr uint32_t kNtpSyncIntervalSec = 300;
 constexpr uint8_t  kDefaultLcdBrightness = 50;     // 0-100
 constexpr uint8_t  kDefaultLcdRotation = 0;        // 0-3
 constexpr uint32_t kDefaultWeatherUpdateMinutes = 1;
-constexpr const char *kDefaultCityCode = "101090609";
+constexpr const char *kDefaultCityCode = "101210102";
 
 // 引脚
 constexpr uint8_t kPinLcdBacklight = 5;  // LCD 背光
@@ -58,8 +58,11 @@ constexpr uint32_t kAnimateRefreshMs = kTickMs / 10;
 constexpr uint32_t kAnimateFrameIntervalMs = 100;
 
 // 天气 HTTP
+constexpr bool     kWeatherFetchEnabled = true;
 constexpr uint32_t kWeatherHttpTimeoutMs = 5000;
 constexpr uint8_t  kWeatherMaxRetries = 2;
+constexpr uint32_t kStartupWeatherDelaySec = 5;
+constexpr uint32_t kPostTimeSyncWeatherDelaySec = 2;
 
 } // namespace app_config
 

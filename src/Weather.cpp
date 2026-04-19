@@ -16,7 +16,6 @@ namespace
 
 WiFiClient s_client;
 
-// 通用 HTTP GET, 模拟 iPhone UA + Referer (接口要求)
 int httpGet(const String &url, String &out)
 {
   HTTPClient http;
@@ -122,10 +121,21 @@ bool parsePayload(const String &payload, app::WeatherSnapshot &snapshot)
   return true;
 }
 
+void fillSkippedWeatherSnapshot(app::WeatherSnapshot &snapshot)
+{
+  snapshot = app::WeatherSnapshot{};
+}
+
 } // namespace
 
 bool fetchCityCode(String &outCode)
 {
+  if (!app_config::kWeatherFetchEnabled)
+  {
+    outCode.clear();
+    return false;
+  }
+
   String url = String("http://wgeo.weather.com.cn/ip/?_=") + String(now());
   String payload;
   int code = httpGet(url, payload);
@@ -143,6 +153,12 @@ bool fetchCityCode(String &outCode)
 
 bool fetchWeatherData(const String &cityCode, app::WeatherSnapshot &snapshot)
 {
+  if (!app_config::kWeatherFetchEnabled)
+  {
+    fillSkippedWeatherSnapshot(snapshot);
+    return true;
+  }
+
   String url = String("http://d1.weather.com.cn/weather_index/") + cityCode +
                ".html?_=" + String(now());
   String payload;

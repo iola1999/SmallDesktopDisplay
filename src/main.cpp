@@ -55,6 +55,28 @@ void dispatch(const app::ActionList &actions)
   }
 }
 
+void dispatchPending()
+{
+  const bool wasHomeAnimationActive = animate::enabled();
+  animate::setDhtEnabled(g_core.config().dhtEnabled);
+
+  if (app::homeAnimationTransitionPhase(wasHomeAnimationActive, g_core.view()) ==
+      app::HomeAnimationTransitionPhase::BeforeRender)
+  {
+    animate::setHomeActive(g_core.view().kind == app::ViewKind::Main &&
+                           g_core.view().main.homeAnimationEnabled);
+  }
+
+  g_driver.dispatchPending(g_core);
+
+  if (app::homeAnimationTransitionPhase(wasHomeAnimationActive, g_core.view()) ==
+      app::HomeAnimationTransitionPhase::AfterRender)
+  {
+    animate::setHomeActive(g_core.view().kind == app::ViewKind::Main &&
+                           g_core.view().main.homeAnimationEnabled);
+  }
+}
+
 void showGestureFeedbackIfHandled(input::ButtonEvent inputEvent,
                                   const app::ActionList &actions,
                                   uint32_t nowMs)
@@ -144,16 +166,22 @@ void setup()
   Serial.begin(115200);
   Serial.println();
   Serial.printf("[%s] booting\n", app_config::kVersion);
+  Serial.printf("[Reset] %s\n", ESP.getResetInfo().c_str());
 
   input::begin();
+  Serial.println(F("[Setup] input ready"));
 
   app::AppConfigData config;
   g_storage.load(config);
   g_core.setConfig(config);
+  Serial.println(F("[Setup] display begin"));
   g_display.begin(config.lcdRotation, config.lcdBrightness);
+  Serial.println(F("[Setup] display ready"));
   animate::setDhtEnabled(config.dhtEnabled);
 
+  Serial.println(F("[Setup] boot dispatch"));
   dispatch(g_core.handle(app::AppEvent::bootRequested()));
+  Serial.println(F("[Setup] boot dispatch done"));
 }
 
 void loop()
@@ -239,8 +267,15 @@ void loop()
   animate::tick();
 
   const uint32_t nowEpoch = static_cast<uint32_t>(now());
-  if (app::shouldTriggerScheduledRefresh(g_core.runtime(), g_core.ui(), nowEpoch))
+  const app::AppRuntimeState &runtime = g_core.runtime();
+  const app::UiSessionState &ui = g_core.ui();
+  if (app::shouldTriggerScheduledRefresh(runtime, ui, nowEpoch))
   {
     dispatch(g_core.handle(app::AppEvent::refreshDue(nowEpoch)));
+  }
+
+  if (g_driver.hasPendingActions())
+  {
+    dispatchPending();
   }
 }
