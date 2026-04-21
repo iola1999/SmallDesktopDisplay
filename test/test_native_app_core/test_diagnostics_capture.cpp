@@ -200,6 +200,52 @@ TEST_CASE("content-page short press scrolls and long press returns")
   CHECK(core.ui().route == app::UiRoute::SettingsMenu);
 }
 
+TEST_CASE("diagnostics page requests timed snapshot refreshes and preserves scroll state")
+{
+  auto core = diagnosticsCore();
+  core.handle(app::AppEvent::longPressed(1000));
+  const auto openActions = core.handle(app::AppEvent::longPressed(1001));
+  REQUIRE(openActions.count == 1);
+  REQUIRE(openActions[0].type == app::AppActionType::CaptureDiagnosticsSnapshot);
+
+  app::DiagnosticsSnapshot firstSnapshot;
+  firstSnapshot.valid = true;
+  firstSnapshot.savedWifiSsid = "StudioWiFi";
+  firstSnapshot.activeWifiSsid = "-";
+  firstSnapshot.wifiLocalIp = "disconnected";
+  firstSnapshot.wifiLinkConnected = false;
+  firstSnapshot.wifiRadioAwake = false;
+  firstSnapshot.lastWeatherSyncEpoch = 1710000000;
+  firstSnapshot.refreshIntervalMinutes = 15;
+  firstSnapshot.ramTotalBytes = 81920;
+  firstSnapshot.freeHeapBytes = 32768;
+  firstSnapshot.maxFreeBlockBytes = 24576;
+  firstSnapshot.heapFragmentationPercent = 11;
+  firstSnapshot.programFlashUsedBytes = 846012;
+  firstSnapshot.programFlashTotalBytes = 1044464;
+  core.handle(app::AppEvent::diagnosticsSnapshotCaptured(firstSnapshot));
+
+  core.handle(app::AppEvent::shortPressed(1002));
+  core.handle(app::AppEvent::shortPressed(1003));
+  CHECK(core.ui().infoPage.selectedRowIndex == 2);
+  CHECK(core.ui().nextDiagnosticsRefreshMs == (1001 + app_config::kTickMs));
+
+  const auto refresh = core.handle(app::AppEvent::refreshDue(1710000002, 2001));
+  REQUIRE(refresh.count == 1);
+  CHECK(refresh[0].type == app::AppActionType::CaptureDiagnosticsSnapshot);
+  CHECK(core.ui().nextDiagnosticsRefreshMs == (2001 + app_config::kTickMs));
+
+  app::DiagnosticsSnapshot secondSnapshot = firstSnapshot;
+  secondSnapshot.freeHeapBytes = 30000;
+  const auto refreshRender = core.handle(app::AppEvent::diagnosticsSnapshotCaptured(secondSnapshot));
+  CHECK(refreshRender.count == 1);
+  CHECK(refreshRender[0].type == app::AppActionType::RenderRequested);
+  CHECK(core.ui().route == app::UiRoute::DiagnosticsPage);
+  CHECK(core.ui().infoPage.selectedRowIndex == 2);
+  CHECK(core.ui().infoPage.firstVisibleRowIndex == 0);
+  CHECK(core.view().main.info.rows[8].value == "30000");
+}
+
 TEST_CASE("driver dispatch captures diagnostics with config and runtime context")
 {
   FakeDisplayPort display;

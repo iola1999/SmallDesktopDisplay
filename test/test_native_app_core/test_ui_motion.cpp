@@ -57,6 +57,13 @@ TEST_CASE("motion values use widened arithmetic for large deltas")
 
 TEST_CASE("ui motion geometry helpers stay aligned with the current layout")
 {
+  CHECK(app::spriteBufferBytes(240, 180, 4) == 21600);
+  CHECK(app::spriteBufferBytes(212, 180, 4) == 19080);
+  CHECK(app::spriteBufferBytes(240, 180, 8) == 43200);
+  CHECK(app::spriteBufferBytes(240, 180, 16) == 86400);
+  CHECK(app::spriteBufferBytes(239, 180, 4) == 21600);
+  CHECK(app::spriteBufferBytes(0, 180, 4) == 0);
+  CHECK(app::spriteBufferBytes(240, 0, 4) == 0);
   CHECK(app::menuBoxYForIndex(0) == 56);
   CHECK(app::menuBoxYForIndex(2) == 132);
   const app::MotionRect emptyMenuRect = app::menuBodyDirtyRect(0);

@@ -65,8 +65,7 @@ inline bool sameInfoStructure(const InfoBodyData &left, const InfoBodyData &righ
 
   for (std::size_t index = 0; index < left.rowCount; ++index)
   {
-    if (left.rows[index].label != right.rows[index].label ||
-        left.rows[index].value != right.rows[index].value)
+    if (left.rows[index].label != right.rows[index].label)
     {
       return false;
     }

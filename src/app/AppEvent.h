@@ -97,6 +97,13 @@ struct AppEvent
     return event;
   }
 
+  static AppEvent refreshDue(uint32_t epoch, uint32_t nowMs)
+  {
+    AppEvent event = refreshDue(epoch);
+    event.monotonicMs = nowMs;
+    return event;
+  }
+
   static AppEvent pressStarted(uint32_t nowMs)
   {
     AppEvent event;

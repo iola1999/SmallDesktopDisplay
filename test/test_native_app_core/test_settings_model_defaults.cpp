@@ -26,6 +26,7 @@ TEST_CASE("ui session defaults to home route with no toast")
   CHECK(ui.holdFeedback.progressPercent == 0);
   CHECK(ui.toastVisible == false);
   CHECK(ui.toastDeadlineMs == 0);
+  CHECK(ui.nextDiagnosticsRefreshMs == 0);
   CHECK(ui.diagnostics.valid == false);
 
   CHECK(view.main.pageKind == app::OperationalPageKind::Home);

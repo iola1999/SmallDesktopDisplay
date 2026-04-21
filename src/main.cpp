@@ -237,9 +237,9 @@ void loop()
   const uint32_t nowEpoch = static_cast<uint32_t>(now());
   const app::AppRuntimeState &runtime = g_core.runtime();
   const app::UiSessionState &ui = g_core.ui();
-  if (app::shouldTriggerScheduledRefresh(runtime, ui, nowEpoch))
+  if (app::shouldTriggerScheduledRefresh(runtime, ui, nowEpoch, nowMs))
   {
-    dispatch(g_core.handle(app::AppEvent::refreshDue(nowEpoch)));
+    dispatch(g_core.handle(app::AppEvent::refreshDue(nowEpoch, nowMs)));
   }
 
   if (g_driver.hasPendingActions())

@@ -55,6 +55,7 @@ constexpr uint32_t kClockRefreshMs = 300;
 constexpr uint32_t kBannerRefreshMs = 2 * kTickMs;
 constexpr uint32_t kAnimateRefreshMs = kTickMs / 10;
 constexpr uint32_t kAnimateFrameIntervalMs = 100;
+constexpr uint32_t kDiagnosticsRefreshMs = kTickMs;
 
 // 天气 HTTP
 constexpr bool     kWeatherFetchEnabled = true;

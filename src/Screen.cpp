@@ -80,6 +80,8 @@ AdjustMotionState s_adjustMotion;
 TransientMotionState s_transientMotion;
 HomeMotionState s_homeMotion;
 app::OperationalPageKind s_motionPageKind = app::OperationalPageKind::Home;
+TFT_eSprite s_bodySprite(&display::tft);
+bool s_bodySpriteReady = false;
 
 constexpr int kHoldLineX = 14;
 constexpr int kHoldLineY = 4;
@@ -111,6 +113,183 @@ constexpr int kHomeWeatherPanelY = 154;
 constexpr int kHomeWeatherPanelWidth = 80;
 constexpr int kHomeWeatherPanelHeight = 74;
 constexpr int16_t kHomeWeatherPanelEntryOffsetX = 8;
+constexpr int kPageBodyWidth = 240;
+constexpr int kBodySpriteX = 14;
+constexpr int kBodySpriteWidth = 212;
+constexpr uint8_t kBodySpriteColorDepth = 4;
+constexpr uint32_t kBodySpriteSafetyMarginBytes = 4096;
+
+enum class BodyPaletteColor : uint8_t
+{
+  Bg = 0,
+  Dark = 1,
+  Yellow = 2,
+  White = 3,
+  Light = 4,
+};
+
+struct BodyRenderContext
+{
+  TFT_eSPI *canvas = nullptr;
+  bool indexed = false;
+  int16_t originX = 0;
+  int16_t originY = 0;
+  int16_t width = 0;
+  int16_t height = 0;
+};
+
+const uint16_t kBodySpritePalette[16] = {
+  app_config::kColorBg,
+  TFT_DARKGREY,
+  TFT_YELLOW,
+  TFT_WHITE,
+  TFT_LIGHTGREY,
+  app_config::kColorBg,
+  app_config::kColorBg,
+  app_config::kColorBg,
+  app_config::kColorBg,
+  app_config::kColorBg,
+  app_config::kColorBg,
+  app_config::kColorBg,
+  app_config::kColorBg,
+  app_config::kColorBg,
+  app_config::kColorBg,
+  app_config::kColorBg,
+};
+
+uint16_t bodyPaletteValue(BodyPaletteColor color, bool indexed)
+{
+  if (indexed)
+  {
+    return static_cast<uint16_t>(color);
+  }
+
+  switch (color)
+  {
+    case BodyPaletteColor::Bg:
+      return app_config::kColorBg;
+
+    case BodyPaletteColor::Dark:
+      return TFT_DARKGREY;
+
+    case BodyPaletteColor::Yellow:
+      return TFT_YELLOW;
+
+    case BodyPaletteColor::White:
+      return TFT_WHITE;
+
+    case BodyPaletteColor::Light:
+      return TFT_LIGHTGREY;
+  }
+
+  return app_config::kColorBg;
+}
+
+BodyRenderContext makeBodyDisplayContext()
+{
+  BodyRenderContext context;
+  context.canvas = &display::tft;
+  context.width = kPageBodyWidth;
+  context.height = kPageBodyHeight;
+  return context;
+}
+
+BodyRenderContext makeBodySpriteContext()
+{
+  BodyRenderContext context;
+  context.canvas = &s_bodySprite;
+  context.indexed = true;
+  context.originX = kBodySpriteX;
+  context.originY = kPageBodyY;
+  context.width = kBodySpriteWidth;
+  context.height = kPageBodyHeight;
+  return context;
+}
+
+int16_t bodyCanvasX(const BodyRenderContext &context, int16_t screenX)
+{
+  return static_cast<int16_t>(screenX - context.originX);
+}
+
+int16_t bodyCanvasY(const BodyRenderContext &context, int16_t screenY)
+{
+  return static_cast<int16_t>(screenY - context.originY);
+}
+
+uint32_t bodySpriteBytes()
+{
+  return app::spriteBufferBytes(kBodySpriteWidth, kPageBodyHeight, kBodySpriteColorDepth);
+}
+
+bool pageUsesBodySprite(app::OperationalPageKind pageKind)
+{
+  return pageKind == app::OperationalPageKind::Menu ||
+         pageKind == app::OperationalPageKind::Info;
+}
+
+void releaseBodySprite()
+{
+  if (s_bodySprite.created())
+  {
+    s_bodySprite.deleteSprite();
+  }
+  s_bodySpriteReady = false;
+}
+
+bool ensureBodySprite()
+{
+  if (s_bodySpriteReady && s_bodySprite.created())
+  {
+    return true;
+  }
+
+  const uint32_t requiredBytes = bodySpriteBytes();
+  const uint32_t maxBlockBytes = ESP.getMaxFreeBlockSize();
+  if (maxBlockBytes > 0 &&
+      maxBlockBytes < (requiredBytes + kBodySpriteSafetyMarginBytes))
+  {
+    return false;
+  }
+
+  s_bodySprite.setColorDepth(kBodySpriteColorDepth);
+  if (s_bodySprite.createSprite(kBodySpriteWidth, kPageBodyHeight) == nullptr)
+  {
+    releaseBodySprite();
+    return false;
+  }
+
+  s_bodySprite.createPalette(kBodySpritePalette, 16);
+  s_bodySpriteReady = true;
+  return true;
+}
+
+void clearBodySprite()
+{
+  if (!s_bodySpriteReady)
+  {
+    return;
+  }
+
+  s_bodySprite.setViewport(0, 0, kBodySpriteWidth, kPageBodyHeight, false);
+  s_bodySprite.fillSprite(bodyPaletteValue(BodyPaletteColor::Bg, true));
+  s_bodySprite.resetViewport();
+}
+
+void pushBodySpriteRect(const app::MotionRect &screenRect)
+{
+  if (!s_bodySpriteReady || app::motionRectEmpty(screenRect))
+  {
+    return;
+  }
+
+  s_bodySprite.pushSprite(
+    screenRect.x,
+    screenRect.y,
+    screenRect.x - kBodySpriteX,
+    screenRect.y - kPageBodyY,
+    screenRect.width,
+    screenRect.height);
+}
 
 String weekText()
 {
@@ -794,32 +973,37 @@ void fillDirtyRect(const app::MotionRect &dirtyRect)
   display::tft.fillRect(dirtyRect.x, dirtyRect.y, dirtyRect.width, dirtyRect.height, app_config::kColorBg);
 }
 
-void drawMenuItemsBase(const app::MenuBodyData &menu, const app::MotionRect *dirtyRect = nullptr)
+void drawMenuItemsBase(const app::MenuBodyData &menu,
+                       const BodyRenderContext &context,
+                       const app::MotionRect *dirtyRect = nullptr)
 {
   const std::size_t selectedIndex = selectedMenuIndex(menu);
 
   for (std::size_t index = 0; index < menu.itemCount; ++index)
   {
-    const int y = app::menuBoxYForIndex(index);
-    if (!rectIntersectsDirtyRect(16, y, 208, 30, dirtyRect))
+    const int x = bodyCanvasX(context, 16);
+    const int y = bodyCanvasY(context, app::menuBoxYForIndex(index));
+    if (!rectIntersectsDirtyRect(x, y, 208, 30, dirtyRect))
     {
       continue;
     }
 
-    display::tft.fillRoundRect(16, y, 208, 30, 6, TFT_BLACK);
-    display::tft.drawRoundRect(16, y, 208, 30, 6, TFT_DARKGREY);
+    context.canvas->fillRoundRect(x, y, 208, 30, 6, bodyPaletteValue(BodyPaletteColor::Bg, context.indexed));
+    context.canvas->drawRoundRect(x, y, 208, 30, 6, bodyPaletteValue(BodyPaletteColor::Dark, context.indexed));
     if (index == selectedIndex)
     {
       continue;
     }
 
-    display::tft.setTextDatum(ML_DATUM);
-    display::tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    display::tft.drawString(menu.items[index].label.c_str(), 28, y + 15, 2);
+    context.canvas->setTextDatum(ML_DATUM);
+    context.canvas->setTextColor(
+      bodyPaletteValue(BodyPaletteColor::White, context.indexed),
+      bodyPaletteValue(BodyPaletteColor::Bg, context.indexed));
+    context.canvas->drawString(menu.items[index].label.c_str(), bodyCanvasX(context, 28), y + 15, 2);
   }
 }
 
-void drawAnimatedMenuSelection(const app::MenuBodyData &menu)
+void drawAnimatedMenuSelection(const app::MenuBodyData &menu, const BodyRenderContext &context)
 {
   if (menu.itemCount == 0)
   {
@@ -834,13 +1018,17 @@ void drawAnimatedMenuSelection(const app::MenuBodyData &menu)
     return;
   }
 
-  display::tft.fillRoundRect(16, s_menuMotion.boxY.current, boxWidth, 30, 6, TFT_YELLOW);
-  display::tft.drawRoundRect(16, s_menuMotion.boxY.current, boxWidth, 30, 6, TFT_WHITE);
-  display::tft.setViewport(16, s_menuMotion.boxY.current, boxWidth, 30, false);
-  display::tft.setTextDatum(ML_DATUM);
-  display::tft.setTextColor(TFT_BLACK, TFT_YELLOW);
-  display::tft.drawString(menu.items[selectedIndex].label.c_str(), 28, s_menuMotion.boxY.current + 15, 2);
-  display::tft.resetViewport();
+  const int16_t boxY = bodyCanvasY(context, s_menuMotion.boxY.current);
+  const int16_t boxX = bodyCanvasX(context, 16);
+  context.canvas->fillRoundRect(boxX, boxY, boxWidth, 30, 6, bodyPaletteValue(BodyPaletteColor::Yellow, context.indexed));
+  context.canvas->drawRoundRect(boxX, boxY, boxWidth, 30, 6, bodyPaletteValue(BodyPaletteColor::White, context.indexed));
+  context.canvas->setViewport(boxX, boxY, boxWidth, 30, false);
+  context.canvas->setTextDatum(ML_DATUM);
+  context.canvas->setTextColor(
+    bodyPaletteValue(BodyPaletteColor::Bg, context.indexed),
+    bodyPaletteValue(BodyPaletteColor::Yellow, context.indexed));
+  context.canvas->drawString(menu.items[selectedIndex].label.c_str(), bodyCanvasX(context, 28), boxY + 15, 2);
+  context.canvas->resetViewport();
 }
 
 void drawToast(const app::ToastData &toast)
@@ -860,8 +1048,20 @@ void drawToast(const app::ToastData &toast)
 void drawMenuPage(const app::MenuBodyData &menu, const app::FooterHints &footer)
 {
   drawPageChrome(menu.title, footer);
-  drawMenuItemsBase(menu);
-  drawAnimatedMenuSelection(menu);
+  if (ensureBodySprite())
+  {
+    clearBodySprite();
+    const BodyRenderContext bodyContext = makeBodySpriteContext();
+    drawMenuItemsBase(menu, bodyContext);
+    drawAnimatedMenuSelection(menu, bodyContext);
+    s_bodySprite.pushSprite(kBodySpriteX, kPageBodyY);
+    releaseBodySprite();
+    return;
+  }
+
+  const BodyRenderContext bodyContext = makeBodyDisplayContext();
+  drawMenuItemsBase(menu, bodyContext);
+  drawAnimatedMenuSelection(menu, bodyContext);
 }
 
 void drawMenuBody(const app::MenuBodyData &menu, int16_t previousBoxY)
@@ -872,15 +1072,29 @@ void drawMenuBody(const app::MenuBodyData &menu, int16_t previousBoxY)
     return;
   }
 
+  if (ensureBodySprite())
+  {
+    clearBodySprite();
+    const BodyRenderContext bodyContext = makeBodySpriteContext();
+    drawMenuItemsBase(menu, bodyContext);
+    drawAnimatedMenuSelection(menu, bodyContext);
+    pushBodySpriteRect(app::menuSelectionDirtyRect(previousBoxY, s_menuMotion.boxY.current));
+    return;
+  }
+
   const app::MotionRect dirtyRect = app::menuSelectionDirtyRect(previousBoxY, s_menuMotion.boxY.current);
   fillDirtyRect(dirtyRect);
-  drawMenuItemsBase(menu, &dirtyRect);
-  drawAnimatedMenuSelection(menu);
+  const BodyRenderContext bodyContext = makeBodyDisplayContext();
+  drawMenuItemsBase(menu, bodyContext, &dirtyRect);
+  drawAnimatedMenuSelection(menu, bodyContext);
 }
 
-void drawAnimatedInfoRows(const app::InfoBodyData &info, const app::MotionRect *dirtyRect = nullptr)
+void drawAnimatedInfoRows(const app::InfoBodyData &info,
+                          const BodyRenderContext &context,
+                          const app::MotionRect *dirtyRect = nullptr)
 {
-  display::tft.setViewport(0, kPageBodyY, 240, kPageBodyHeight, false);
+  const int viewportTop = bodyCanvasY(context, kPageBodyY);
+  context.canvas->setViewport(0, viewportTop, context.width, context.height, false);
   const std::size_t selectedIndex =
     (s_infoMotion.selectedIndex < info.rowCount) ? s_infoMotion.selectedIndex : 0;
 
@@ -891,54 +1105,78 @@ void drawAnimatedInfoRows(const app::InfoBodyData &info, const app::MotionRect *
       continue;
     }
 
-    const int y = 58 + static_cast<int>(rowIndex * 36) - s_infoMotion.scrollOffset.current;
+    const int x = bodyCanvasX(context, 14);
+    const int y = bodyCanvasY(
+      context,
+      static_cast<int16_t>(58 + static_cast<int>(rowIndex * 36) - s_infoMotion.scrollOffset.current));
     const int top = y - 6;
     const int bottom = top + 30;
-    if (bottom < kPageBodyY || top > (kPageBodyY + kPageBodyHeight))
+    if (bottom < viewportTop || top > (viewportTop + kPageBodyHeight))
     {
       continue;
     }
-    if (!rectIntersectsDirtyRect(14, top, 212, 30, dirtyRect))
+    if (!rectIntersectsDirtyRect(x, top, 212, 30, dirtyRect))
     {
       continue;
     }
 
-    display::tft.fillRoundRect(14, top, 212, 30, 6, app_config::kColorBg);
-    display::tft.drawRoundRect(14, top, 212, 30, 6, TFT_DARKGREY);
-    display::tft.setTextDatum(TL_DATUM);
-    display::tft.setTextColor(TFT_WHITE, app_config::kColorBg);
-    display::tft.drawString(info.rows[rowIndex].label.c_str(), 20, y, 2);
-    display::tft.setTextDatum(TR_DATUM);
-    display::tft.setTextColor(TFT_YELLOW, app_config::kColorBg);
-    display::tft.drawString(info.rows[rowIndex].value.c_str(), 220, y, 2);
+    context.canvas->fillRoundRect(x, top, 212, 30, 6, bodyPaletteValue(BodyPaletteColor::Bg, context.indexed));
+    context.canvas->drawRoundRect(x, top, 212, 30, 6, bodyPaletteValue(BodyPaletteColor::Dark, context.indexed));
+    context.canvas->setTextDatum(TL_DATUM);
+    context.canvas->setTextColor(
+      bodyPaletteValue(BodyPaletteColor::White, context.indexed),
+      bodyPaletteValue(BodyPaletteColor::Bg, context.indexed));
+    context.canvas->drawString(info.rows[rowIndex].label.c_str(), bodyCanvasX(context, 20), y, 2);
+    context.canvas->setTextDatum(TR_DATUM);
+    context.canvas->setTextColor(
+      bodyPaletteValue(BodyPaletteColor::Yellow, context.indexed),
+      bodyPaletteValue(BodyPaletteColor::Bg, context.indexed));
+    context.canvas->drawString(info.rows[rowIndex].value.c_str(), bodyCanvasX(context, 220), y, 2);
   }
 
   if (info.rowCount > 0)
   {
-    if (!rectIntersectsDirtyRect(14, s_infoMotion.selectionY.current, 212, 30, dirtyRect))
+    const int16_t selectionX = bodyCanvasX(context, 14);
+    const int16_t selectionY = bodyCanvasY(context, s_infoMotion.selectionY.current);
+    if (!rectIntersectsDirtyRect(selectionX, selectionY, 212, 30, dirtyRect))
     {
-      display::tft.resetViewport();
+      context.canvas->resetViewport();
       return;
     }
 
-    const int y = s_infoMotion.selectionY.current + 6;
-    display::tft.fillRoundRect(14, s_infoMotion.selectionY.current, 212, 30, 6, TFT_DARKGREY);
-    display::tft.drawRoundRect(14, s_infoMotion.selectionY.current, 212, 30, 6, TFT_YELLOW);
-    display::tft.setTextDatum(TL_DATUM);
-    display::tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-    display::tft.drawString(info.rows[selectedIndex].label.c_str(), 20, y, 2);
-    display::tft.setTextDatum(TR_DATUM);
-    display::tft.setTextColor(TFT_WHITE, TFT_DARKGREY);
-    display::tft.drawString(info.rows[selectedIndex].value.c_str(), 220, y, 2);
+    const int y = selectionY + 6;
+    context.canvas->fillRoundRect(selectionX, selectionY, 212, 30, 6, bodyPaletteValue(BodyPaletteColor::Dark, context.indexed));
+    context.canvas->drawRoundRect(selectionX, selectionY, 212, 30, 6, bodyPaletteValue(BodyPaletteColor::Yellow, context.indexed));
+    context.canvas->setTextDatum(TL_DATUM);
+    context.canvas->setTextColor(
+      bodyPaletteValue(BodyPaletteColor::White, context.indexed),
+      bodyPaletteValue(BodyPaletteColor::Dark, context.indexed));
+    context.canvas->drawString(info.rows[selectedIndex].label.c_str(), bodyCanvasX(context, 20), y, 2);
+    context.canvas->setTextDatum(TR_DATUM);
+    context.canvas->setTextColor(
+      bodyPaletteValue(BodyPaletteColor::White, context.indexed),
+      bodyPaletteValue(BodyPaletteColor::Dark, context.indexed));
+    context.canvas->drawString(info.rows[selectedIndex].value.c_str(), bodyCanvasX(context, 220), y, 2);
   }
 
-  display::tft.resetViewport();
+  context.canvas->resetViewport();
 }
 
 void drawInfoPage(const app::InfoBodyData &info, const app::FooterHints &footer)
 {
   drawPageChrome(info.title, footer);
-  drawAnimatedInfoRows(info);
+  if (ensureBodySprite())
+  {
+    clearBodySprite();
+    const BodyRenderContext bodyContext = makeBodySpriteContext();
+    drawAnimatedInfoRows(info, bodyContext);
+    s_bodySprite.pushSprite(kBodySpriteX, kPageBodyY);
+    releaseBodySprite();
+    return;
+  }
+
+  const BodyRenderContext bodyContext = makeBodyDisplayContext();
+  drawAnimatedInfoRows(info, bodyContext);
 }
 
 void drawInfoBody(const app::InfoBodyData &info,
@@ -951,13 +1189,27 @@ void drawInfoBody(const app::InfoBodyData &info,
     return;
   }
 
+  if (ensureBodySprite())
+  {
+    clearBodySprite();
+    const BodyRenderContext bodyContext = makeBodySpriteContext();
+    drawAnimatedInfoRows(info, bodyContext);
+    pushBodySpriteRect(app::infoBodyDirtyRect(
+      previousScrollOffset,
+      s_infoMotion.scrollOffset.current,
+      previousSelectionY,
+      s_infoMotion.selectionY.current));
+    return;
+  }
+
   const app::MotionRect dirtyRect = app::infoBodyDirtyRect(
     previousScrollOffset,
     s_infoMotion.scrollOffset.current,
     previousSelectionY,
     s_infoMotion.selectionY.current);
   fillDirtyRect(dirtyRect);
-  drawAnimatedInfoRows(info, &dirtyRect);
+  const BodyRenderContext bodyContext = makeBodyDisplayContext();
+  drawAnimatedInfoRows(info, bodyContext, &dirtyRect);
 }
 
 void drawAdjustBodyContent(const app::AdjustBodyData &adjust)
@@ -1057,6 +1309,7 @@ void invalidateHomeMotion()
 void drawSplashPage(const app::SplashViewData &view)
 {
   s_mainPageActive = false;
+  releaseBodySprite();
   display::clear();
   clearHoldLine();
   display::clk.setColorDepth(8);
@@ -1074,6 +1327,7 @@ void drawSplashPage(const app::SplashViewData &view)
 void drawErrorPage(const app::ErrorViewData &view)
 {
   s_mainPageActive = false;
+  releaseBodySprite();
   display::clear();
   clearHoldLine();
   display::clk.setColorDepth(8);
@@ -1219,6 +1473,11 @@ void syncMotionTargets(const app::MainViewData &view, app::RenderRegion region)
     s_homeMotion.initialized = false;
   }
 
+  if (!pageUsesBodySprite(view.pageKind))
+  {
+    releaseBodySprite();
+  }
+
   s_motionPageKind = view.pageKind;
 }
 
@@ -1305,6 +1564,12 @@ void refreshMotion(const app::MainViewData &view, uint32_t nowMs)
   else if (s_gestureFeedbackDrawn)
   {
     refreshGestureFeedback(nowMs);
+  }
+
+  if ((view.pageKind == app::OperationalPageKind::Menu && !s_menuMotion.active) ||
+      (view.pageKind == app::OperationalPageKind::Info && !s_infoMotion.active))
+  {
+    releaseBodySprite();
   }
 }
 

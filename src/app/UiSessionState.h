@@ -38,6 +38,7 @@ struct UiSessionState
   uint8_t selectedBrightnessPresetIndex = 0;
   bool toastVisible = false;
   uint32_t toastDeadlineMs = 0;
+  uint32_t nextDiagnosticsRefreshMs = 0;
   DiagnosticsSnapshot diagnostics;
   InfoPageState infoPage;
   HoldFeedbackState holdFeedback;

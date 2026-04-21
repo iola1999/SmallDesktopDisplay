@@ -260,6 +260,7 @@ void AppCore::openSettingsMenu()
 {
   ui_.route = UiRoute::SettingsMenu;
   ui_.selectedMenuIndex = 0;
+  ui_.nextDiagnosticsRefreshMs = 0;
   resetInfoPage();
   clearToast();
   refreshOperationalView();
@@ -269,6 +270,7 @@ void AppCore::openRebootConfirmMenu()
 {
   ui_.route = UiRoute::RebootConfirmMenu;
   ui_.selectedMenuIndex = 0;
+  ui_.nextDiagnosticsRefreshMs = 0;
   resetInfoPage();
   clearToast();
   refreshOperationalView();
@@ -299,6 +301,15 @@ ActionList AppCore::handle(const AppEvent &event)
 
     case AppEventType::RefreshDue:
       if (runtime_.mode == AppMode::Operational &&
+          ui_.route == UiRoute::DiagnosticsPage &&
+          !runtime_.backgroundSyncInProgress &&
+          ui_.nextDiagnosticsRefreshMs > 0 &&
+          event.monotonicMs >= ui_.nextDiagnosticsRefreshMs)
+      {
+        ui_.nextDiagnosticsRefreshMs = event.monotonicMs + app_config::kDiagnosticsRefreshMs;
+        actions.push(AppActionType::CaptureDiagnosticsSnapshot);
+      }
+      else if (runtime_.mode == AppMode::Operational &&
           runtime_.backgroundSyncInProgress &&
           runtime_.syncPhase == SyncPhase::FetchingWeather &&
           runtime_.nextRefreshDueEpoch > 0 &&
@@ -531,6 +542,7 @@ ActionList AppCore::handle(const AppEvent &event)
       {
         if (ui_.selectedMenuIndex == 0)
         {
+          ui_.nextDiagnosticsRefreshMs = event.monotonicMs + app_config::kDiagnosticsRefreshMs;
           actions.push(AppActionType::CaptureDiagnosticsSnapshot);
         }
         else if (ui_.selectedMenuIndex == 1)
@@ -583,12 +595,18 @@ ActionList AppCore::handle(const AppEvent &event)
       break;
 
     case AppEventType::DiagnosticsSnapshotCaptured:
+    {
+      const bool preserveInfoPage = (ui_.route == UiRoute::DiagnosticsPage);
       ui_.diagnostics = event.diagnostics;
       ui_.route = UiRoute::DiagnosticsPage;
-      resetInfoPage();
+      if (!preserveInfoPage)
+      {
+        resetInfoPage();
+      }
       refreshOperationalView();
       actions.push(AppActionType::RenderRequested);
       break;
+    }
   }
 
   return actions;

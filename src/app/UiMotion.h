@@ -35,6 +35,34 @@ inline bool motionRectsIntersect(const MotionRect &left, const MotionRect &right
          right.y < static_cast<int16_t>(left.y + left.height);
 }
 
+inline uint32_t spriteBufferBytes(int16_t width, int16_t height, uint8_t colorDepth)
+{
+  if (width <= 0 || height <= 0)
+  {
+    return 0;
+  }
+
+  uint32_t storageWidth = static_cast<uint32_t>(width);
+  if (colorDepth > 8)
+  {
+    return storageWidth * static_cast<uint32_t>(height) * 2U;
+  }
+
+  if (colorDepth > 4)
+  {
+    return storageWidth * static_cast<uint32_t>(height);
+  }
+
+  if (colorDepth > 1)
+  {
+    storageWidth = (storageWidth + 1U) & ~1U;
+    return (storageWidth * static_cast<uint32_t>(height)) >> 1;
+  }
+
+  storageWidth = (storageWidth + 7U) & ~7U;
+  return (storageWidth * static_cast<uint32_t>(height)) >> 3;
+}
+
 struct MotionValue
 {
   int16_t current = 0;

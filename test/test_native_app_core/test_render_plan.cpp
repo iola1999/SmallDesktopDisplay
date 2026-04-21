@@ -88,6 +88,17 @@ TEST_CASE("diagnostics scroll only invalidates the info body")
   CHECK(plan.region == app::RenderRegion::InfoBody);
 }
 
+TEST_CASE("diagnostics value updates only invalidate the info body")
+{
+  const app::AppViewModel previous = makeInfoView(0, 0);
+  app::AppViewModel next = previous;
+  next.main.info.rows[3].value = "12000";
+
+  const app::RenderPlan plan = app::planRender(true, previous, next);
+
+  CHECK(plan.region == app::RenderRegion::InfoBody);
+}
+
 TEST_CASE("brightness value change only invalidates the adjust body")
 {
   const app::AppViewModel previous = makeAdjustView(30);
