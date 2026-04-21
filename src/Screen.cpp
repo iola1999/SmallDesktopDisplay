@@ -765,13 +765,46 @@ bool tickAdjustMotion()
   return movedValue || movedFill;
 }
 
-void drawMenuItemsBase(const app::MenuBodyData &menu)
+bool rectIntersectsDirtyRect(int16_t x,
+                             int16_t y,
+                             int16_t width,
+                             int16_t height,
+                             const app::MotionRect *dirtyRect)
+{
+  if (dirtyRect == nullptr)
+  {
+    return true;
+  }
+
+  app::MotionRect rect;
+  rect.x = x;
+  rect.y = y;
+  rect.width = width;
+  rect.height = height;
+  return app::motionRectsIntersect(rect, *dirtyRect);
+}
+
+void fillDirtyRect(const app::MotionRect &dirtyRect)
+{
+  if (app::motionRectEmpty(dirtyRect))
+  {
+    return;
+  }
+
+  display::tft.fillRect(dirtyRect.x, dirtyRect.y, dirtyRect.width, dirtyRect.height, app_config::kColorBg);
+}
+
+void drawMenuItemsBase(const app::MenuBodyData &menu, const app::MotionRect *dirtyRect = nullptr)
 {
   const std::size_t selectedIndex = selectedMenuIndex(menu);
 
   for (std::size_t index = 0; index < menu.itemCount; ++index)
   {
     const int y = app::menuBoxYForIndex(index);
+    if (!rectIntersectsDirtyRect(16, y, 208, 30, dirtyRect))
+    {
+      continue;
+    }
 
     display::tft.fillRoundRect(16, y, 208, 30, 6, TFT_BLACK);
     display::tft.drawRoundRect(16, y, 208, 30, 6, TFT_DARKGREY);
@@ -831,14 +864,21 @@ void drawMenuPage(const app::MenuBodyData &menu, const app::FooterHints &footer)
   drawAnimatedMenuSelection(menu);
 }
 
-void drawMenuBody(const app::MenuBodyData &menu)
+void drawMenuBody(const app::MenuBodyData &menu, int16_t previousBoxY)
 {
-  clearPageBody();
-  drawMenuItemsBase(menu);
+  if (menu.itemCount == 0)
+  {
+    clearPageBody();
+    return;
+  }
+
+  const app::MotionRect dirtyRect = app::menuSelectionDirtyRect(previousBoxY, s_menuMotion.boxY.current);
+  fillDirtyRect(dirtyRect);
+  drawMenuItemsBase(menu, &dirtyRect);
   drawAnimatedMenuSelection(menu);
 }
 
-void drawAnimatedInfoRows(const app::InfoBodyData &info)
+void drawAnimatedInfoRows(const app::InfoBodyData &info, const app::MotionRect *dirtyRect = nullptr)
 {
   display::tft.setViewport(0, kPageBodyY, 240, kPageBodyHeight, false);
   const std::size_t selectedIndex =
@@ -858,6 +898,10 @@ void drawAnimatedInfoRows(const app::InfoBodyData &info)
     {
       continue;
     }
+    if (!rectIntersectsDirtyRect(14, top, 212, 30, dirtyRect))
+    {
+      continue;
+    }
 
     display::tft.fillRoundRect(14, top, 212, 30, 6, app_config::kColorBg);
     display::tft.drawRoundRect(14, top, 212, 30, 6, TFT_DARKGREY);
@@ -871,6 +915,12 @@ void drawAnimatedInfoRows(const app::InfoBodyData &info)
 
   if (info.rowCount > 0)
   {
+    if (!rectIntersectsDirtyRect(14, s_infoMotion.selectionY.current, 212, 30, dirtyRect))
+    {
+      display::tft.resetViewport();
+      return;
+    }
+
     const int y = s_infoMotion.selectionY.current + 6;
     display::tft.fillRoundRect(14, s_infoMotion.selectionY.current, 212, 30, 6, TFT_DARKGREY);
     display::tft.drawRoundRect(14, s_infoMotion.selectionY.current, 212, 30, 6, TFT_YELLOW);
@@ -891,10 +941,23 @@ void drawInfoPage(const app::InfoBodyData &info, const app::FooterHints &footer)
   drawAnimatedInfoRows(info);
 }
 
-void drawInfoBody(const app::InfoBodyData &info)
+void drawInfoBody(const app::InfoBodyData &info,
+                  int16_t previousScrollOffset,
+                  int16_t previousSelectionY)
 {
-  clearPageBody();
-  drawAnimatedInfoRows(info);
+  if (info.rowCount == 0)
+  {
+    clearPageBody();
+    return;
+  }
+
+  const app::MotionRect dirtyRect = app::infoBodyDirtyRect(
+    previousScrollOffset,
+    s_infoMotion.scrollOffset.current,
+    previousSelectionY,
+    s_infoMotion.selectionY.current);
+  fillDirtyRect(dirtyRect);
+  drawAnimatedInfoRows(info, &dirtyRect);
 }
 
 void drawAdjustBodyContent(const app::AdjustBodyData &adjust)
@@ -1077,14 +1140,14 @@ void drawMainPageRegion(const app::MainViewData &view, app::RenderRegion region)
     case app::RenderRegion::MenuBody:
       if (view.pageKind == app::OperationalPageKind::Menu)
       {
-        drawMenuBody(view.menu);
+        drawMenuBody(view.menu, s_menuMotion.boxY.current);
       }
       break;
 
     case app::RenderRegion::InfoBody:
       if (view.pageKind == app::OperationalPageKind::Info)
       {
-        drawInfoBody(view.info);
+        drawInfoBody(view.info, s_infoMotion.scrollOffset.current, s_infoMotion.selectionY.current);
       }
       break;
 
@@ -1166,16 +1229,25 @@ void refreshMotion(const app::MainViewData &view, uint32_t nowMs)
   switch (view.pageKind)
   {
     case app::OperationalPageKind::Menu:
-      if (s_menuMotion.active && tickMenuMotion(view.menu))
+      if (s_menuMotion.active)
       {
-        drawMainPageRegion(view, app::RenderRegion::MenuBody);
+        const int16_t previousBoxY = s_menuMotion.boxY.current;
+        if (tickMenuMotion(view.menu))
+        {
+          drawMenuBody(view.menu, previousBoxY);
+        }
       }
       break;
 
     case app::OperationalPageKind::Info:
-      if (s_infoMotion.active && tickInfoMotion(view.info))
+      if (s_infoMotion.active)
       {
-        drawMainPageRegion(view, app::RenderRegion::InfoBody);
+        const int16_t previousScrollOffset = s_infoMotion.scrollOffset.current;
+        const int16_t previousSelectionY = s_infoMotion.selectionY.current;
+        if (tickInfoMotion(view.info))
+        {
+          drawInfoBody(view.info, previousScrollOffset, previousSelectionY);
+        }
       }
       break;
 
