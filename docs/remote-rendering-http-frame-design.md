@@ -238,8 +238,9 @@ The local status/error screen now also includes the device IP when connected, so
 the setup page can be reached from another LAN device without opening serial
 monitor.
 
-Hold progress is intentionally local. The device uses press lifecycle events to
-draw a 5px progress bar only after the double-click window has passed, then
+Hold progress is intentionally local. The remote renderer does not draw any
+progress-bar-like navigation accent. The device uses press lifecycle events to
+draw a 5px progress bar only after the press has lasted roughly 400ms, then
 POSTs `long_press` when the long-press threshold is armed. This keeps tactile
 feedback independent from HTTP latency while preserving remote ownership of page
 state.

@@ -10,7 +10,6 @@ from app.protocol import FrameRect, rgb888_to_rgb565_bytes
 from app.ui_state import (
     SETTINGS_ITEMS,
     DeviceUiState,
-    ease_out_cubic,
 )
 
 SCREEN_WIDTH = 240
@@ -225,23 +224,6 @@ def _paste_animated_page(
     progress: float,
 ) -> None:
     target.paste(page, (0, 0))
-    if not state.animation or progress >= 1.0:
-        return
-
-    eased = ease_out_cubic(progress)
-    draw = ImageDraw.Draw(target)
-    width = max(10, int(204 * eased))
-    if state.animation in {"settings_select", "detail_pulse", "home_tap"}:
-        y = 224
-        color = (95, 216, 190)
-        fill = (15, 42, 44)
-    else:
-        y = 11
-        color = (118, 229, 199)
-        fill = (14, 39, 42)
-
-    draw.rounded_rectangle((18, y, 222, y + 5), radius=3, fill=fill)
-    draw.rounded_rectangle((18, y, 18 + width, y + 5), radius=3, fill=color)
 
 
 def compute_dirty_rects(

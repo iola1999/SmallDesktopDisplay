@@ -35,7 +35,8 @@ Update it whenever behavior, architecture, or interaction details change.
 - Changed navigation motion to a bounded accent-bar animation instead of full-screen sliding, keeping follow-up animation frames around a few KB instead of nearly full-screen payloads.
 - Moved hold-progress feedback back onto the device as a tiny local overlay, so press-and-hold feedback starts immediately and does not depend on HTTP round trips.
 - Changed long-press routing to POST `long_press` on `LongPressArmed`, with the later `LongPress` event only acting as a fallback, so Settings can open as soon as the threshold is reached.
-- Delayed the local hold-progress overlay until the double-click window has passed, avoiding a visual flash on ordinary taps.
+- Removed the remote renderer's progress-bar-like navigation accent so hold feedback has a single source of truth on the device.
+- Delayed the local hold-progress overlay until roughly 400ms into the press, avoiding a visual flash on ordinary taps and slower single clicks.
 - Fixed the Settings -> Home route so it diffs the whole page transition instead of treating the destination Home page as a footer-only update.
 - Replaced large dirty bounding boxes with interleaved `240x8` tile strips for big page changes, reducing the visible top-to-bottom scan effect even when the total changed payload is still large.
 - Added server and device frame logs for large/full updates, including frame id, rect count, payload size, and device draw time.

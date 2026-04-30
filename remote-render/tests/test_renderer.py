@@ -10,6 +10,7 @@ from app.renderer import (
     render_device_canvas,
     render_device_view,
 )
+from app.ui_state import DeviceUiState
 
 
 def test_renderer_returns_full_screen_rgb565_frame():
@@ -63,3 +64,23 @@ def test_renderer_splits_large_dirty_area_into_small_strips():
 
     assert len(rects) > 1
     assert max(rect.height for rect in rects) <= 8
+
+
+def test_renderer_does_not_draw_remote_progress_bar_for_navigation_animation():
+    current_time = datetime(2026, 5, 1, 12, 34, 56, tzinfo=ZoneInfo("Asia/Shanghai"))
+    animated = render_device_canvas(
+        current_time=current_time,
+        device_id="desk-01",
+        button_count=0,
+        ui_state=DeviceUiState(page="settings", animation="enter_settings"),
+        animation_progress=0.0,
+    )
+    static = render_device_canvas(
+        current_time=current_time,
+        device_id="desk-01",
+        button_count=0,
+        ui_state=DeviceUiState(page="settings"),
+        animation_progress=1.0,
+    )
+
+    assert animated.tobytes() == static.tobytes()
