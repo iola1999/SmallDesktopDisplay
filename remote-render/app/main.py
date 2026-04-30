@@ -22,6 +22,10 @@ class InputEvent(BaseModel):
 class DeviceStatus(BaseModel):
     brightness: int = Field(ge=0, le=100)
     uptime_ms: int = Field(ge=0)
+    heap_free: int = Field(default=0, ge=0)
+    heap_max_block: int = Field(default=0, ge=0)
+    heap_fragmentation: int = Field(default=0, ge=0, le=100)
+    wifi_rssi: int = Field(default=0, ge=-127, le=0)
 
 
 @app.get("/api/v1/health")
@@ -91,5 +95,9 @@ def post_status(device_id: str, status: DeviceStatus) -> Response:
         device_id=device_id,
         brightness=status.brightness,
         uptime_ms=status.uptime_ms,
+        heap_free=status.heap_free,
+        heap_max_block=status.heap_max_block,
+        heap_fragmentation=status.heap_fragmentation,
+        wifi_rssi=status.wifi_rssi,
     )
     return Response(status_code=202)

@@ -69,6 +69,15 @@ Current remote UI gesture mapping:
 The firmware only recognizes gestures and posts them; all page routing lives in
 the Docker service.
 
+Current Settings items:
+
+- `Brightness`: local backlight PWM, changed through the command channel.
+- `Device`: read-only client diagnostics reported by the ESP8266, including
+  heap free bytes, max free heap block, heap fragmentation, WiFi RSSI, and
+  uptime.
+- `Renderer`: read-only transport/protocol summary for the remote frame link.
+- `About`: device id and remote display protocol summary.
+
 Brightness uses a separate command channel because it is a local hardware side
 effect, not pixels. The current command response is JSON:
 
@@ -92,14 +101,22 @@ periodically while connected:
 ```json
 {
   "brightness": 70,
-  "uptime_ms": 123456
+  "uptime_ms": 123456,
+  "heap_free": 34560,
+  "heap_max_block": 32000,
+  "heap_fragmentation": 8,
+  "wifi_rssi": -48
 }
 ```
 
 This status payload lets the remote renderer update its per-device brightness
 state from the device's persisted EEPROM value. If the Docker service restarts,
 the device's next status sync makes the Settings UI converge back to the actual
-hardware brightness.
+hardware brightness. The heap and RSSI fields are sampled on the ESP8266
+client with `ESP.getFreeHeap()`, `ESP.getMaxFreeBlockSize()`,
+`ESP.getHeapFragmentation()`, and `WiFi.RSSI()`; they are not Docker-side
+resource metrics. The API still accepts older status payloads that only contain
+`brightness` and `uptime_ms`, but new firmware sends the full diagnostic set.
 
 Input de-duplication uses both `seq` and `uptime_ms`. A higher `seq` is accepted
 normally. If `seq` moves backwards while `uptime_ms` also moves backwards, the

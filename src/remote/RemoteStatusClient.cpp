@@ -25,10 +25,12 @@ String joinUrl(const String &baseUrl, const String &path)
 } // namespace
 
 bool RemoteStatusClient::postStatus(const String &baseUrl, const String &deviceId, uint8_t brightness,
-                                    uint32_t uptimeMs)
+                                    uint32_t uptimeMs, uint32_t heapFree, uint32_t heapMaxBlock,
+                                    uint8_t heapFragmentation, int16_t wifiRssi)
 {
-  char body[64];
-  if (!buildDeviceStatusPayload(brightness, uptimeMs, body, sizeof(body)))
+  char body[160];
+  if (!buildDeviceStatusPayload(brightness, uptimeMs, heapFree, heapMaxBlock, heapFragmentation, wifiRssi, body,
+                                sizeof(body)))
   {
     return false;
   }

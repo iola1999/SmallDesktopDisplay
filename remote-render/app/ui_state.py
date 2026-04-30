@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 PageName = Literal["home", "settings", "detail"]
 
-SETTINGS_ITEMS = ("Brightness", "Theme", "Device", "Renderer", "About")
+SETTINGS_ITEMS = ("Brightness", "Device", "Renderer", "About")
 BRIGHTNESS_OPTIONS = (20, 40, 50, 60, 80, 100)
 
 
@@ -17,12 +17,22 @@ class DeviceCommand:
 
 
 @dataclass
+class DeviceDiagnostics:
+    heap_free: int = 0
+    heap_max_block: int = 0
+    heap_fragmentation: int = 0
+    wifi_rssi: int = 0
+    uptime_ms: int = 0
+
+
+@dataclass
 class DeviceUiState:
     page: PageName = "home"
     selected_index: int = 0
     detail_index: int = 0
     brightness: int = 50
     pending_brightness: int = 50
+    diagnostics: DeviceDiagnostics = field(default_factory=DeviceDiagnostics)
     animation: str = ""
     animation_started_at: float = 0.0
     animation_duration: float = 0.32

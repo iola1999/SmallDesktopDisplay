@@ -178,17 +178,27 @@ class DeviceRegistry:
         *,
         brightness: int,
         uptime_ms: int,
+        heap_free: int = 0,
+        heap_max_block: int = 0,
+        heap_fragmentation: int = 0,
+        wifi_rssi: int = 0,
     ) -> None:
         with self._condition:
             state = self._ensure_device_locked(device_id)
             state.ui.brightness = brightness
             state.ui.pending_brightness = brightness
+            state.ui.diagnostics.heap_free = heap_free
+            state.ui.diagnostics.heap_max_block = heap_max_block
+            state.ui.diagnostics.heap_fragmentation = heap_fragmentation
+            state.ui.diagnostics.wifi_rssi = wifi_rssi
+            state.ui.diagnostics.uptime_ms = uptime_ms
             state.last_input_uptime_ms = max(state.last_input_uptime_ms, uptime_ms)
             self._render_locked(state, full_frame=False)
             self._condition.notify_all()
             print(
                 "[RemoteStatus] "
-                f"device={device_id} brightness={brightness} uptime_ms={uptime_ms}",
+                f"device={device_id} brightness={brightness} uptime_ms={uptime_ms} "
+                f"heap={heap_free} max_block={heap_max_block} frag={heap_fragmentation} rssi={wifi_rssi}",
                 flush=True,
             )
 

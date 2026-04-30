@@ -98,7 +98,7 @@ def render_device_canvas(
     if state.page == "settings":
         page = _render_settings_page(state, animation_progress=animation_progress)
     elif state.page == "detail":
-        page = _render_detail_page(state, animation_progress=animation_progress)
+        page = _render_detail_page(state, device_id=device_id, animation_progress=animation_progress)
     else:
         page = _render_home_page(
             current_time=current_time,
@@ -205,13 +205,24 @@ def _render_settings_page(state: DeviceUiState, *, animation_progress: float) ->
         if item == "Brightness":
             value = f"{state.brightness}%"
             draw.text((186, y + 6 + row_shift), value, fill=text_fill, font=font_small)
+        elif item == "Device" and state.diagnostics.heap_free > 0:
+            value = _format_kb(state.diagnostics.heap_free)
+            draw.text((178, y + 6 + row_shift), value, fill=text_fill, font=font_small)
+        elif item == "Renderer":
+            draw.text((177, y + 6 + row_shift), "HTTP", fill=text_fill, font=font_small)
 
     return image
 
 
-def _render_detail_page(state: DeviceUiState, *, animation_progress: float) -> Image.Image:
+def _render_detail_page(state: DeviceUiState, *, device_id: str, animation_progress: float) -> Image.Image:
     if state.detail_index == 0:
         return _render_brightness_detail_page(state, animation_progress=animation_progress)
+    if SETTINGS_ITEMS[state.detail_index % len(SETTINGS_ITEMS)] == "Device":
+        return _render_device_detail_page(state, animation_progress=animation_progress)
+    if SETTINGS_ITEMS[state.detail_index % len(SETTINGS_ITEMS)] == "Renderer":
+        return _render_renderer_detail_page(animation_progress=animation_progress)
+    if SETTINGS_ITEMS[state.detail_index % len(SETTINGS_ITEMS)] == "About":
+        return _render_about_detail_page(device_id=device_id, animation_progress=animation_progress)
 
     image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
     draw = ImageDraw.Draw(image)
@@ -237,6 +248,93 @@ def _render_detail_page(state: DeviceUiState, *, animation_progress: float) -> I
         fill=(214, 248, 236),
         font=font_small,
     )
+    return image
+
+
+def _render_device_detail_page(state: DeviceUiState, *, animation_progress: float) -> Image.Image:
+    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
+    draw = ImageDraw.Draw(image)
+    font_title = _load_font(22)
+    font_label = _load_font(13)
+    font_value = _load_font(16)
+    pulse = _pulse(animation_progress) if state.animation == "detail_pulse" else 0.0
+
+    diagnostics = state.diagnostics
+    draw.rounded_rectangle((8, 8, 232, 232), radius=14, outline=(50, 62, 72), width=2)
+    draw.text((20, 18), "Device", fill=(238, 246, 236), font=font_title)
+    draw.text((20, 49), "client diagnostics", fill=(100, 155, 170), font=font_label)
+
+    rows = [
+        ("Free", _format_kb(diagnostics.heap_free)),
+        ("Block", _format_kb(diagnostics.heap_max_block)),
+        ("Frag", f"{diagnostics.heap_fragmentation}%"),
+        ("RSSI", f"{diagnostics.wifi_rssi} dBm" if diagnostics.wifi_rssi else "waiting"),
+        ("Uptime", _format_uptime(diagnostics.uptime_ms)),
+    ]
+    for index, (label, value) in enumerate(rows):
+        y = 78 + index * 24
+        fill = _mix_color((17, 24, 30), (20, 42, 43), pulse * 0.35 if index == 0 else 0.0)
+        draw.rounded_rectangle((18, y - 3, 222, y + 18), radius=7, fill=fill)
+        draw.text((28, y), label, fill=(112, 150, 158), font=font_label)
+        draw.text((94, y - 2), value, fill=(224, 240, 232), font=font_value)
+
+    _draw_detail_back_hint(draw, font_label)
+    return image
+
+
+def _render_renderer_detail_page(*, animation_progress: float) -> Image.Image:
+    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
+    draw = ImageDraw.Draw(image)
+    font_title = _load_font(22)
+    font_label = _load_font(13)
+    font_value = _load_font(16)
+    pulse = _pulse(animation_progress) if animation_progress < 1.0 else 0.0
+
+    draw.rounded_rectangle((8, 8, 232, 232), radius=14, outline=(50, 62, 72), width=2)
+    draw.text((20, 18), "Renderer", fill=(238, 246, 236), font=font_title)
+    draw.text((20, 49), "remote frame link", fill=(100, 155, 170), font=font_label)
+
+    rows = [
+        ("Mode", "HTTP keep-alive"),
+        ("Poll", "50 ms"),
+        ("Wait", "10 ms"),
+        ("Frames", "SDD1 diff"),
+    ]
+    for index, (label, value) in enumerate(rows):
+        y = 84 + index * 28
+        draw.rounded_rectangle((18, y - 4, 222, y + 20), radius=8, fill=_mix_color((17, 24, 30), (20, 42, 43), pulse * 0.2))
+        draw.text((28, y), label, fill=(112, 150, 158), font=font_label)
+        draw.text((92, y - 2), value, fill=(224, 240, 232), font=font_value)
+
+    _draw_detail_back_hint(draw, font_label)
+    return image
+
+
+def _render_about_detail_page(*, device_id: str, animation_progress: float) -> Image.Image:
+    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
+    draw = ImageDraw.Draw(image)
+    font_title = _load_font(22)
+    font_label = _load_font(13)
+    font_value = _load_font(16)
+    pulse = _pulse(animation_progress) if animation_progress < 1.0 else 0.0
+
+    draw.rounded_rectangle((8, 8, 232, 232), radius=14, outline=(50, 62, 72), width=2)
+    draw.text((20, 18), "About", fill=(238, 246, 236), font=font_title)
+    draw.text((20, 49), "SmallDesktopDisplay", fill=(100, 155, 170), font=font_label)
+
+    rows = [
+        ("Device", device_id[:14]),
+        ("UI", "remote-render"),
+        ("Build", "keep-alive"),
+        ("Protocol", "SDD1"),
+    ]
+    for index, (label, value) in enumerate(rows):
+        y = 84 + index * 28
+        draw.rounded_rectangle((18, y - 4, 222, y + 20), radius=8, fill=_mix_color((17, 24, 30), (20, 42, 43), pulse * 0.2))
+        draw.text((28, y), label, fill=(112, 150, 158), font=font_label)
+        draw.text((92, y - 2), value, fill=(224, 240, 232), font=font_value)
+
+    _draw_detail_back_hint(draw, font_label)
     return image
 
 
@@ -280,12 +378,7 @@ def _render_brightness_detail_page(state: DeviceUiState, *, animation_progress: 
     draw.text((34, 184), status, fill=(142, 178, 180), font=font_body)
 
     hint = "double tap back"
-    draw.text(
-        ((SCREEN_WIDTH - _text_width(draw, hint, font_small)) // 2, 210),
-        hint,
-        fill=(160, 190, 194),
-        font=font_small,
-    )
+    draw.text(((SCREEN_WIDTH - _text_width(draw, hint, font_small)) // 2, 210), hint, fill=(160, 190, 194), font=font_small)
     return image
 
 
@@ -383,6 +476,35 @@ def _interleave_rect_rows(rects: list[tuple[int, int, int, int]]) -> list[tuple[
 def _mix_color(a: tuple[int, int, int], b: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
     amount = max(0.0, min(1.0, amount))
     return tuple(int(round(start + (end - start) * amount)) for start, end in zip(a, b))
+
+
+def _format_kb(bytes_value: int) -> str:
+    if bytes_value <= 0:
+        return "waiting"
+    return f"{bytes_value // 1024} KB"
+
+
+def _format_uptime(uptime_ms: int) -> str:
+    if uptime_ms <= 0:
+        return "waiting"
+    seconds = uptime_ms // 1000
+    minutes = seconds // 60
+    hours = minutes // 60
+    if hours > 0:
+        return f"{hours}h {minutes % 60}m"
+    if minutes > 0:
+        return f"{minutes}m {seconds % 60}s"
+    return f"{seconds}s"
+
+
+def _draw_detail_back_hint(draw: ImageDraw.ImageDraw, font: ImageFont.FreeTypeFont | ImageFont.ImageFont) -> None:
+    hint = "double tap back"
+    draw.text(
+        ((SCREEN_WIDTH - _text_width(draw, hint, font)) // 2, 210),
+        hint,
+        fill=(160, 190, 194),
+        font=font,
+    )
 
 
 def _pulse(progress: float) -> float:

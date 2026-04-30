@@ -188,3 +188,35 @@ def test_renderer_reflects_brightness_pending_value():
     )
 
     assert dim.tobytes() != bright.tobytes()
+
+
+def test_renderer_reflects_device_diagnostics_detail():
+    current_time = datetime(2026, 5, 1, 12, 34, 56, tzinfo=ZoneInfo("Asia/Shanghai"))
+    low_memory = DeviceUiState(page="detail", detail_index=1)
+    low_memory.diagnostics.heap_free = 24000
+    low_memory.diagnostics.heap_max_block = 18000
+    low_memory.diagnostics.heap_fragmentation = 18
+    low_memory.diagnostics.wifi_rssi = -70
+    low_memory.diagnostics.uptime_ms = 120000
+
+    high_memory = DeviceUiState(page="detail", detail_index=1)
+    high_memory.diagnostics.heap_free = 42000
+    high_memory.diagnostics.heap_max_block = 39000
+    high_memory.diagnostics.heap_fragmentation = 4
+    high_memory.diagnostics.wifi_rssi = -42
+    high_memory.diagnostics.uptime_ms = 120000
+
+    low = render_device_canvas(
+        current_time=current_time,
+        device_id="desk-01",
+        button_count=0,
+        ui_state=low_memory,
+    )
+    high = render_device_canvas(
+        current_time=current_time,
+        device_id="desk-01",
+        button_count=0,
+        ui_state=high_memory,
+    )
+
+    assert low.tobytes() != high.tobytes()

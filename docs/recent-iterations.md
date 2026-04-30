@@ -62,6 +62,8 @@ Update it whenever behavior, architecture, or interaction details change.
 - First device samples after this split show normal clock/animation dirty frames with `client_overhead_ms` usually around `12-18ms`; page-animation dirty frames are commonly around `13-16ms`, with one observed `27ms` sample. A forced full-frame resync had a `94ms` client-overhead spike, so Keep-Alive is worth testing if those spikes repeat, but WebSocket should wait until the simpler persistent-HTTP path has evidence behind it.
 - Enabled HTTP Keep-Alive for the frame polling client by keeping `WiFiClient` / `HTTPClient` as `HttpFrameClient` members. The client keeps the TCP connection open across successful `200` and `204` frame requests, and forcibly resets it on request failure, invalid frame bodies, stale partial frames, or remote base URL changes.
 - Keep-Alive increased static RAM from `37756B` to `37924B` (`46.1%` to `46.3%`). First post-flash samples show `client_overhead_ms` usually around `9-12ms` on page transitions and small dirty frames, down from the previous `12-18ms` baseline, with no repeated full-frame `94ms` spike observed in the first run.
+- Extended device status sync with ESP8266-side client diagnostics: free heap, max free heap block, heap fragmentation, WiFi RSSI, and uptime. The Docker renderer stores these per device and exposes them through a real `Device` detail page in Settings; `Renderer` and `About` now show useful read-only summaries instead of placeholder panels.
+- Settings now contains `Brightness`, `Device`, `Renderer`, and `About`. The previous `Theme` placeholder is hidden until there is a real theme feature behind it.
 
 ### Current Development And Deployment Notes
 

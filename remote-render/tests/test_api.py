@@ -343,6 +343,31 @@ def test_status_endpoint_updates_remote_brightness_after_restart():
     assert registry._devices[device_id].ui.pending_brightness == 80
 
 
+def test_status_endpoint_records_client_diagnostics():
+    client = TestClient(app)
+    device_id = "desk-client-diagnostics"
+
+    response = client.post(
+        f"/api/v1/devices/{device_id}/status",
+        json={
+            "brightness": 70,
+            "uptime_ms": 4321,
+            "heap_free": 34560,
+            "heap_max_block": 32000,
+            "heap_fragmentation": 8,
+            "wifi_rssi": -48,
+        },
+    )
+
+    assert response.status_code == 202
+    diagnostics = registry._devices[device_id].ui.diagnostics
+    assert diagnostics.heap_free == 34560
+    assert diagnostics.heap_max_block == 32000
+    assert diagnostics.heap_fragmentation == 8
+    assert diagnostics.wifi_rssi == -48
+    assert diagnostics.uptime_ms == 4321
+
+
 def test_status_endpoint_rejects_invalid_brightness():
     client = TestClient(app)
 

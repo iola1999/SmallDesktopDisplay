@@ -10,7 +10,8 @@ namespace remote
 class RemoteStatusClient
 {
 public:
-  bool postStatus(const String &baseUrl, const String &deviceId, uint8_t brightness, uint32_t uptimeMs);
+  bool postStatus(const String &baseUrl, const String &deviceId, uint8_t brightness, uint32_t uptimeMs,
+                  uint32_t heapFree, uint32_t heapMaxBlock, uint8_t heapFragmentation, int16_t wifiRssi);
 };
 
 } // namespace remote

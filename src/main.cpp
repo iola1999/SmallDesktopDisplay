@@ -291,11 +291,17 @@ void syncDeviceStatus(uint32_t nowMs)
   }
   g_lastStatusSyncMs = nowMs;
 
+  const uint32_t heapFree = ESP.getFreeHeap();
+  const uint32_t heapMaxBlock = ESP.getMaxFreeBlockSize();
+  const uint8_t heapFragmentation = ESP.getHeapFragmentation();
+  const int16_t wifiRssi = WiFi.RSSI();
   if (g_statusClient.postStatus(g_config.remoteBaseUrl.c_str(), g_config.remoteDeviceId.c_str(), g_config.lcdBrightness,
-                                nowMs))
+                                nowMs, heapFree, heapMaxBlock, heapFragmentation, wifiRssi))
   {
     g_statusSyncPending = false;
-    Serial.printf("[RemoteStatus] posted brightness=%u\n", g_config.lcdBrightness);
+    Serial.printf("[RemoteStatus] posted brightness=%u heap=%lu max_block=%lu frag=%u%% rssi=%d\n",
+                  g_config.lcdBrightness, static_cast<unsigned long>(heapFree),
+                  static_cast<unsigned long>(heapMaxBlock), heapFragmentation, wifiRssi);
     return;
   }
 
