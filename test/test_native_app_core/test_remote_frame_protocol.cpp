@@ -7,18 +7,8 @@
 TEST_CASE("remote frame parser accepts a valid full frame header")
 {
   const uint8_t header[] = {
-    'S', 'D', 'D', '1',
-    1,
-    1,
-    32, 0,
-    7, 0, 0, 0,
-    0, 0, 0, 0,
-    240, 0,
-    240, 0,
-    1, 0,
-    8, 0, 0, 0,
-    0, 0,
-    0xEF, 0xBE, 0xAD, 0xDE,
+      'S', 'D', 'D', '1', 1, 1, 32, 0, 7, 0, 0, 0, 0,    0,    0,    0,
+      240, 0,   240, 0,   1, 0, 8,  0, 0, 0, 0, 0, 0xEF, 0xBE, 0xAD, 0xDE,
   };
 
   remote::FrameHeader parsed;
@@ -52,14 +42,7 @@ TEST_CASE("remote frame parser rejects wrong magic and short headers")
 TEST_CASE("remote rect parser accepts raw rgb565 rect headers")
 {
   const uint8_t rect[] = {
-    2, 0,
-    4, 0,
-    10, 0,
-    12, 0,
-    1,
-    0,
-    0, 0,
-    240, 0, 0, 0,
+      2, 0, 4, 0, 10, 0, 12, 0, 1, 0, 0, 0, 240, 0, 0, 0,
   };
 
   remote::RectHeader parsed;
@@ -71,4 +54,17 @@ TEST_CASE("remote rect parser accepts raw rgb565 rect headers")
   CHECK(parsed.format == remote::kFormatRgb565);
   CHECK(parsed.encoding == remote::kEncodingRaw);
   CHECK(parsed.payloadLength == 240);
+}
+
+TEST_CASE("remote rect parser accepts rle rgb565 rect headers")
+{
+  const uint8_t rect[] = {
+      0, 0, 0, 0, 2, 0, 2, 0, 1, 1, 0, 0, 3, 0, 0, 0,
+  };
+
+  remote::RectHeader parsed;
+  CHECK(remote::parseRectHeader(rect, sizeof(rect), parsed));
+  CHECK(parsed.format == remote::kFormatRgb565);
+  CHECK(parsed.encoding == remote::kEncodingRgb565Rle);
+  CHECK(parsed.payloadLength == 3);
 }

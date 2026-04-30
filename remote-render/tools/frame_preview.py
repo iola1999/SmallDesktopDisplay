@@ -12,12 +12,15 @@ from pathlib import Path
 
 from PIL import Image
 
+from app.protocol import decode_rgb565_rle
+
 MAGIC = b"SDD1"
 FRAME_HEADER = struct.Struct("<4sBBHIIHHHIHI")
 RECT_HEADER = struct.Struct("<HHHHBBHI")
 FLAG_FULL_FRAME = 0x01
 FORMAT_RGB565 = 1
 ENCODING_RAW = 0
+ENCODING_RGB565_RLE = 1
 
 
 @dataclass(frozen=True)
@@ -27,6 +30,7 @@ class DecodedRect:
     width: int
     height: int
     payload: bytes
+    encoding: int = ENCODING_RAW
 
 
 @dataclass(frozen=True)
@@ -80,16 +84,20 @@ def decode_frame(data: bytes) -> DecodedFrame:
         )
         offset += RECT_HEADER.size
 
-        if fmt != FORMAT_RGB565 or encoding != ENCODING_RAW:
-            raise ValueError("only raw RGB565 rects are supported")
+        if fmt != FORMAT_RGB565:
+            raise ValueError("only RGB565 rects are supported")
         if offset + rect_payload_len > len(body):
             raise ValueError("rect payload exceeds frame body")
         payload = body[offset : offset + rect_payload_len]
         offset += rect_payload_len
         total_payload += rect_payload_len
-        if rect_payload_len != rect_width * rect_height * 2:
+        if encoding == ENCODING_RAW and rect_payload_len != rect_width * rect_height * 2:
             raise ValueError("rect payload length does not match geometry")
-        rects.append(DecodedRect(x, y, rect_width, rect_height, payload))
+        if encoding == ENCODING_RGB565_RLE:
+            decode_rgb565_rle(payload, rect_width * rect_height)
+        elif encoding != ENCODING_RAW:
+            raise ValueError("unsupported RGB565 rect encoding")
+        rects.append(DecodedRect(x, y, rect_width, rect_height, payload, encoding))
 
     if offset != len(body) or total_payload != payload_len:
         raise ValueError("frame body length does not match header")
@@ -112,10 +120,15 @@ def apply_frame_to_canvas(canvas: Image.Image, frame: DecodedFrame) -> None:
         canvas.paste((0, 0, 0), (0, 0, frame.width, frame.height))
 
     for rect in frame.rects:
+        payload = (
+            decode_rgb565_rle(rect.payload, rect.width * rect.height)
+            if rect.encoding == ENCODING_RGB565_RLE
+            else rect.payload
+        )
         rect_image = Image.frombytes(
             "RGB",
             (rect.width, rect.height),
-            _rgb565_to_rgb888(rect.payload),
+            _rgb565_to_rgb888(payload),
         )
         canvas.paste(rect_image, (rect.x, rect.y))
 

@@ -14,6 +14,7 @@ constexpr uint8_t kFlagFullFrame = 0x01;
 constexpr uint8_t kFlagResetRequired = 0x02;
 constexpr uint8_t kFormatRgb565 = 1;
 constexpr uint8_t kEncodingRaw = 0;
+constexpr uint8_t kEncodingRgb565Rle = 1;
 
 struct FrameHeader
 {
@@ -44,16 +45,13 @@ struct RectHeader
 
 inline uint16_t readLe16(const uint8_t *data)
 {
-  return static_cast<uint16_t>(data[0]) |
-         static_cast<uint16_t>(static_cast<uint16_t>(data[1]) << 8);
+  return static_cast<uint16_t>(data[0]) | static_cast<uint16_t>(static_cast<uint16_t>(data[1]) << 8);
 }
 
 inline uint32_t readLe32(const uint8_t *data)
 {
-  return static_cast<uint32_t>(data[0]) |
-         (static_cast<uint32_t>(data[1]) << 8) |
-         (static_cast<uint32_t>(data[2]) << 16) |
-         (static_cast<uint32_t>(data[3]) << 24);
+  return static_cast<uint32_t>(data[0]) | (static_cast<uint32_t>(data[1]) << 8) |
+         (static_cast<uint32_t>(data[2]) << 16) | (static_cast<uint32_t>(data[3]) << 24);
 }
 
 inline bool parseFrameHeader(const uint8_t *data, std::size_t length, FrameHeader &out)
@@ -81,10 +79,7 @@ inline bool parseFrameHeader(const uint8_t *data, std::size_t length, FrameHeade
   out.fullFrame = (out.flags & kFlagFullFrame) != 0;
   out.resetRequired = (out.flags & kFlagResetRequired) != 0;
 
-  return out.version == kVersion &&
-         out.headerLength == kFrameHeaderSize &&
-         out.width > 0 &&
-         out.height > 0;
+  return out.version == kVersion && out.headerLength == kFrameHeaderSize && out.width > 0 && out.height > 0;
 }
 
 inline bool parseRectHeader(const uint8_t *data, std::size_t length, RectHeader &out)
@@ -107,7 +102,7 @@ inline bool parseRectHeader(const uint8_t *data, std::size_t length, RectHeader 
     return false;
   }
 
-  return out.format == kFormatRgb565 && out.encoding == kEncodingRaw;
+  return out.format == kFormatRgb565 && (out.encoding == kEncodingRaw || out.encoding == kEncodingRgb565Rle);
 }
 
 inline uint32_t crc32Begin()

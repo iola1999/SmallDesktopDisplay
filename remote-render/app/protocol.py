@@ -10,6 +10,7 @@ VERSION = 1
 HEADER_LEN = 32
 FORMAT_RGB565 = 1
 ENCODING_RAW = 0
+ENCODING_RGB565_RLE = 1
 FLAG_FULL_FRAME = 0x01
 FLAG_RESET_REQUIRED = 0x02
 
@@ -40,6 +41,61 @@ def rgb888_to_rgb565_bytes(rgb: bytes) -> bytes:
         out[out_index + 1] = (value >> 8) & 0xFF
         out_index += 2
     return bytes(out)
+
+
+def encode_rgb565_rle(rgb565: bytes) -> bytes:
+    if len(rgb565) % 2 != 0:
+        raise ValueError("RGB565 payload length must be even")
+    if not rgb565:
+        return b""
+
+    out = bytearray()
+    run_pixel = rgb565[0:2]
+    run_len = 1
+    for index in range(2, len(rgb565), 2):
+        pixel = rgb565[index : index + 2]
+        if pixel == run_pixel and run_len < 255:
+            run_len += 1
+            continue
+        out.append(run_len)
+        out += run_pixel
+        run_pixel = pixel
+        run_len = 1
+
+    out.append(run_len)
+    out += run_pixel
+    return bytes(out)
+
+
+def decode_rgb565_rle(payload: bytes, expected_pixels: int) -> bytes:
+    if len(payload) % 3 != 0:
+        raise ValueError("RGB565 RLE payload length must be divisible by 3")
+    out = bytearray()
+    for index in range(0, len(payload), 3):
+        run_len = payload[index]
+        if run_len == 0:
+            raise ValueError("RGB565 RLE run length must be positive")
+        out += payload[index + 1 : index + 3] * run_len
+    if len(out) != expected_pixels * 2:
+        raise ValueError("RGB565 RLE decoded length does not match geometry")
+    return bytes(out)
+
+
+def compress_rect_if_smaller(rect: FrameRect) -> FrameRect:
+    if rect.format != FORMAT_RGB565 or rect.encoding != ENCODING_RAW:
+        return rect
+    compressed = encode_rgb565_rle(rect.payload)
+    if len(compressed) >= len(rect.payload):
+        return rect
+    return FrameRect(
+        rect.x,
+        rect.y,
+        rect.width,
+        rect.height,
+        compressed,
+        format=rect.format,
+        encoding=ENCODING_RGB565_RLE,
+    )
 
 
 def encode_frame(
@@ -106,12 +162,14 @@ def _validate_rect(screen_width: int, screen_height: int, rect: FrameRect) -> No
     if rect.x + rect.width > screen_width or rect.y + rect.height > screen_height:
         raise ValueError("rect exceeds screen bounds")
     if rect.format != FORMAT_RGB565:
-        raise ValueError("only raw RGB565 rects are supported")
-    if rect.encoding != ENCODING_RAW:
-        raise ValueError("only raw rect encoding is supported")
+        raise ValueError("only RGB565 rects are supported")
 
     expected_len = rect.width * rect.height * 2
-    if len(rect.payload) != expected_len:
+    if rect.encoding == ENCODING_RAW and len(rect.payload) != expected_len:
         raise ValueError(
             f"payload length {len(rect.payload)} does not match {expected_len}"
         )
+    if rect.encoding == ENCODING_RGB565_RLE:
+        decode_rgb565_rle(rect.payload, rect.width * rect.height)
+    elif rect.encoding != ENCODING_RAW:
+        raise ValueError("unsupported rect encoding")

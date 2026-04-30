@@ -55,6 +55,8 @@ Update it whenever behavior, architecture, or interaction details change.
 - Disabled uvicorn access logs for high-frequency frame/command polling, suppressed small dirty-frame logs, and pinned Docker json-file log rotation to `5m x 3` for the remote renderer container.
 - Split device-side frame timing logs into `begin_ms`, `get_ms`, `header_ms`, `read_ms`, `stream_reads`, `stream_bytes`, `tft_ms`, `tft_calls`, `other_ms`, and `total_ms`. `get_ms` is the combined `HTTPClient.GET()` phase, including TCP connect, request send, response headers, and any long-poll wait; `read_ms` is response-body streaming from the WiFi client.
 - Current serial samples show normal clock dirty frames around `4.5KB` taking roughly `40-60ms` in `get_ms`, `39-44ms` in body reads, and `1-5ms` in TFT writes. A forced full-frame resync after Docker restart produced `payload=115200 begin_ms=0 get_ms=11 read_ms=1017 stream_reads=61 stream_bytes=115216 tft_ms=46 tft_calls=60 other_ms=129 total_ms=1203`, so the visible full-screen scan is dominated by ESP8266 HTTP/WiFi body transfer, not by connection setup or raw TFT push time.
+- Added optional RGB565 RLE rectangle encoding (`encoding=1`) to reduce HTTP body bytes while keeping the ESP8266 decoder streaming and low-RAM. The renderer only uses RLE when it is smaller than raw RGB565, and the firmware draws through a 2-row TFT batch buffer to leave enough loop-stack headroom for the RLE read buffer.
+- After RLE and the stack-safe 2-row draw buffer, the same home/settings full-frame class compresses from `115200B` to roughly `14.5-15.6KB`. Stable-network device samples show full frames around `get_ms=30-38`, `read_ms=6-14`, `tft_ms=38-56`, `tft_calls=120`, and `total_ms=136-148`. Normal clock dirty frames dropped to roughly `0.8-2.0KB` with `read_ms` usually `0-3ms`.
 
 ### Current Development And Deployment Notes
 
@@ -66,7 +68,7 @@ Update it whenever behavior, architecture, or interaction details change.
 - Keep preview clients on a different `device_id` than the physical display, otherwise both clients advance the same remote frame state.
 - If button input appears stuck after flashing, check Docker logs for `input accepted` / `input ignored`; ignored low sequences with forward-moving uptime usually mean another client is sharing the same `device_id`.
 - If the screen shows only a partial region after a restart, first check `tools.frame_preview` output for whether `have=0` or a future `have` is incorrectly receiving a partial frame.
-- For frame performance diagnostics, `get_ms` answers whether connection/request/header time is expensive, while `read_ms` answers whether payload transfer is expensive. The latest full-frame sample has only `11ms` in `get_ms` but about `1s` in `read_ms`, so future optimization should prioritize reducing or compressing full-frame bytes before changing HTTP transport.
+- For frame performance diagnostics, `get_ms` answers whether connection/request/header time is expensive, while `read_ms` answers whether payload transfer is expensive. RLE has reduced the dominant full-frame `read_ms` cost from about `1s` to low double-digit milliseconds on the current home/settings screens. Further transport changes should be judged mainly against `get_ms`, which is now a larger share of small-frame latency.
 
 ## 2026-04-18
 

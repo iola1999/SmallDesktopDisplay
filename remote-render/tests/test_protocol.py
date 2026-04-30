@@ -4,10 +4,12 @@ import zlib
 import pytest
 
 from app.protocol import (
+    ENCODING_RGB565_RLE,
     FORMAT_RGB565,
     MAGIC,
     FrameRect,
     encode_frame,
+    encode_rgb565_rle,
     rgb888_to_rgb565_bytes,
 )
 
@@ -83,3 +85,34 @@ def test_rgb888_to_rgb565_bytes_converts_pixels_little_endian():
             0x00,
         ]
     )
+
+
+def test_rgb565_rle_encodes_repeated_pixel_runs():
+    red = bytes([0x00, 0xF8])
+    green = bytes([0xE0, 0x07])
+
+    assert encode_rgb565_rle(red * 3 + green * 2) == bytes(
+        [
+            3,
+            0x00,
+            0xF8,
+            2,
+            0xE0,
+            0x07,
+        ]
+    )
+
+
+def test_encode_frame_accepts_rgb565_rle_payload():
+    payload = bytes([4, 0x00, 0xF8])
+    frame = encode_frame(
+        frame_id=8,
+        base_frame_id=0,
+        width=2,
+        height=2,
+        rects=[FrameRect(0, 0, 2, 2, payload, encoding=ENCODING_RGB565_RLE)],
+        full_frame=True,
+    )
+
+    rect_header = struct.unpack("<HHHHBBHI", frame[32:48])
+    assert rect_header == (0, 0, 2, 2, FORMAT_RGB565, ENCODING_RGB565_RLE, 0, len(payload))

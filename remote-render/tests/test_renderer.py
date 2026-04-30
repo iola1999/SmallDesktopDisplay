@@ -3,10 +3,12 @@ from zoneinfo import ZoneInfo
 
 from PIL import Image
 
+from app.protocol import ENCODING_RGB565_RLE, decode_rgb565_rle
 from app.renderer import (
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
     compute_dirty_rects,
+    render_canvas_frame,
     render_device_canvas,
     render_device_view,
 )
@@ -27,7 +29,19 @@ def test_renderer_returns_full_screen_rgb565_frame():
         SCREEN_WIDTH,
         SCREEN_HEIGHT,
     )
-    assert len(rect.payload) == SCREEN_WIDTH * SCREEN_HEIGHT * 2
+    assert rect.encoding == ENCODING_RGB565_RLE
+    assert len(rect.payload) < SCREEN_WIDTH * SCREEN_HEIGHT * 2
+    assert len(decode_rgb565_rle(rect.payload, SCREEN_WIDTH * SCREEN_HEIGHT)) == SCREEN_WIDTH * SCREEN_HEIGHT * 2
+
+
+def test_renderer_compresses_flat_full_frame_rects():
+    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
+
+    frame = render_canvas_frame(image, frame_id=1, full_frame=True)
+
+    rect = frame.rects[0]
+    assert rect.encoding == 1
+    assert len(rect.payload) < SCREEN_WIDTH * SCREEN_HEIGHT * 2 // 10
 
 
 def test_renderer_changes_pixels_when_button_count_changes():

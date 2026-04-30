@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app, registry
 from app.state import DeviceRegistry
+from tools.frame_preview import decode_frame
 
 
 def test_frame_endpoint_returns_latest_frame_then_204_for_same_have():
@@ -92,7 +93,10 @@ def test_registry_returns_full_frame_for_cold_client_after_partial_update():
 
     assert cold_client_frame is not None
     assert cold_client_frame[5] & 0x01 == 0x01
-    assert int.from_bytes(cold_client_frame[22:26], "little") == 240 * 240 * 2
+    decoded = decode_frame(cold_client_frame)
+    assert decoded.full_frame
+    assert len(decoded.rects) == 1
+    assert (decoded.rects[0].width, decoded.rects[0].height) == (240, 240)
 
 
 def test_registry_returns_full_frame_when_client_frame_id_is_ahead_after_restart():
@@ -102,7 +106,10 @@ def test_registry_returns_full_frame_when_client_frame_id_is_ahead_after_restart
 
     assert frame is not None
     assert frame[5] & 0x01 == 0x01
-    assert int.from_bytes(frame[22:26], "little") == 240 * 240 * 2
+    decoded = decode_frame(frame)
+    assert decoded.full_frame
+    assert len(decoded.rects) == 1
+    assert (decoded.rects[0].width, decoded.rects[0].height) == (240, 240)
 
 
 def test_registry_renders_animation_frames_after_navigation_input():
@@ -220,7 +227,10 @@ def test_registry_returns_full_frame_when_client_missed_partial_base():
 
     assert stale_client_frame is not None
     assert stale_client_frame[5] & 0x01 == 0x01
-    assert int.from_bytes(stale_client_frame[22:26], "little") == 240 * 240 * 2
+    decoded = decode_frame(stale_client_frame)
+    assert decoded.full_frame
+    assert len(decoded.rects) == 1
+    assert (decoded.rects[0].width, decoded.rects[0].height) == (240, 240)
 
 
 def test_registry_back_to_home_redraws_more_than_footer_region():
@@ -257,7 +267,9 @@ def test_registry_back_to_home_redraws_more_than_footer_region():
     )
 
     assert home_frame is not None
-    assert int.from_bytes(home_frame[22:26], "little") > 60000
+    decoded = decode_frame(home_frame)
+    raw_covered_bytes = sum(rect.width * rect.height * 2 for rect in decoded.rects)
+    assert raw_covered_bytes > 60000
 
 
 def test_registry_queues_brightness_command_from_detail_confirm():

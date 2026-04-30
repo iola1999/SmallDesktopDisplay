@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 
-from app.protocol import FrameRect, rgb888_to_rgb565_bytes
+from app.protocol import FrameRect, compress_rect_if_smaller, rgb888_to_rgb565_bytes
 from app.ui_state import (
     SETTINGS_ITEMS,
     DeviceUiState,
@@ -67,7 +67,7 @@ def render_canvas_frame(
 ) -> RenderedFrame:
     if full_frame:
         payload = rgb888_to_rgb565_bytes(image.tobytes())
-        rects = [FrameRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, payload)]
+        rects = [compress_rect_if_smaller(FrameRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, payload))]
     else:
         rects = [_crop_rect(image, region) for region in (regions or [TIME_REGION])]
 
@@ -346,12 +346,14 @@ def _interleave_rect_rows(rects: list[tuple[int, int, int, int]]) -> list[tuple[
 def _crop_rect(image: Image.Image, region: tuple[int, int, int, int]) -> FrameRect:
     left, top, right, bottom = region
     cropped = image.crop(region)
-    return FrameRect(
-        left,
-        top,
-        right - left,
-        bottom - top,
-        rgb888_to_rgb565_bytes(cropped.tobytes()),
+    return compress_rect_if_smaller(
+        FrameRect(
+            left,
+            top,
+            right - left,
+            bottom - top,
+            rgb888_to_rgb565_bytes(cropped.tobytes()),
+        )
     )
 
 

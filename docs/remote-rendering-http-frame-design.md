@@ -12,7 +12,7 @@ screen drawing can be removed.
 
 - Transport: HTTP polling with short long-poll support.
 - Frame model: latest-state sync, not queued playback.
-- Image format: raw RGB565 rectangles.
+- Image format: RGB565 rectangles, either raw or RLE-compressed.
 - Rendering service: Dockerized Python FastAPI service under `remote-render/`.
 - Device role: fetch binary frames, draw rectangles to TFT, POST button events.
 
@@ -156,9 +156,9 @@ RectHeader repeated rect_count times, immediately followed by payload
   w              u16
   h              u16
   format         u8        1 = RGB565
-  encoding       u8        0 = raw
+  encoding       u8        0 = raw, 1 = RGB565 RLE
   reserved       u16
-  payload_len    u32       w * h * 2 for raw RGB565
+  payload_len    u32       encoded payload bytes
   payload        bytes
 ```
 
@@ -168,13 +168,27 @@ split into interleaved tile strips, currently `240x8` for a full-width dirty
 row. The interleaved order avoids a single large rectangle visibly scanning from
 top to bottom on the physical TFT.
 
+Raw RGB565 payloads are little-endian pixels. RGB565 RLE payloads are repeated
+triples:
+
+```text
+run_len        u8        1..255 pixels
+pixel          u16le     RGB565 pixel value
+```
+
+The renderer chooses RLE per rectangle only when the encoded payload is smaller
+than raw RGB565. The firmware validates that RLE payload length is divisible by
+3, decodes exactly `width * height` pixels, and draws through the same 2-row
+buffer used for raw frames. CRC is calculated over the encoded rect headers and
+encoded payload bytes, not over the decoded pixels.
+
 ## Frame Timing Diagnostics
 
 The firmware logs detailed timing for full frames, large frames, and frames with
 many rectangles:
 
 ```text
-[RemoteFrame] frame=2 full rects=1 payload=115200 begin_ms=0 get_ms=11 header_ms=0 read_ms=1017 stream_reads=61 stream_bytes=115216 tft_ms=46 tft_calls=60 other_ms=129 total_ms=1203
+[RemoteFrame] frame=77 full rects=1 payload=15102 begin_ms=0 get_ms=37 header_ms=0 read_ms=7 stream_reads=80 stream_bytes=15118 tft_ms=40 tft_calls=120 other_ms=63 total_ms=147
 ```
 
 Field meaning:
@@ -184,32 +198,37 @@ Field meaning:
 - `get_ms`: `HTTPClient.GET()`, which includes TCP connect, HTTP request send,
   response status/header parsing, and any server long-poll wait.
 - `header_ms`: time to read the 32-byte `SDD/1` frame header after status 200.
-- `read_ms`: time to read rectangle headers and RGB565 body bytes from the
-  `WiFiClient` stream.
+- `read_ms`: time to read rectangle headers and encoded RGB565 body bytes from
+  the `WiFiClient` stream.
 - `stream_reads` / `stream_bytes`: exact stream-read operations and their target
   byte count, including rectangle headers but excluding the 32-byte frame header.
 - `tft_ms` / `tft_calls`: time and call count for TFT `pushImage` operations.
 - `other_ms`: remaining local parsing, CRC, loop overhead, and scheduler time.
 
-Current hardware samples show the full-frame bottleneck is response-body
-transfer, not connection setup or TFT writes. A 115200-byte full frame spent
-about `1s` in `read_ms`, about `46ms` in `tft_ms`, and only `11ms` in `get_ms`.
-Small clock dirty frames around `4.5KB` usually spend roughly `40-60ms` in
-`get_ms`, `39-44ms` in `read_ms`, and `1-5ms` in TFT writes.
+Hardware samples before compression showed the full-frame bottleneck was
+response-body transfer, not connection setup or TFT writes. A 115200-byte raw
+full frame spent about `1s` in `read_ms`, about `46ms` in `tft_ms`, and only
+`11ms` in `get_ms`.
+
+With RGB565 RLE enabled and the stack-safe 2-row draw buffer, the
+home/settings full-frame class is roughly `14.5-15.6KB` on the wire. Stable
+network device samples show `read_ms=6-14`, `tft_ms=38-56`, and
+`total_ms=136-148`. Small clock dirty frames are now usually around
+`0.8-2.0KB`, with `read_ms` usually `0-3ms`.
 
 That points the next optimization work toward smaller payloads first:
 
 - Keep full-frame resyncs rare and continue using dirty rectangles for normal
   UI changes.
-- Consider simple streaming compression, such as line/RLE spans for flat
-  background regions, before changing transports.
-- Test larger row batches only after checking heap headroom. The current full
-  frame uses 60 `pushImage` calls with a 4-row buffer; TFT time is already small,
+- Track RLE efficiency as UI complexity grows; highly noisy image-heavy screens
+  can fall back to raw RGB565 when RLE is not smaller.
+- Test larger row batches only after checking stack and heap headroom. The
+  current full frame uses 120 `pushImage` calls with a 2-row buffer; TFT time is already small,
   so this is unlikely to remove the main scan delay by itself.
 - Persistent TCP, raw TCP, WebSocket, or HTTP keep-alive can reduce per-frame
-  `get_ms` on small animation frames, but the measured full-screen delay is
-  dominated by `read_ms`, so transport changes alone should not be expected to
-  fix full-page scans.
+  `get_ms` on small animation frames. After RLE, `get_ms` is a larger share of
+  small-frame latency, so transport work is a reasonable follow-up if animation
+  smoothness still feels limited.
 
 ## Docker Service Structure
 
@@ -307,8 +326,9 @@ The firmware main loop becomes:
 1. Connect WiFi using the existing setup portal path.
 2. Poll button events and POST gestures to the Docker service.
 3. Poll `/frame?have=...`.
-4. Draw each rectangle directly to TFT, batching up to 4 RGB565 rows per
-   `pushImage` call to reduce visible top-to-bottom scan artifacts.
+4. Draw each rectangle directly to TFT, batching up to 2 RGB565 rows per
+   `pushImage` call. A previous 4-row buffer was faster, but too close to the
+   ESP8266 loop stack limit once RLE decoding added a second read buffer.
 5. Draw only the hold-progress overlay locally while the button is pressed.
 6. Show a minimal local error message if WiFi or the render service is down.
 
@@ -345,7 +365,7 @@ In scope:
 - Device status sync for local persisted brightness.
 - `204` no-change handling.
 - Binary frame parsing with CRC.
-- Raw RGB565 rectangle drawing.
+- Raw and RLE-compressed RGB565 rectangle drawing.
 - Basic `http://` service URL configuration through the setup portal.
 - Local PNG preview tooling for HTTP frames.
 
@@ -353,5 +373,5 @@ Out of scope:
 
 - WebSocket, MQTT, or server-pushed streams.
 - PNG/JPEG decoding on-device.
-- Compression such as RLE/LZ4.
+- Heavier compression such as LZ4 or image codecs.
 - Weather, local NTP, old settings pages, UI motion, and local page rendering.
