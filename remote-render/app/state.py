@@ -4,6 +4,10 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from PIL import Image
 
 from app.protocol import encode_frame
 from app.renderer import (
@@ -12,7 +16,9 @@ from app.renderer import (
     RenderedFrame,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
-    render_device_view,
+    compute_dirty_rects,
+    render_canvas_frame,
+    render_device_canvas,
 )
 
 
@@ -25,6 +31,7 @@ class DeviceState:
     last_render_second: int = -1
     frame: bytes = b""
     full_frame: bytes = b""
+    canvas: Image.Image | None = None
 
 
 class DeviceRegistry:
@@ -91,21 +98,32 @@ class DeviceRegistry:
     ) -> None:
         state.frame_id += 1
         state.last_render_second = int(self._monotonic() / self._frame_interval_seconds)
-        rendered = render_device_view(
+        current_canvas = render_device_canvas(
+            current_time=datetime.now(ZoneInfo("Asia/Shanghai")),
             device_id=state.device_id,
             button_count=state.button_count,
-            frame_id=state.frame_id,
-            base_frame_id=0,
-            full_frame=full_frame,
-            regions=regions,
         )
+        if full_frame or state.canvas is None:
+            rendered = render_canvas_frame(
+                current_canvas,
+                frame_id=state.frame_id,
+                base_frame_id=0,
+                full_frame=True,
+            )
+        else:
+            rendered = RenderedFrame(
+                frame_id=state.frame_id,
+                base_frame_id=0,
+                full_frame=False,
+                rects=compute_dirty_rects(state.canvas, current_canvas, regions=regions),
+            )
         state.frame = encode_rendered_frame(rendered)
+        state.canvas = current_canvas
         if full_frame:
             state.full_frame = state.frame
         else:
-            full_rendered = render_device_view(
-                device_id=state.device_id,
-                button_count=state.button_count,
+            full_rendered = render_canvas_frame(
+                current_canvas,
                 frame_id=state.frame_id,
                 base_frame_id=0,
                 full_frame=True,

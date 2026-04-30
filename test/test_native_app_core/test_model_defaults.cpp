@@ -10,3 +10,8 @@ TEST_CASE("default config uses firmware defaults for esp12e module")
   CHECK(config.remoteBaseUrl == app_config::kDefaultRemoteRenderBaseUrl);
   CHECK(config.remoteDeviceId == app_config::kDefaultRemoteDeviceId);
 }
+
+TEST_CASE("remote frame wait stays short enough for button sampling")
+{
+  CHECK(app_config::kRemoteFrameWaitMs <= 20);
+}

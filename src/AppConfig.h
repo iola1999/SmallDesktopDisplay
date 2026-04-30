@@ -29,7 +29,7 @@ constexpr uint16_t kColorBg = 0x0000;
 
 // 远程渲染
 constexpr uint32_t kRemoteFramePollMs = 50;
-constexpr uint32_t kRemoteFrameWaitMs = 250;
+constexpr uint32_t kRemoteFrameWaitMs = 10;
 constexpr uint32_t kRemoteHttpTimeoutMs = 5000;
 
 } // namespace app_config
