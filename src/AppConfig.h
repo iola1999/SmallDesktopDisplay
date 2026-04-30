@@ -14,7 +14,7 @@ constexpr const char *kVersion = "SDD V1.5.0";
 // 默认值 (EEPROM 未初始化时使用)
 constexpr uint8_t kDefaultLcdBrightness = 50; // 0-100
 constexpr uint8_t kDefaultLcdRotation = 0;    // 0-3
-constexpr const char *kDefaultRemoteRenderBaseUrl = "http://192.168.1.100:8080";
+constexpr const char *kDefaultRemoteRenderBaseUrl = "http://192.168.1.7:18080";
 constexpr const char *kDefaultRemoteDeviceId = "desk-01";
 
 // 引脚
