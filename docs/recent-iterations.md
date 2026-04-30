@@ -51,6 +51,7 @@ Update it whenever behavior, architecture, or interaction details change.
 - Tracked whether the local hold overlay was actually drawn before clearing it, so ordinary taps no longer erase a thin black strip at the top of the remote frame.
 - Moved the local hold-progress start from roughly 400ms to the 300ms double-click window, leaving a visible 200ms fill animation before the 500ms long-press threshold.
 - Added a remote brightness setting flow: the Docker UI cycles brightness values and confirms them through a JSON command channel, while the ESP8266 applies PWM locally and persists the value in EEPROM.
+- Added device status sync for persisted brightness so the Docker renderer can recover the actual device brightness after either side restarts.
 
 ### Current Development And Deployment Notes
 

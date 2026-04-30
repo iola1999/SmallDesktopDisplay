@@ -32,6 +32,7 @@ constexpr uint16_t kColorBg = 0x0000;
 constexpr uint32_t kRemoteFramePollMs = 50;
 constexpr uint32_t kRemoteFrameWaitMs = 10;
 constexpr uint32_t kRemoteCommandPollMs = 100;
+constexpr uint32_t kRemoteStatusSyncMs = 10000;
 constexpr uint32_t kRemoteHttpTimeoutMs = 5000;
 
 } // namespace app_config

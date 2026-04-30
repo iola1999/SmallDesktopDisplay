@@ -121,6 +121,26 @@ class DeviceRegistry:
                 return None
             return state.latest_command
 
+    def record_status(
+        self,
+        device_id: str,
+        *,
+        brightness: int,
+        uptime_ms: int,
+    ) -> None:
+        with self._condition:
+            state = self._ensure_device_locked(device_id)
+            state.ui.brightness = brightness
+            state.ui.pending_brightness = brightness
+            state.last_input_uptime_ms = max(state.last_input_uptime_ms, uptime_ms)
+            self._render_locked(state, full_frame=False)
+            self._condition.notify_all()
+            print(
+                "[RemoteStatus] "
+                f"device={device_id} brightness={brightness} uptime_ms={uptime_ms}",
+                flush=True,
+            )
+
     def _ensure_device_locked(self, device_id: str) -> DeviceState:
         state = self._devices.get(device_id)
         if state is None:

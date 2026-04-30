@@ -144,6 +144,7 @@ Dockerfile 已把第三方依赖安装和 `app/` 代码复制拆开，并使用 
 
 ```text
 GET /api/v1/devices/{device_id}/commands?after=<command_id>
+POST /api/v1/devices/{device_id}/status
 ```
 
-第一版命令只有 `set_brightness`。设备轮询到命令后调用本地 `display::setBrightness()`，并在 `persist=true` 时写入 EEPROM。
+第一版命令只有 `set_brightness`。设备轮询到命令后调用本地 `display::setBrightness()`，并在 `persist=true` 时写入 EEPROM。设备启动、应用亮度命令后，以及连接期间会同步本地亮度状态给远端，避免 Docker 重启后设置页显示的亮度和设备实际背光不一致。

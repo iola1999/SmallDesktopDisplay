@@ -12,6 +12,7 @@
 #include "remote/RemoteCommandClient.h"
 #include "remote/HttpFrameClient.h"
 #include "remote/RemoteInputClient.h"
+#include "remote/RemoteStatusClient.h"
 #include "ui/TftFrameSink.h"
 
 namespace
@@ -22,12 +23,15 @@ ui::TftFrameSink g_frameSink;
 remote::HttpFrameClient g_frameClient(g_frameSink);
 remote::RemoteInputClient g_inputClient;
 remote::RemoteCommandClient g_commandClient;
+remote::RemoteStatusClient g_statusClient;
 uint32_t g_haveFrameId = 0;
 uint32_t g_lastCommandId = 0;
 uint32_t g_inputSequence = 0;
 uint32_t g_lastFramePollMs = 0;
 uint32_t g_lastCommandPollMs = 0;
+uint32_t g_lastStatusSyncMs = 0;
 uint32_t g_lastErrorDrawMs = 0;
+bool g_statusSyncPending = true;
 app::HoldInteractionState g_holdInteraction;
 uint32_t g_holdStartedMs = 0;
 uint16_t g_holdLastPixels = UINT16_MAX;
@@ -257,6 +261,7 @@ void applyRemoteCommand(const remote::DeviceCommand &command)
   }
 
   g_lastCommandId = command.id;
+  g_statusSyncPending = true;
   Serial.printf("[RemoteCommand] applied id=%lu brightness=%u persist=%s\n", static_cast<unsigned long>(command.id),
                 command.value, command.persist ? "true" : "false");
 }
@@ -276,6 +281,26 @@ void pollCommand(uint32_t nowMs)
   {
     applyRemoteCommand(command);
   }
+}
+
+void syncDeviceStatus(uint32_t nowMs)
+{
+  if (!g_statusSyncPending && nowMs - g_lastStatusSyncMs < app_config::kRemoteStatusSyncMs)
+  {
+    return;
+  }
+  g_lastStatusSyncMs = nowMs;
+
+  if (g_statusClient.postStatus(g_config.remoteBaseUrl.c_str(), g_config.remoteDeviceId.c_str(), g_config.lcdBrightness,
+                                nowMs))
+  {
+    g_statusSyncPending = false;
+    Serial.printf("[RemoteStatus] posted brightness=%u\n", g_config.lcdBrightness);
+    return;
+  }
+
+  g_statusSyncPending = true;
+  Serial.println(F("[RemoteStatus] post failed"));
 }
 
 } // namespace
@@ -319,6 +344,7 @@ void loop()
     if (pollFrame(nowMs))
     {
       pollCommand(nowMs);
+      syncDeviceStatus(nowMs);
     }
   }
   else if (nowMs - g_lastErrorDrawMs > 3000U)

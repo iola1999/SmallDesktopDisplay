@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import app, registry
 from app.state import DeviceRegistry
 
 
@@ -308,3 +308,28 @@ def test_command_endpoint_returns_latest_command_then_204():
     }
 
     assert client.get(f"/api/v1/devices/{device_id}/commands?after=1").status_code == 204
+
+
+def test_status_endpoint_updates_remote_brightness_after_restart():
+    client = TestClient(app)
+    device_id = "desk-brightness-status"
+
+    response = client.post(
+        f"/api/v1/devices/{device_id}/status",
+        json={"brightness": 80, "uptime_ms": 1234},
+    )
+
+    assert response.status_code == 202
+    assert registry._devices[device_id].ui.brightness == 80
+    assert registry._devices[device_id].ui.pending_brightness == 80
+
+
+def test_status_endpoint_rejects_invalid_brightness():
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/devices/desk-invalid-brightness/status",
+        json={"brightness": 101, "uptime_ms": 1234},
+    )
+
+    assert response.status_code == 422

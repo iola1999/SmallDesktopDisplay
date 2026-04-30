@@ -19,6 +19,11 @@ class InputEvent(BaseModel):
     uptime_ms: int = Field(ge=0)
 
 
+class DeviceStatus(BaseModel):
+    brightness: int = Field(ge=0, le=100)
+    uptime_ms: int = Field(ge=0)
+
+
 @app.get("/api/v1/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -63,3 +68,15 @@ def get_commands(
     if command is None:
         return Response(status_code=204)
     return asdict(command)
+
+
+@app.post("/api/v1/devices/{device_id}/status")
+def post_status(device_id: str, status: DeviceStatus) -> Response:
+    if not device_id:
+        raise HTTPException(status_code=400, detail="device_id is required")
+    registry.record_status(
+        device_id=device_id,
+        brightness=status.brightness,
+        uptime_ms=status.uptime_ms,
+    )
+    return Response(status_code=202)

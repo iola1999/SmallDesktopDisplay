@@ -31,6 +31,7 @@ untouched screen regions.
 ```text
 GET  /api/v1/devices/{device_id}/frame?have=<frame_id>&wait_ms=<milliseconds>
 POST /api/v1/devices/{device_id}/input
+POST /api/v1/devices/{device_id}/status
 GET  /api/v1/devices/{device_id}/commands?after=<command_id>
 GET  /api/v1/health
 ```
@@ -84,6 +85,21 @@ effect, not pixels. The current command response is JSON:
 The device applies `set_brightness` locally through PWM, stores the value in
 EEPROM when `persist=true`, then advances its local `after` id so the command is
 not applied repeatedly.
+
+The device also POSTs local status after startup, after applying brightness, and
+periodically while connected:
+
+```json
+{
+  "brightness": 70,
+  "uptime_ms": 123456
+}
+```
+
+This status payload lets the remote renderer update its per-device brightness
+state from the device's persisted EEPROM value. If the Docker service restarts,
+the device's next status sync makes the Settings UI converge back to the actual
+hardware brightness.
 
 Input de-duplication uses both `seq` and `uptime_ms`. A higher `seq` is accepted
 normally. If `seq` moves backwards while `uptime_ms` also moves backwards, the
@@ -283,6 +299,7 @@ In scope:
 - Full-frame resync for cold clients and Docker service restarts.
 - Button POSTs.
 - Device command polling for `set_brightness`.
+- Device status sync for local persisted brightness.
 - `204` no-change handling.
 - Binary frame parsing with CRC.
 - Raw RGB565 rectangle drawing.
