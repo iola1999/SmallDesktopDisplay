@@ -25,3 +25,20 @@ TEST_CASE("frame diagnostics calculates unaccounted time without underflow")
   diagnostics.totalMs = 70;
   CHECK(app::frameOtherMs(diagnostics) == 0);
 }
+
+TEST_CASE("frame diagnostics estimates client overhead from server timing")
+{
+  app::FrameDiagnostics diagnostics;
+  diagnostics.getMs = 42;
+  diagnostics.serverTotalMs = 11;
+
+  CHECK(app::frameClientOverheadMs(diagnostics) == 31);
+
+  diagnostics.serverTotalMs = 0;
+  diagnostics.serverWaitMs = 7;
+  diagnostics.serverRenderMs = 3;
+  CHECK(app::frameClientOverheadMs(diagnostics) == 32);
+
+  diagnostics.getMs = 5;
+  CHECK(app::frameClientOverheadMs(diagnostics) == 0);
+}

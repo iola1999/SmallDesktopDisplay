@@ -15,4 +15,11 @@ uint32_t frameOtherMs(const FrameDiagnostics &diagnostics)
   return diagnostics.totalMs > accounted ? diagnostics.totalMs - accounted : 0U;
 }
 
+uint32_t frameClientOverheadMs(const FrameDiagnostics &diagnostics)
+{
+  const uint32_t serverMs =
+      diagnostics.serverTotalMs > 0 ? diagnostics.serverTotalMs : diagnostics.serverWaitMs + diagnostics.serverRenderMs;
+  return diagnostics.getMs > serverMs ? diagnostics.getMs - serverMs : 0U;
+}
+
 } // namespace app

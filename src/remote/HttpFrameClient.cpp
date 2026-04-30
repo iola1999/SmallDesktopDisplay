@@ -1,9 +1,9 @@
 #include "remote/HttpFrameClient.h"
 
 #include <algorithm>
-
-#include <ESP8266HTTPClient.h>
-#include <WiFiClient.h>
+#include <cstdint>
+#include <cstdlib>
+#include <string>
 
 #include "AppConfig.h"
 #include "app/FrameDiagnostics.h"
@@ -29,42 +29,79 @@ bool rectFitsFrame(const FrameHeader &frame, const RectHeader &rect)
   return rect.x + rect.width <= frame.width && rect.y + rect.height <= frame.height;
 }
 
+uint32_t parseHeaderMs(const String &value)
+{
+  if (value.length() == 0)
+  {
+    return 0;
+  }
+
+  char *end = nullptr;
+  const unsigned long parsed = std::strtoul(value.c_str(), &end, 10);
+  if (end == value.c_str())
+  {
+    return 0;
+  }
+  return parsed > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(parsed);
+}
+
 } // namespace
+
+HttpFrameClient::~HttpFrameClient()
+{
+  resetConnection();
+}
 
 FrameFetchResult HttpFrameClient::fetchLatest(const String &baseUrl, const String &deviceId, uint32_t haveFrameId,
                                               uint32_t waitMs, uint32_t &outFrameId)
 {
-  WiFiClient client;
-  HTTPClient http;
-  http.setTimeout(app_config::kRemoteHttpTimeoutMs);
+  if (keepAlivePolicy_.shouldResetBeforeRequest(baseUrl.c_str()))
+  {
+    resetConnection();
+  }
+
+  http_.setReuse(true);
+  http_.setTimeout(app_config::kRemoteHttpTimeoutMs);
 
   app::FrameDiagnostics diagnostics;
   const uint32_t requestStartedMs = millis();
   const String url = joinUrl(baseUrl, "/api/v1/devices/" + deviceId + "/frame?have=" + String(haveFrameId) +
                                           "&wait_ms=" + String(waitMs));
   const uint32_t beginStartedMs = millis();
-  if (!http.begin(client, url))
+  if (!http_.begin(client_, url))
   {
+    resetConnection();
     return FrameFetchResult::Failed;
   }
   diagnostics.beginMs = millis() - beginStartedMs;
 
+  static const char *kTimingHeaders[] = {
+      "X-SDD-Server-Wait-Ms",
+      "X-SDD-Server-Render-Ms",
+      "X-SDD-Server-Total-Ms",
+  };
+  http_.collectHeaders(kTimingHeaders, 3);
+
   const uint32_t getStartedMs = millis();
-  const int statusCode = http.GET();
+  const int statusCode = http_.GET();
   diagnostics.getMs = millis() - getStartedMs;
+  diagnostics.serverWaitMs = parseHeaderMs(http_.header("X-SDD-Server-Wait-Ms"));
+  diagnostics.serverRenderMs = parseHeaderMs(http_.header("X-SDD-Server-Render-Ms"));
+  diagnostics.serverTotalMs = parseHeaderMs(http_.header("X-SDD-Server-Total-Ms"));
   if (statusCode == HTTP_CODE_NO_CONTENT)
   {
-    http.end();
+    keepAlivePolicy_.rememberSuccessfulRequest(baseUrl.c_str());
+    http_.end();
     return FrameFetchResult::NotModified;
   }
   if (statusCode != HTTP_CODE_OK)
   {
     Serial.printf("[RemoteFrame] http status %d\n", statusCode);
-    http.end();
+    resetConnection();
     return FrameFetchResult::Failed;
   }
 
-  WiFiClient &stream = http.getStream();
+  WiFiClient &stream = http_.getStream();
   stream.setTimeout(app_config::kRemoteHttpTimeoutMs);
 
   uint8_t headerBytes[kFrameHeaderSize];
@@ -73,7 +110,7 @@ FrameFetchResult HttpFrameClient::fetchLatest(const String &baseUrl, const Strin
       !parseFrameHeader(headerBytes, sizeof(headerBytes), header))
   {
     Serial.println(F("[RemoteFrame] invalid frame header"));
-    http.end();
+    resetConnection();
     return FrameFetchResult::Failed;
   }
 
@@ -82,35 +119,47 @@ FrameFetchResult HttpFrameClient::fetchLatest(const String &baseUrl, const Strin
     Serial.printf("[RemoteFrame] stale partial base=%lu have=%lu frame=%lu\n",
                   static_cast<unsigned long>(header.baseFrameId), static_cast<unsigned long>(haveFrameId),
                   static_cast<unsigned long>(header.frameId));
-    http.end();
+    resetConnection();
     return FrameFetchResult::Failed;
   }
 
   if (!consumeFrame(stream, header, diagnostics))
   {
     Serial.println(F("[RemoteFrame] invalid frame body"));
-    http.end();
+    resetConnection();
     return FrameFetchResult::Failed;
   }
   diagnostics.totalMs = millis() - requestStartedMs;
   if (app::shouldLogFrameDiagnostics(header.fullFrame, header.payloadLength, header.rectCount))
   {
-    Serial.printf("[RemoteFrame] frame=%lu %s rects=%u payload=%lu begin_ms=%lu get_ms=%lu header_ms=%lu "
-                  "read_ms=%lu stream_reads=%lu stream_bytes=%lu tft_ms=%lu tft_calls=%lu other_ms=%lu "
-                  "total_ms=%lu\n",
-                  static_cast<unsigned long>(header.frameId), header.fullFrame ? "full" : "partial", header.rectCount,
-                  static_cast<unsigned long>(header.payloadLength), static_cast<unsigned long>(diagnostics.beginMs),
-                  static_cast<unsigned long>(diagnostics.getMs), static_cast<unsigned long>(diagnostics.headerMs),
-                  static_cast<unsigned long>(diagnostics.readMs), static_cast<unsigned long>(diagnostics.streamReads),
-                  static_cast<unsigned long>(diagnostics.streamBytes), static_cast<unsigned long>(diagnostics.tftMs),
-                  static_cast<unsigned long>(diagnostics.tftCalls),
-                  static_cast<unsigned long>(app::frameOtherMs(diagnostics)),
-                  static_cast<unsigned long>(diagnostics.totalMs));
+    Serial.printf(
+        "[RemoteFrame] frame=%lu %s rects=%u payload=%lu begin_ms=%lu get_ms=%lu header_ms=%lu "
+        "srv_wait_ms=%lu srv_render_ms=%lu srv_total_ms=%lu client_overhead_ms=%lu read_ms=%lu "
+        "stream_reads=%lu stream_bytes=%lu tft_ms=%lu tft_calls=%lu other_ms=%lu total_ms=%lu\n",
+        static_cast<unsigned long>(header.frameId), header.fullFrame ? "full" : "partial", header.rectCount,
+        static_cast<unsigned long>(header.payloadLength), static_cast<unsigned long>(diagnostics.beginMs),
+        static_cast<unsigned long>(diagnostics.getMs), static_cast<unsigned long>(diagnostics.headerMs),
+        static_cast<unsigned long>(diagnostics.serverWaitMs), static_cast<unsigned long>(diagnostics.serverRenderMs),
+        static_cast<unsigned long>(diagnostics.serverTotalMs),
+        static_cast<unsigned long>(app::frameClientOverheadMs(diagnostics)),
+        static_cast<unsigned long>(diagnostics.readMs), static_cast<unsigned long>(diagnostics.streamReads),
+        static_cast<unsigned long>(diagnostics.streamBytes), static_cast<unsigned long>(diagnostics.tftMs),
+        static_cast<unsigned long>(diagnostics.tftCalls), static_cast<unsigned long>(app::frameOtherMs(diagnostics)),
+        static_cast<unsigned long>(diagnostics.totalMs));
   }
 
   outFrameId = header.frameId;
-  http.end();
+  keepAlivePolicy_.rememberSuccessfulRequest(baseUrl.c_str());
+  http_.end();
   return FrameFetchResult::Updated;
+}
+
+void HttpFrameClient::resetConnection()
+{
+  http_.setReuse(false);
+  http_.end();
+  client_.stop();
+  keepAlivePolicy_.clear();
 }
 
 bool HttpFrameClient::readExact(WiFiClient &stream, uint8_t *buffer, std::size_t length)

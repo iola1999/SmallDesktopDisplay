@@ -37,6 +37,14 @@ class QueuedCommand:
     persist: bool = True
 
 
+@dataclass(frozen=True)
+class FrameResult:
+    frame: bytes | None
+    wait_ms: int = 0
+    render_ms: int = 0
+    total_ms: int = 0
+
+
 @dataclass
 class DeviceState:
     device_id: str
@@ -71,24 +79,67 @@ class DeviceRegistry:
         self._animation_frame_interval_seconds = animation_frame_interval_seconds
 
     def get_frame(self, device_id: str, have: int, wait_ms: int) -> bytes | None:
+        return self.get_frame_with_stats(
+            device_id=device_id,
+            have=have,
+            wait_ms=wait_ms,
+        ).frame
+
+    def get_frame_with_stats(
+        self,
+        device_id: str,
+        have: int,
+        wait_ms: int,
+    ) -> FrameResult:
+        started = self._monotonic()
         deadline = self._monotonic() + max(0, min(wait_ms, 5000)) / 1000.0
+        wait_seconds = 0.0
+        render_seconds = 0.0
         with self._condition:
-            state = self._ensure_device_locked(device_id)
-            self._render_if_due_locked(state)
+            state, ensure_render_seconds = self._ensure_device_with_render_stats_locked(
+                device_id
+            )
+            render_seconds += ensure_render_seconds
+            render_seconds += self._render_if_due_locked(state)
             frame = self._select_frame_for_client_locked(state, have)
             if frame is not None:
-                return frame
+                return FrameResult(
+                    frame=frame,
+                    wait_ms=_elapsed_ms(wait_seconds),
+                    render_ms=_elapsed_ms(render_seconds),
+                    total_ms=_elapsed_ms(self._monotonic() - started),
+                )
             while state.frame_id <= have:
                 remaining = deadline - self._monotonic()
                 if remaining <= 0:
-                    return None
+                    return FrameResult(
+                        frame=None,
+                        wait_ms=_elapsed_ms(wait_seconds),
+                        render_ms=_elapsed_ms(render_seconds),
+                        total_ms=_elapsed_ms(self._monotonic() - started),
+                    )
+                wait_started = self._monotonic()
                 self._condition.wait(timeout=remaining)
-                state = self._ensure_device_locked(device_id)
-                self._render_if_due_locked(state)
+                wait_seconds += max(0.0, self._monotonic() - wait_started)
+                state, ensure_render_seconds = (
+                    self._ensure_device_with_render_stats_locked(device_id)
+                )
+                render_seconds += ensure_render_seconds
+                render_seconds += self._render_if_due_locked(state)
                 frame = self._select_frame_for_client_locked(state, have)
                 if frame is not None:
-                    return frame
-            return self._select_frame_for_client_locked(state, have)
+                    return FrameResult(
+                        frame=frame,
+                        wait_ms=_elapsed_ms(wait_seconds),
+                        render_ms=_elapsed_ms(render_seconds),
+                        total_ms=_elapsed_ms(self._monotonic() - started),
+                    )
+            return FrameResult(
+                frame=self._select_frame_for_client_locked(state, have),
+                wait_ms=_elapsed_ms(wait_seconds),
+                render_ms=_elapsed_ms(render_seconds),
+                total_ms=_elapsed_ms(self._monotonic() - started),
+            )
 
     def record_input(
         self,
@@ -142,14 +193,22 @@ class DeviceRegistry:
             )
 
     def _ensure_device_locked(self, device_id: str) -> DeviceState:
-        state = self._devices.get(device_id)
-        if state is None:
-            state = DeviceState(device_id=device_id)
-            self._render_locked(state, full_frame=True)
-            self._devices[device_id] = state
+        state, _ = self._ensure_device_with_render_stats_locked(device_id)
         return state
 
-    def _render_if_due_locked(self, state: DeviceState) -> None:
+    def _ensure_device_with_render_stats_locked(
+        self,
+        device_id: str,
+    ) -> tuple[DeviceState, float]:
+        state = self._devices.get(device_id)
+        render_seconds = 0.0
+        if state is None:
+            state = DeviceState(device_id=device_id)
+            render_seconds = self._render_locked(state, full_frame=True)
+            self._devices[device_id] = state
+        return state, render_seconds
+
+    def _render_if_due_locked(self, state: DeviceState) -> float:
         now = self._monotonic()
         if is_animation_active(state.ui, now=now):
             if (
@@ -157,17 +216,17 @@ class DeviceRegistry:
                 or now - state.last_animation_frame_at
                 >= self._animation_frame_interval_seconds
             ):
-                self._render_locked(state, full_frame=False)
-            return
+                return self._render_locked(state, full_frame=False)
+            return 0.0
 
         if state.ui.animation:
             state.ui.animation = ""
 
         current_second = int(self._monotonic() / self._frame_interval_seconds)
         if current_second <= state.last_render_second:
-            return
+            return 0.0
 
-        self._render_locked(state, full_frame=False, regions=[TIME_REGION])
+        return self._render_locked(state, full_frame=False, regions=[TIME_REGION])
 
     def _select_frame_for_client_locked(self, state: DeviceState, have: int) -> bytes | None:
         if have == 0 or have > state.frame_id:
@@ -196,7 +255,8 @@ class DeviceRegistry:
         *,
         full_frame: bool,
         regions: list[tuple[int, int, int, int]] | None = None,
-    ) -> None:
+    ) -> float:
+        started = self._monotonic()
         now = self._monotonic()
         base_frame_id = state.frame_id
         state.frame_id += 1
@@ -239,6 +299,7 @@ class DeviceRegistry:
                 full_frame=True,
             )
             state.full_frame = encode_rendered_frame(full_rendered)
+        return max(0.0, self._monotonic() - started)
 
     def _queue_command_locked(self, state: DeviceState, command: DeviceCommand) -> None:
         state.command_id += 1
@@ -265,6 +326,10 @@ def encode_rendered_frame(frame: RenderedFrame) -> bytes:
         rects=frame.rects,
         full_frame=frame.full_frame,
     )
+
+
+def _elapsed_ms(seconds: float) -> int:
+    return max(0, int(round(seconds * 1000)))
 
 
 def _log_rendered_frame(state: DeviceState, frame: RenderedFrame) -> None:

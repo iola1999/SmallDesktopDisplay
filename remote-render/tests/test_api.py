@@ -11,10 +11,16 @@ def test_frame_endpoint_returns_latest_frame_then_204_for_same_have():
     first = client.get("/api/v1/devices/desk-01/frame?have=0")
     assert first.status_code == 200
     assert first.headers["content-type"] == "application/octet-stream"
+    assert first.headers["x-sdd-server-wait-ms"].isdigit()
+    assert first.headers["x-sdd-server-render-ms"].isdigit()
+    assert first.headers["x-sdd-server-total-ms"].isdigit()
 
     frame_id = int.from_bytes(first.content[8:12], "little")
     second = client.get(f"/api/v1/devices/desk-01/frame?have={frame_id}&wait_ms=1")
     assert second.status_code == 204
+    assert second.headers["x-sdd-server-wait-ms"].isdigit()
+    assert second.headers["x-sdd-server-render-ms"].isdigit()
+    assert second.headers["x-sdd-server-total-ms"].isdigit()
 
 
 def test_button_input_advances_latest_frame_without_replaying_old_frames():

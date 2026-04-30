@@ -188,7 +188,7 @@ The firmware logs detailed timing for full frames, large frames, and frames with
 many rectangles:
 
 ```text
-[RemoteFrame] frame=77 full rects=1 payload=15102 begin_ms=0 get_ms=37 header_ms=0 read_ms=7 stream_reads=80 stream_bytes=15118 tft_ms=40 tft_calls=120 other_ms=63 total_ms=147
+[RemoteFrame] frame=77 full rects=1 payload=15102 begin_ms=0 get_ms=37 header_ms=0 srv_wait_ms=0 srv_render_ms=20 srv_total_ms=21 client_overhead_ms=16 read_ms=7 stream_reads=80 stream_bytes=15118 tft_ms=40 tft_calls=120 other_ms=63 total_ms=147
 ```
 
 Field meaning:
@@ -198,6 +198,14 @@ Field meaning:
 - `get_ms`: `HTTPClient.GET()`, which includes TCP connect, HTTP request send,
   response status/header parsing, and any server long-poll wait.
 - `header_ms`: time to read the 32-byte `SDD/1` frame header after status 200.
+- `srv_wait_ms`: server-side long-poll wait time before a newer frame became
+  available.
+- `srv_render_ms`: server-side render time for frames generated inside this
+  request.
+- `srv_total_ms`: total server route time for the frame request.
+- `client_overhead_ms`: estimated client-side HTTP overhead. It subtracts
+  `srv_total_ms` from `get_ms` when the header is available, and falls back to
+  subtracting `srv_wait_ms + srv_render_ms` otherwise.
 - `read_ms`: time to read rectangle headers and encoded RGB565 body bytes from
   the `WiFiClient` stream.
 - `stream_reads` / `stream_bytes`: exact stream-read operations and their target
@@ -216,6 +224,32 @@ network device samples show `read_ms=6-14`, `tft_ms=38-56`, and
 `total_ms=136-148`. Small clock dirty frames are now usually around
 `0.8-2.0KB`, with `read_ms` usually `0-3ms`.
 
+The frame endpoint includes these diagnostic headers on both `200` and `204`
+responses:
+
+- `X-SDD-Server-Wait-Ms`
+- `X-SDD-Server-Render-Ms`
+- `X-SDD-Server-Total-Ms`
+
+Device samples after adding the server split show normal small dirty frames with
+`client_overhead_ms` usually around `12-18ms`. Page-animation dirty frames are
+commonly around `13-16ms`, with one observed `27ms` sample. One forced
+full-frame resync showed `client_overhead_ms=94`, so persistent HTTP is worth a
+small experiment if that spike repeats in real use.
+
+The firmware now uses HTTP Keep-Alive for the frame polling path. `HttpFrameClient`
+owns a long-lived `WiFiClient` and `HTTPClient`, sets `Connection: keep-alive`,
+and calls `HTTPClient.end()` only after the body has been fully consumed so the
+ESP8266 HTTP client can preserve the TCP socket. The reusable socket is reset on
+request failure, invalid frame headers/bodies, stale partial frames, and remote
+base URL changes.
+
+Keep-Alive changed static RAM from `37756B` to `37924B` in the ESP8266 release
+build. First device samples after flashing show `client_overhead_ms` usually
+around `9-12ms` on page transitions and small dirty frames, compared with the
+previous `12-18ms` baseline. That is a modest but real win, and much lower risk
+than jumping directly to WebSocket or raw TCP.
+
 That points the next optimization work toward smaller payloads first:
 
 - Keep full-frame resyncs rare and continue using dirty rectangles for normal
@@ -225,10 +259,11 @@ That points the next optimization work toward smaller payloads first:
 - Test larger row batches only after checking stack and heap headroom. The
   current full frame uses 120 `pushImage` calls with a 2-row buffer; TFT time is already small,
   so this is unlikely to remove the main scan delay by itself.
-- Persistent TCP, raw TCP, WebSocket, or HTTP keep-alive can reduce per-frame
-  `get_ms` on small animation frames. After RLE, `get_ms` is a larger share of
-  small-frame latency, so transport work is a reasonable follow-up if animation
-  smoothness still feels limited.
+- Continue watching `client_overhead_ms` after Keep-Alive. If it remains near
+  `9-12ms`, transport overhead is probably no longer the next bottleneck.
+- Raw TCP or WebSocket could reduce more protocol overhead, but they add a
+  longer-lived socket, reconnect state, and library/buffer memory pressure on an
+  ESP8266. Keep them behind evidence that HTTP Keep-Alive is still not enough.
 
 ## Docker Service Structure
 
@@ -372,7 +407,8 @@ In scope:
   and Home short taps glow only the footer region.
 - Local device-side hold-progress overlay.
 - Interleaved tile-strip dirty frames for large page changes.
-- Server/device frame diagnostics for large updates.
+- Server/device frame diagnostics for large updates, including server wait,
+  server render, server total, and estimated client HTTP overhead.
 - Full-frame resync for cold clients and Docker service restarts.
 - Button POSTs.
 - Device command polling for `set_brightness`.

@@ -35,10 +35,23 @@ def get_frame(
     have: int = Query(ge=0),
     wait_ms: int = Query(default=250, ge=0, le=5000),
 ) -> Response:
-    frame = registry.get_frame(device_id=device_id, have=have, wait_ms=wait_ms)
-    if frame is None:
-        return Response(status_code=204)
-    return Response(content=frame, media_type="application/octet-stream")
+    result = registry.get_frame_with_stats(
+        device_id=device_id,
+        have=have,
+        wait_ms=wait_ms,
+    )
+    headers = {
+        "X-SDD-Server-Wait-Ms": str(result.wait_ms),
+        "X-SDD-Server-Render-Ms": str(result.render_ms),
+        "X-SDD-Server-Total-Ms": str(result.total_ms),
+    }
+    if result.frame is None:
+        return Response(status_code=204, headers=headers)
+    return Response(
+        content=result.frame,
+        media_type="application/octet-stream",
+        headers=headers,
+    )
 
 
 @app.post("/api/v1/devices/{device_id}/input")

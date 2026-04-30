@@ -5,10 +5,12 @@
 #include "ui/TftFrameSink.h"
 
 #include <Arduino.h>
+#include <ESP8266HTTPClient.h>
 #include <WiFiClient.h>
 #include <cstdint>
 
 #include "app/FrameDiagnostics.h"
+#include "app/RemoteKeepAlivePolicy.h"
 
 namespace remote
 {
@@ -26,11 +28,14 @@ public:
   explicit HttpFrameClient(ui::TftFrameSink &sink) : sink_(sink)
   {
   }
+  ~HttpFrameClient();
 
   FrameFetchResult fetchLatest(const String &baseUrl, const String &deviceId, uint32_t haveFrameId, uint32_t waitMs,
                                uint32_t &outFrameId);
 
 private:
+  void resetConnection();
+
   bool readExact(WiFiClient &stream, uint8_t *buffer, std::size_t length);
   bool readExact(WiFiClient &stream, uint8_t *buffer, std::size_t length, uint32_t &elapsedMs);
   bool readExact(WiFiClient &stream, uint8_t *buffer, std::size_t length, uint32_t &elapsedMs,
@@ -42,6 +47,9 @@ private:
                       uint16_t *rowBuffer, uint16_t maxBatchRows);
 
   ui::TftFrameSink &sink_;
+  WiFiClient client_;
+  HTTPClient http_;
+  app::RemoteKeepAlivePolicy keepAlivePolicy_;
 };
 
 } // namespace remote
