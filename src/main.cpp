@@ -7,6 +7,7 @@
 #include "Net.h"
 #include "Storage.h"
 #include "app/DeviceStatusText.h"
+#include "app/HoldInteraction.h"
 #include "app/HoldProgress.h"
 #include "remote/HttpFrameClient.h"
 #include "remote/RemoteInputClient.h"
@@ -23,8 +24,7 @@ uint32_t g_haveFrameId = 0;
 uint32_t g_inputSequence = 0;
 uint32_t g_lastFramePollMs = 0;
 uint32_t g_lastErrorDrawMs = 0;
-bool g_holdActive = false;
-bool g_holdLongPressPosted = false;
+app::HoldInteractionState g_holdInteraction;
 uint32_t g_holdStartedMs = 0;
 uint16_t g_holdLastPixels = UINT16_MAX;
 
@@ -105,7 +105,7 @@ void clearHoldOverlay()
 
 void updateHoldOverlay(uint32_t nowMs)
 {
-  if (!g_holdActive)
+  if (!g_holdInteraction.active)
   {
     return;
   }
@@ -125,36 +125,32 @@ void updateHoldOverlay(uint32_t nowMs)
   if (progress > 0)
   {
     display::tft.fillRect(kHoldBarX, kHoldBarY, progress, kHoldBarHeight, TFT_CYAN);
+    app::markHoldOverlayDrawn(g_holdInteraction);
   }
   g_holdLastPixels = progress;
 }
 
 void beginHold(uint32_t nowMs)
 {
-  g_holdActive = true;
-  g_holdLongPressPosted = false;
+  const app::HoldInteractionAction action = app::applyHoldEvent(g_holdInteraction, app::HoldEvent::PressStarted);
   g_holdStartedMs = nowMs;
-  g_holdLastPixels = UINT16_MAX;
+  if (action.resetOverlayProgress)
+  {
+    g_holdLastPixels = UINT16_MAX;
+  }
 }
 
-void endHold()
+void endHold(uint32_t nowMs)
 {
-  if (g_holdActive || g_holdLastPixels != UINT16_MAX)
+  const app::HoldInteractionAction action = app::applyHoldEvent(g_holdInteraction, app::HoldEvent::PressReleased);
+  if (action.clearOverlay)
   {
     clearHoldOverlay();
   }
-  g_holdActive = false;
-  g_holdLongPressPosted = false;
-}
-
-void postLongPressOnce(uint32_t nowMs)
-{
-  if (g_holdLongPressPosted)
+  if (action.postLongPress)
   {
-    return;
+    postRemoteInput("long_press", nowMs);
   }
-  g_holdLongPressPosted = true;
-  postRemoteInput("long_press", nowMs);
 }
 
 void handleButtonEvent(input::ButtonEvent event, uint32_t nowMs)
@@ -166,15 +162,15 @@ void handleButtonEvent(input::ButtonEvent event, uint32_t nowMs)
     return;
 
   case input::ButtonEvent::PressReleased:
-    endHold();
+    endHold(nowMs);
     return;
 
   case input::ButtonEvent::LongPressArmed:
-    postLongPressOnce(nowMs);
+    app::applyHoldEvent(g_holdInteraction, app::HoldEvent::LongPressArmed);
     return;
 
   case input::ButtonEvent::LongPress:
-    postLongPressOnce(nowMs);
+    app::applyHoldEvent(g_holdInteraction, app::HoldEvent::LongPress);
     return;
 
   case input::ButtonEvent::ShortPress:

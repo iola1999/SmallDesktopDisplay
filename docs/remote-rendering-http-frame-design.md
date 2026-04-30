@@ -240,10 +240,11 @@ monitor.
 
 Hold progress is intentionally local. The remote renderer does not draw any
 progress-bar-like navigation accent. The device uses press lifecycle events to
-draw a 5px progress bar only after the press has lasted roughly 400ms, then
-POSTs `long_press` when the long-press threshold is armed. This keeps tactile
-feedback independent from HTTP latency while preserving remote ownership of page
-state.
+draw a 5px progress bar only after the press has lasted roughly 400ms. Reaching
+the long-press threshold only arms the gesture; the firmware POSTs `long_press`
+when the button is released. This keeps tactile feedback independent from HTTP
+latency while preserving remote ownership of page state and avoids entering a
+new page before the user lifts their finger.
 
 ## First Implementation Scope
 

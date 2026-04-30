@@ -47,6 +47,8 @@ Update it whenever behavior, architecture, or interaction details change.
 - Extended the local frame preview client so it can POST an input event before capturing frames, which makes navigation and animation debugging possible without reflashing or photographing the device.
 - Split Docker dependency installation from `app/` code copying and enabled BuildKit pip cache so renderer-only rebuilds do not repeatedly download Pillow/FastAPI.
 - Fixed the local `clang-format` tooling path by exposing Homebrew LLVM's `clang-format` through a PlatformIO package shim, so `pio pkg exec -- clang-format ...` works on this Mac.
+- Changed device-side hold handling so the threshold only arms the long-press; `long_press` is POSTed on release, preventing an entered page from receiving a second long-press when the button is lifted.
+- Tracked whether the local hold overlay was actually drawn before clearing it, so ordinary taps no longer erase a thin black strip at the top of the remote frame.
 
 ### Current Development And Deployment Notes
 
