@@ -8,11 +8,15 @@ namespace app
 
 struct FrameDiagnostics
 {
-  uint32_t httpMs = 0;
+  uint32_t beginMs = 0;
+  uint32_t getMs = 0;
   uint32_t headerMs = 0;
   uint32_t readMs = 0;
   uint32_t tftMs = 0;
   uint32_t totalMs = 0;
+  uint32_t streamReads = 0;
+  uint32_t streamBytes = 0;
+  uint32_t tftCalls = 0;
 };
 
 bool shouldLogFrameDiagnostics(bool fullFrame, uint32_t payloadLength, uint16_t rectCount);

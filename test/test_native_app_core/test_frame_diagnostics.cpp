@@ -13,7 +13,8 @@ TEST_CASE("frame diagnostics logs full and large frames")
 TEST_CASE("frame diagnostics calculates unaccounted time without underflow")
 {
   app::FrameDiagnostics diagnostics;
-  diagnostics.httpMs = 10;
+  diagnostics.beginMs = 1;
+  diagnostics.getMs = 9;
   diagnostics.headerMs = 2;
   diagnostics.readMs = 30;
   diagnostics.tftMs = 40;

@@ -32,6 +32,8 @@ public:
 private:
   bool readExact(Stream &stream, uint8_t *buffer, std::size_t length);
   bool readExact(Stream &stream, uint8_t *buffer, std::size_t length, uint32_t &elapsedMs);
+  bool readExact(Stream &stream, uint8_t *buffer, std::size_t length, uint32_t &elapsedMs,
+                 app::FrameDiagnostics &diagnostics);
   bool consumeFrame(Stream &stream, const FrameHeader &header, app::FrameDiagnostics &diagnostics);
 
   ui::TftFrameSink &sink_;

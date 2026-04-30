@@ -168,6 +168,49 @@ split into interleaved tile strips, currently `240x8` for a full-width dirty
 row. The interleaved order avoids a single large rectangle visibly scanning from
 top to bottom on the physical TFT.
 
+## Frame Timing Diagnostics
+
+The firmware logs detailed timing for full frames, large frames, and frames with
+many rectangles:
+
+```text
+[RemoteFrame] frame=2 full rects=1 payload=115200 begin_ms=0 get_ms=11 header_ms=0 read_ms=1017 stream_reads=61 stream_bytes=115216 tft_ms=46 tft_calls=60 other_ms=129 total_ms=1203
+```
+
+Field meaning:
+
+- `begin_ms`: local `HTTPClient.begin()` setup. This does not open the TCP
+  connection.
+- `get_ms`: `HTTPClient.GET()`, which includes TCP connect, HTTP request send,
+  response status/header parsing, and any server long-poll wait.
+- `header_ms`: time to read the 32-byte `SDD/1` frame header after status 200.
+- `read_ms`: time to read rectangle headers and RGB565 body bytes from the
+  `WiFiClient` stream.
+- `stream_reads` / `stream_bytes`: exact stream-read operations and their target
+  byte count, including rectangle headers but excluding the 32-byte frame header.
+- `tft_ms` / `tft_calls`: time and call count for TFT `pushImage` operations.
+- `other_ms`: remaining local parsing, CRC, loop overhead, and scheduler time.
+
+Current hardware samples show the full-frame bottleneck is response-body
+transfer, not connection setup or TFT writes. A 115200-byte full frame spent
+about `1s` in `read_ms`, about `46ms` in `tft_ms`, and only `11ms` in `get_ms`.
+Small clock dirty frames around `4.5KB` usually spend roughly `40-60ms` in
+`get_ms`, `39-44ms` in `read_ms`, and `1-5ms` in TFT writes.
+
+That points the next optimization work toward smaller payloads first:
+
+- Keep full-frame resyncs rare and continue using dirty rectangles for normal
+  UI changes.
+- Consider simple streaming compression, such as line/RLE spans for flat
+  background regions, before changing transports.
+- Test larger row batches only after checking heap headroom. The current full
+  frame uses 60 `pushImage` calls with a 4-row buffer; TFT time is already small,
+  so this is unlikely to remove the main scan delay by itself.
+- Persistent TCP, raw TCP, WebSocket, or HTTP keep-alive can reduce per-frame
+  `get_ms` on small animation frames, but the measured full-screen delay is
+  dominated by `read_ms`, so transport changes alone should not be expected to
+  fix full-page scans.
+
 ## Docker Service Structure
 
 ```text

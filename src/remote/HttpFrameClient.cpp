@@ -42,13 +42,16 @@ FrameFetchResult HttpFrameClient::fetchLatest(const String &baseUrl, const Strin
   const uint32_t requestStartedMs = millis();
   const String url = joinUrl(baseUrl, "/api/v1/devices/" + deviceId + "/frame?have=" + String(haveFrameId) +
                                           "&wait_ms=" + String(waitMs));
+  const uint32_t beginStartedMs = millis();
   if (!http.begin(client, url))
   {
     return FrameFetchResult::Failed;
   }
+  diagnostics.beginMs = millis() - beginStartedMs;
 
+  const uint32_t getStartedMs = millis();
   const int statusCode = http.GET();
-  diagnostics.httpMs = millis() - requestStartedMs;
+  diagnostics.getMs = millis() - getStartedMs;
   if (statusCode == HTTP_CODE_NO_CONTENT)
   {
     http.end();
@@ -92,12 +95,15 @@ FrameFetchResult HttpFrameClient::fetchLatest(const String &baseUrl, const Strin
   diagnostics.totalMs = millis() - requestStartedMs;
   if (app::shouldLogFrameDiagnostics(header.fullFrame, header.payloadLength, header.rectCount))
   {
-    Serial.printf("[RemoteFrame] frame=%lu %s rects=%u payload=%lu http_ms=%lu header_ms=%lu read_ms=%lu "
-                  "tft_ms=%lu other_ms=%lu total_ms=%lu\n",
+    Serial.printf("[RemoteFrame] frame=%lu %s rects=%u payload=%lu begin_ms=%lu get_ms=%lu header_ms=%lu "
+                  "read_ms=%lu stream_reads=%lu stream_bytes=%lu tft_ms=%lu tft_calls=%lu other_ms=%lu "
+                  "total_ms=%lu\n",
                   static_cast<unsigned long>(header.frameId), header.fullFrame ? "full" : "partial", header.rectCount,
-                  static_cast<unsigned long>(header.payloadLength), static_cast<unsigned long>(diagnostics.httpMs),
-                  static_cast<unsigned long>(diagnostics.headerMs), static_cast<unsigned long>(diagnostics.readMs),
-                  static_cast<unsigned long>(diagnostics.tftMs),
+                  static_cast<unsigned long>(header.payloadLength), static_cast<unsigned long>(diagnostics.beginMs),
+                  static_cast<unsigned long>(diagnostics.getMs), static_cast<unsigned long>(diagnostics.headerMs),
+                  static_cast<unsigned long>(diagnostics.readMs), static_cast<unsigned long>(diagnostics.streamReads),
+                  static_cast<unsigned long>(diagnostics.streamBytes), static_cast<unsigned long>(diagnostics.tftMs),
+                  static_cast<unsigned long>(diagnostics.tftCalls),
                   static_cast<unsigned long>(app::frameOtherMs(diagnostics)),
                   static_cast<unsigned long>(diagnostics.totalMs));
   }
@@ -115,8 +121,17 @@ bool HttpFrameClient::readExact(Stream &stream, uint8_t *buffer, std::size_t len
 
 bool HttpFrameClient::readExact(Stream &stream, uint8_t *buffer, std::size_t length, uint32_t &elapsedMs)
 {
+  app::FrameDiagnostics unusedDiagnostics;
+  return readExact(stream, buffer, length, elapsedMs, unusedDiagnostics);
+}
+
+bool HttpFrameClient::readExact(Stream &stream, uint8_t *buffer, std::size_t length, uint32_t &elapsedMs,
+                                app::FrameDiagnostics &diagnostics)
+{
   std::size_t offset = 0;
   const uint32_t startedMs = millis();
+  ++diagnostics.streamReads;
+  diagnostics.streamBytes += static_cast<uint32_t>(length);
   while (offset < length)
   {
     const int count = stream.readBytes(reinterpret_cast<char *>(buffer + offset), length - offset);
@@ -142,7 +157,7 @@ bool HttpFrameClient::consumeFrame(Stream &stream, const FrameHeader &header, ap
   {
     uint8_t rectBytes[kRectHeaderSize];
     RectHeader rect;
-    if (!readExact(stream, rectBytes, sizeof(rectBytes), diagnostics.readMs) ||
+    if (!readExact(stream, rectBytes, sizeof(rectBytes), diagnostics.readMs, diagnostics) ||
         !parseRectHeader(rectBytes, sizeof(rectBytes), rect) || !rectFitsFrame(header, rect))
     {
       return false;
@@ -161,7 +176,7 @@ bool HttpFrameClient::consumeFrame(Stream &stream, const FrameHeader &header, ap
       const uint16_t rowsThisBatch = std::min<uint16_t>(kMaxBatchRows, rect.height - row);
       const std::size_t batchBytes = rowBytes * rowsThisBatch;
       uint8_t *rowData = reinterpret_cast<uint8_t *>(rowBuffer);
-      if (!readExact(stream, rowData, batchBytes, diagnostics.readMs))
+      if (!readExact(stream, rowData, batchBytes, diagnostics.readMs, diagnostics))
       {
         return false;
       }
@@ -169,6 +184,7 @@ bool HttpFrameClient::consumeFrame(Stream &stream, const FrameHeader &header, ap
       const uint32_t tftStartedMs = millis();
       sink_.drawRgb565Block(rect.x, rect.y + row, rect.width, rowsThisBatch, rowBuffer);
       diagnostics.tftMs += millis() - tftStartedMs;
+      ++diagnostics.tftCalls;
       row += rowsThisBatch;
     }
 
