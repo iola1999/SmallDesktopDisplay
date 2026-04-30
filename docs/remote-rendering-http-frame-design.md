@@ -78,6 +78,12 @@ Current Settings items:
 - `Renderer`: read-only transport/protocol summary for the remote frame link.
 - `About`: device id and remote display protocol summary.
 
+The Home page is a remote-rendered Chinese desktop clock rather than a debug
+screen. It shows Chinese date and weekday, large `HH:MM`, compact seconds, a
+time-of-day greeting, a short subtitle, and a small sync/RSSI footer. Device id,
+tap count, and other development-only labels are intentionally kept out of the
+first screen; detailed diagnostics live under Settings -> Device.
+
 Brightness uses a separate command channel because it is a local hardware side
 effect, not pixels. The current command response is JSON:
 

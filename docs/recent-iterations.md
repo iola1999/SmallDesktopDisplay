@@ -64,6 +64,8 @@ Update it whenever behavior, architecture, or interaction details change.
 - Keep-Alive increased static RAM from `37756B` to `37924B` (`46.1%` to `46.3%`). First post-flash samples show `client_overhead_ms` usually around `9-12ms` on page transitions and small dirty frames, down from the previous `12-18ms` baseline, with no repeated full-frame `94ms` spike observed in the first run.
 - Extended device status sync with ESP8266-side client diagnostics: free heap, max free heap block, heap fragmentation, WiFi RSSI, and uptime. The Docker renderer stores these per device and exposes them through a real `Device` detail page in Settings; `Renderer` and `About` now show useful read-only summaries instead of placeholder panels.
 - Settings now contains `Brightness`, `Device`, `Renderer`, and `About`. The previous `Theme` placeholder is hidden until there is a real theme feature behind it.
+- Reworked the remote-rendered Home page from a debug surface into a Chinese desktop clock. The home view now shows Chinese date, weekday, large `HH:MM`, compact seconds, a time-of-day greeting, a short calm subtitle, and a tiny sync/RSSI footer. Device id and tap-count debug text were removed from the first screen.
+- Added Noto CJK fonts to the Docker image so Chinese text renders correctly in the container, not only on the macOS host.
 
 ### Current Development And Deployment Notes
 

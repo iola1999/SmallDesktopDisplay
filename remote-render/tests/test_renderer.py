@@ -7,6 +7,7 @@ from app.protocol import ENCODING_RGB565_RLE, decode_rgb565_rle
 from app.renderer import (
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
+    build_home_copy,
     compute_dirty_rects,
     render_canvas_frame,
     render_device_canvas,
@@ -44,11 +45,39 @@ def test_renderer_compresses_flat_full_frame_rects():
     assert len(rect.payload) < SCREEN_WIDTH * SCREEN_HEIGHT * 2 // 10
 
 
-def test_renderer_changes_pixels_when_button_count_changes():
-    first = render_device_view(device_id="desk-01", button_count=0)
-    second = render_device_view(device_id="desk-01", button_count=3)
+def test_renderer_home_frame_ignores_button_count_debug_state():
+    now = datetime(2026, 5, 1, 14, 32, 8, tzinfo=ZoneInfo("Asia/Shanghai"))
+    first = render_device_view(device_id="desk-01", button_count=0, now=now)
+    second = render_device_view(device_id="desk-01", button_count=3, now=now)
 
-    assert first.rects[0].payload != second.rects[0].payload
+    assert first.rects[0].payload == second.rects[0].payload
+
+
+def test_home_copy_uses_chinese_date_weekday_and_greeting():
+    copy = build_home_copy(datetime(2026, 5, 1, 14, 32, 8, tzinfo=ZoneInfo("Asia/Shanghai")))
+
+    assert copy.date_text == "五月一日"
+    assert copy.weekday_text == "星期五"
+    assert copy.time_text == "14:32"
+    assert copy.seconds_text == ":08"
+    assert copy.greeting == "下午好"
+
+
+def test_home_screen_does_not_render_debug_device_or_tap_state():
+    current_time = datetime(2026, 5, 1, 14, 32, 8, tzinfo=ZoneInfo("Asia/Shanghai"))
+
+    first = render_device_canvas(
+        current_time=current_time,
+        device_id="desk-01",
+        button_count=0,
+    )
+    second = render_device_canvas(
+        current_time=current_time,
+        device_id="debug-device",
+        button_count=99,
+    )
+
+    assert first.tobytes() == second.tobytes()
 
 
 def test_renderer_diff_for_second_tick_is_much_smaller_than_time_region():

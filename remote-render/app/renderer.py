@@ -29,6 +29,16 @@ class RenderedFrame:
     rects: list[FrameRect]
 
 
+@dataclass(frozen=True)
+class HomeCopy:
+    date_text: str
+    weekday_text: str
+    time_text: str
+    seconds_text: str
+    greeting: str
+    subtitle: str
+
+
 def render_device_view(
     *,
     device_id: str,
@@ -102,8 +112,6 @@ def render_device_canvas(
     else:
         page = _render_home_page(
             current_time=current_time,
-            device_id=device_id,
-            button_count=button_count,
             state=state,
             animation_progress=animation_progress,
             font_time=font_time,
@@ -119,8 +127,6 @@ def render_device_canvas(
 def _render_home_page(
     *,
     current_time: datetime,
-    device_id: str,
-    button_count: int,
     state: DeviceUiState,
     animation_progress: float,
     font_time: ImageFont.FreeTypeFont | ImageFont.ImageFont,
@@ -130,38 +136,117 @@ def _render_home_page(
 ) -> Image.Image:
     image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
     draw = ImageDraw.Draw(image)
+    copy = build_home_copy(current_time)
 
-    draw.rounded_rectangle((8, 8, 232, 232), radius=14, outline=(48, 64, 72), width=2)
-    draw.text((20, 20), "Remote Display", fill=(130, 190, 180), font=font_label)
+    _draw_home_background(draw)
 
-    time_text = current_time.strftime("%H:%M:%S")
+    date_line = f"{copy.date_text}  {copy.weekday_text}"
+    date_width = _text_width(draw, date_line, font_date)
+    draw.text(((SCREEN_WIDTH - date_width) // 2, 25), date_line, fill=(172, 200, 194), font=font_date)
+
+    time_text = copy.time_text
     time_box = draw.textbbox((0, 0), time_text, font=font_time)
     time_width = time_box[2] - time_box[0]
-    draw.text(
-        ((SCREEN_WIDTH - time_width) // 2, 58),
-        time_text,
-        fill=(238, 245, 230),
-        font=font_time,
-    )
+    seconds_width = _text_width(draw, copy.seconds_text, font_footer)
+    time_left = (SCREEN_WIDTH - time_width - seconds_width - 5) // 2
+    draw.text((time_left, 68), time_text, fill=(240, 248, 238), font=font_time)
+    draw.text((time_left + time_width + 5, 92), copy.seconds_text, fill=(128, 218, 198), font=font_footer)
 
-    date_text = current_time.strftime("%m-%d %a")
-    date_box = draw.textbbox((0, 0), date_text, font=font_date)
-    date_width = date_box[2] - date_box[0]
+    greeting_width = _text_width(draw, copy.greeting, font_footer)
     draw.text(
-        ((SCREEN_WIDTH - date_width) // 2, 126),
-        date_text.upper(),
-        fill=(170, 188, 198),
-        font=font_date,
+        ((SCREEN_WIDTH - greeting_width) // 2, 140),
+        copy.greeting,
+        fill=(206, 232, 222),
+        font=font_footer,
     )
+    subtitle_width = _text_width(draw, copy.subtitle, font_label)
+    draw.text(((SCREEN_WIDTH - subtitle_width) // 2, 166), copy.subtitle, fill=(124, 156, 158), font=font_label)
 
     tap_pulse = _pulse(animation_progress) if state.animation == "home_tap" else 0.0
-    draw.rounded_rectangle((16, 168, 224, 216), radius=10, fill=_mix_color((20, 28, 32), (26, 54, 52), tap_pulse))
-    if tap_pulse > 0:
-        draw.rounded_rectangle((14, 166, 226, 218), radius=12, outline=_mix_color((30, 68, 64), (116, 230, 205), tap_pulse), width=1)
-    draw.text((30, 182), device_id[:14], fill=(210, 225, 218), font=font_footer)
-    draw.text((156, 182), f"tap {button_count}", fill=(132, 206, 186), font=font_footer)
+    status = _home_status_text(state)
+    status_width = _text_width(draw, status, font_label)
+    draw.rounded_rectangle((46, 202, 194, 221), radius=8, fill=_mix_color((16, 25, 29), (21, 46, 43), tap_pulse))
+    draw.ellipse((58, 208, 66, 216), fill=_mix_color((66, 160, 142), (130, 252, 214), tap_pulse))
+    draw.text((75 + max(0, 68 - status_width) // 2, 204), status, fill=(154, 184, 184), font=font_label)
 
     return image
+
+
+def build_home_copy(current_time: datetime) -> HomeCopy:
+    return HomeCopy(
+        date_text=f"{_chinese_month(current_time.month)}月{_chinese_day(current_time.day)}日",
+        weekday_text=_chinese_weekday(current_time.weekday()),
+        time_text=current_time.strftime("%H:%M"),
+        seconds_text=current_time.strftime(":%S"),
+        greeting=_greeting_for_hour(current_time.hour),
+        subtitle=_subtitle_for_hour(current_time.hour),
+    )
+
+
+def _draw_home_background(draw: ImageDraw.ImageDraw) -> None:
+    draw.rounded_rectangle((8, 8, 232, 232), radius=14, fill=(6, 10, 13), outline=(42, 58, 62), width=2)
+    draw.rounded_rectangle((16, 16, 224, 224), radius=11, outline=(16, 31, 34), width=1)
+    draw.line((32, 55, 208, 55), fill=(20, 38, 39), width=1)
+    draw.line((42, 132, 198, 132), fill=(18, 34, 36), width=1)
+    draw.ellipse((26, 28, 31, 33), fill=(67, 154, 139))
+    draw.ellipse((209, 28, 214, 33), fill=(36, 78, 80))
+
+
+def _home_status_text(state: DeviceUiState) -> str:
+    if state.diagnostics.wifi_rssi < 0:
+        return f"已同步  {state.diagnostics.wifi_rssi}dBm"
+    return "已同步"
+
+
+def _chinese_month(month: int) -> str:
+    names = ("一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二")
+    return names[max(1, min(12, month)) - 1]
+
+
+def _chinese_day(day: int) -> str:
+    return _chinese_number(max(1, min(31, day)))
+
+
+def _chinese_number(value: int) -> str:
+    digits = ("零", "一", "二", "三", "四", "五", "六", "七", "八", "九")
+    if value <= 10:
+        return "十" if value == 10 else digits[value]
+    if value < 20:
+        return "十" + digits[value - 10]
+    tens = value // 10
+    ones = value % 10
+    if ones == 0:
+        return digits[tens] + "十"
+    return digits[tens] + "十" + digits[ones]
+
+
+def _chinese_weekday(weekday: int) -> str:
+    names = ("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
+    return names[max(0, min(6, weekday))]
+
+
+def _greeting_for_hour(hour: int) -> str:
+    if 5 <= hour < 11:
+        return "早上好"
+    if 11 <= hour < 14:
+        return "中午好"
+    if 14 <= hour < 18:
+        return "下午好"
+    if 18 <= hour < 23:
+        return "晚上好"
+    return "夜深了"
+
+
+def _subtitle_for_hour(hour: int) -> str:
+    if 5 <= hour < 11:
+        return "今天也慢慢开始"
+    if 11 <= hour < 14:
+        return "记得好好吃饭"
+    if 14 <= hour < 18:
+        return "保持清醒，慢慢来"
+    if 18 <= hour < 23:
+        return "收一收，缓一缓"
+    return "早点休息也很好"
 
 
 def _render_settings_page(state: DeviceUiState, *, animation_progress: float) -> Image.Image:
@@ -528,6 +613,9 @@ def _crop_rect(image: Image.Image, region: tuple[int, int, int, int]) -> FrameRe
 
 def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     candidates = [
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/STHeiti Light.ttc",
         "/System/Library/Fonts/Supplemental/Arial.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
