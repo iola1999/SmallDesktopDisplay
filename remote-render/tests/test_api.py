@@ -258,3 +258,53 @@ def test_registry_back_to_home_redraws_more_than_footer_region():
 
     assert home_frame is not None
     assert int.from_bytes(home_frame[22:26], "little") > 60000
+
+
+def test_registry_queues_brightness_command_from_detail_confirm():
+    registry = DeviceRegistry()
+    device_id = "desk-brightness-command"
+
+    registry.get_frame(device_id=device_id, have=0, wait_ms=0)
+    assert registry.record_input(device_id=device_id, seq=1, event="long_press", uptime_ms=100)
+    assert registry.record_input(device_id=device_id, seq=2, event="long_press", uptime_ms=800)
+    assert registry.record_input(device_id=device_id, seq=3, event="short_press", uptime_ms=1200)
+    assert registry.record_input(device_id=device_id, seq=4, event="long_press", uptime_ms=1800)
+
+    command = registry.get_command(device_id=device_id, after=0)
+
+    assert command is not None
+    assert command.id == 1
+    assert command.type == "set_brightness"
+    assert command.value == 60
+    assert command.persist is True
+
+
+def test_command_endpoint_returns_latest_command_then_204():
+    client = TestClient(app)
+    device_id = "desk-brightness-api"
+
+    assert client.get(f"/api/v1/devices/{device_id}/frame?have=0").status_code == 200
+    assert client.post(
+        f"/api/v1/devices/{device_id}/input",
+        json={"seq": 1, "event": "long_press", "uptime_ms": 100},
+    ).status_code == 202
+    assert client.post(
+        f"/api/v1/devices/{device_id}/input",
+        json={"seq": 2, "event": "long_press", "uptime_ms": 800},
+    ).status_code == 202
+    assert client.post(
+        f"/api/v1/devices/{device_id}/input",
+        json={"seq": 3, "event": "long_press", "uptime_ms": 1400},
+    ).status_code == 202
+
+    response = client.get(f"/api/v1/devices/{device_id}/commands?after=0")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "id": 1,
+        "type": "set_brightness",
+        "value": 50,
+        "persist": True,
+    }
+
+    assert client.get(f"/api/v1/devices/{device_id}/commands?after=1").status_code == 204

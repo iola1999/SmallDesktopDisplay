@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query
@@ -51,3 +52,14 @@ def post_input(device_id: str, event: InputEvent) -> Response:
         flush=True,
     )
     return Response(status_code=202)
+
+
+@app.get("/api/v1/devices/{device_id}/commands", response_model=None)
+def get_commands(
+    device_id: str,
+    after: int = Query(ge=0),
+):
+    command = registry.get_command(device_id=device_id, after=after)
+    if command is None:
+        return Response(status_code=204)
+    return asdict(command)

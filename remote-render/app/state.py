@@ -21,11 +21,20 @@ from app.renderer import (
     render_device_canvas,
 )
 from app.ui_state import (
+    DeviceCommand,
     DeviceUiState,
     apply_input_event,
     current_animation_progress,
     is_animation_active,
 )
+
+
+@dataclass
+class QueuedCommand:
+    id: int
+    type: str
+    value: int
+    persist: bool = True
 
 
 @dataclass
@@ -43,6 +52,8 @@ class DeviceState:
     latest_full_frame: bool = True
     canvas: Image.Image | None = None
     ui: DeviceUiState = field(default_factory=DeviceUiState)
+    command_id: int = 0
+    latest_command: QueuedCommand | None = None
 
 
 class DeviceRegistry:
@@ -95,11 +106,20 @@ class DeviceRegistry:
             state.last_input_seq = seq
             state.last_input_uptime_ms = uptime_ms
             state.button_count += 1
-            apply_input_event(state.ui, event, now=self._monotonic())
+            commands = apply_input_event(state.ui, event, now=self._monotonic())
+            for command in commands:
+                self._queue_command_locked(state, command)
             regions = [FOOTER_REGION] if previous_page == "home" and state.ui.page == "home" else None
             self._render_locked(state, full_frame=False, regions=regions)
             self._condition.notify_all()
             return True
+
+    def get_command(self, device_id: str, after: int) -> QueuedCommand | None:
+        with self._condition:
+            state = self._ensure_device_locked(device_id)
+            if state.latest_command is None or state.latest_command.id <= after:
+                return None
+            return state.latest_command
 
     def _ensure_device_locked(self, device_id: str) -> DeviceState:
         state = self._devices.get(device_id)
@@ -199,6 +219,21 @@ class DeviceRegistry:
                 full_frame=True,
             )
             state.full_frame = encode_rendered_frame(full_rendered)
+
+    def _queue_command_locked(self, state: DeviceState, command: DeviceCommand) -> None:
+        state.command_id += 1
+        state.latest_command = QueuedCommand(
+            id=state.command_id,
+            type=command.type,
+            value=command.value,
+            persist=command.persist,
+        )
+        print(
+            "[RemoteCommand] "
+            f"device={state.device_id} id={state.command_id} "
+            f"type={command.type} value={command.value} persist={command.persist}",
+            flush=True,
+        )
 
 
 def encode_rendered_frame(frame: RenderedFrame) -> bytes:

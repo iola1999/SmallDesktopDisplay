@@ -6,6 +6,14 @@ from typing import Literal
 PageName = Literal["home", "settings", "detail"]
 
 SETTINGS_ITEMS = ("Brightness", "Theme", "Device", "Renderer", "About")
+BRIGHTNESS_OPTIONS = (20, 40, 50, 60, 80, 100)
+
+
+@dataclass(frozen=True)
+class DeviceCommand:
+    type: str
+    value: int
+    persist: bool = True
 
 
 @dataclass
@@ -13,12 +21,14 @@ class DeviceUiState:
     page: PageName = "home"
     selected_index: int = 0
     detail_index: int = 0
+    brightness: int = 50
+    pending_brightness: int = 50
     animation: str = ""
     animation_started_at: float = 0.0
     animation_duration: float = 0.22
 
 
-def apply_input_event(state: DeviceUiState, event: str, *, now: float) -> None:
+def apply_input_event(state: DeviceUiState, event: str, *, now: float) -> list[DeviceCommand]:
     if state.page == "home":
         if event == "long_press":
             state.page = "settings"
@@ -26,7 +36,7 @@ def apply_input_event(state: DeviceUiState, event: str, *, now: float) -> None:
             _start_animation(state, "enter_settings", now)
         elif event == "short_press":
             _start_animation(state, "home_tap", now)
-        return
+        return []
 
     if state.page == "settings":
         if event == "short_press":
@@ -35,18 +45,34 @@ def apply_input_event(state: DeviceUiState, event: str, *, now: float) -> None:
         elif event == "long_press":
             state.page = "detail"
             state.detail_index = state.selected_index
+            if _is_brightness_detail(state):
+                state.pending_brightness = state.brightness
             _start_animation(state, "enter_detail", now)
         elif event == "double_press":
             state.page = "home"
             _start_animation(state, "back_home", now)
-        return
+        return []
 
     if state.page == "detail":
+        if _is_brightness_detail(state):
+            if event == "short_press":
+                state.pending_brightness = _next_brightness_value(state.pending_brightness)
+                _start_animation(state, "brightness_adjust", now)
+            elif event == "long_press":
+                state.brightness = state.pending_brightness
+                _start_animation(state, "brightness_applied", now)
+                return [DeviceCommand("set_brightness", state.brightness)]
+            elif event == "double_press":
+                state.page = "settings"
+                _start_animation(state, "back_to_settings", now)
+            return []
+
         if event == "short_press":
             _start_animation(state, "detail_pulse", now)
         elif event in {"double_press", "long_press"}:
             state.page = "settings"
             _start_animation(state, "back_to_settings", now)
+    return []
 
 
 def current_animation_progress(state: DeviceUiState, *, now: float) -> float:
@@ -70,3 +96,14 @@ def ease_out_cubic(value: float) -> float:
 def _start_animation(state: DeviceUiState, name: str, now: float) -> None:
     state.animation = name
     state.animation_started_at = now
+
+
+def _is_brightness_detail(state: DeviceUiState) -> bool:
+    return state.detail_index == 0
+
+
+def _next_brightness_value(value: int) -> int:
+    for option in BRIGHTNESS_OPTIONS:
+        if option > value:
+            return option
+    return BRIGHTNESS_OPTIONS[0]

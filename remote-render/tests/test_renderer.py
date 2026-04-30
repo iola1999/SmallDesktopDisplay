@@ -84,3 +84,21 @@ def test_renderer_does_not_draw_remote_progress_bar_for_navigation_animation():
     )
 
     assert animated.tobytes() == static.tobytes()
+
+
+def test_renderer_reflects_brightness_pending_value():
+    current_time = datetime(2026, 5, 1, 12, 34, 56, tzinfo=ZoneInfo("Asia/Shanghai"))
+    dim = render_device_canvas(
+        current_time=current_time,
+        device_id="desk-01",
+        button_count=0,
+        ui_state=DeviceUiState(page="detail", detail_index=0, pending_brightness=20),
+    )
+    bright = render_device_canvas(
+        current_time=current_time,
+        device_id="desk-01",
+        button_count=0,
+        ui_state=DeviceUiState(page="detail", detail_index=0, pending_brightness=100),
+    )
+
+    assert dim.tobytes() != bright.tobytes()

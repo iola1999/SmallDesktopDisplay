@@ -9,6 +9,7 @@
 #include "app/DeviceStatusText.h"
 #include "app/HoldInteraction.h"
 #include "app/HoldProgress.h"
+#include "remote/RemoteCommandClient.h"
 #include "remote/HttpFrameClient.h"
 #include "remote/RemoteInputClient.h"
 #include "ui/TftFrameSink.h"
@@ -20,9 +21,12 @@ app::AppConfigData g_config;
 ui::TftFrameSink g_frameSink;
 remote::HttpFrameClient g_frameClient(g_frameSink);
 remote::RemoteInputClient g_inputClient;
+remote::RemoteCommandClient g_commandClient;
 uint32_t g_haveFrameId = 0;
+uint32_t g_lastCommandId = 0;
 uint32_t g_inputSequence = 0;
 uint32_t g_lastFramePollMs = 0;
+uint32_t g_lastCommandPollMs = 0;
 uint32_t g_lastErrorDrawMs = 0;
 app::HoldInteractionState g_holdInteraction;
 uint32_t g_holdStartedMs = 0;
@@ -198,11 +202,11 @@ void processButtonEvents(uint32_t nowMs)
   }
 }
 
-void pollFrame(uint32_t nowMs)
+bool pollFrame(uint32_t nowMs)
 {
   if (nowMs - g_lastFramePollMs < app_config::kRemoteFramePollMs)
   {
-    return;
+    return true;
   }
   g_lastFramePollMs = nowMs;
 
@@ -214,7 +218,11 @@ void pollFrame(uint32_t nowMs)
   if (result == remote::FrameFetchResult::Updated)
   {
     g_haveFrameId = nextFrameId;
-    return;
+    return true;
+  }
+  if (result == remote::FrameFetchResult::NotModified)
+  {
+    return true;
   }
 
   if (result == remote::FrameFetchResult::Failed && nowMs - g_lastErrorDrawMs > 3000U)
@@ -222,6 +230,51 @@ void pollFrame(uint32_t nowMs)
     g_lastErrorDrawMs = nowMs;
     const std::string ipLine = currentDeviceIpStatusLine();
     drawStatus("Render server offline", g_config.remoteBaseUrl.c_str(), ipLine.c_str());
+  }
+  return false;
+}
+
+void applyRemoteCommand(const remote::DeviceCommand &command)
+{
+  if (command.type != remote::DeviceCommandType::SetBrightness)
+  {
+    g_lastCommandId = command.id;
+    return;
+  }
+
+  display::setBrightness(command.value);
+  if (command.persist)
+  {
+    if (g_config.lcdBrightness != command.value)
+    {
+      g_config.lcdBrightness = command.value;
+      storage::saveConfig(g_config);
+    }
+  }
+  else
+  {
+    g_config.lcdBrightness = command.value;
+  }
+
+  g_lastCommandId = command.id;
+  Serial.printf("[RemoteCommand] applied id=%lu brightness=%u persist=%s\n", static_cast<unsigned long>(command.id),
+                command.value, command.persist ? "true" : "false");
+}
+
+void pollCommand(uint32_t nowMs)
+{
+  if (nowMs - g_lastCommandPollMs < app_config::kRemoteCommandPollMs)
+  {
+    return;
+  }
+  g_lastCommandPollMs = nowMs;
+
+  remote::DeviceCommand command;
+  const remote::CommandFetchResult result = g_commandClient.fetchLatest(
+      g_config.remoteBaseUrl.c_str(), g_config.remoteDeviceId.c_str(), g_lastCommandId, command);
+  if (result == remote::CommandFetchResult::Updated)
+  {
+    applyRemoteCommand(command);
   }
 }
 
@@ -263,7 +316,10 @@ void loop()
 
   if (WiFi.status() == WL_CONNECTED)
   {
-    pollFrame(nowMs);
+    if (pollFrame(nowMs))
+    {
+      pollCommand(nowMs);
+    }
   }
   else if (nowMs - g_lastErrorDrawMs > 3000U)
   {

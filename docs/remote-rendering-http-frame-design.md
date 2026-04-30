@@ -31,6 +31,7 @@ untouched screen regions.
 ```text
 GET  /api/v1/devices/{device_id}/frame?have=<frame_id>&wait_ms=<milliseconds>
 POST /api/v1/devices/{device_id}/input
+GET  /api/v1/devices/{device_id}/commands?after=<command_id>
 GET  /api/v1/health
 ```
 
@@ -61,10 +62,28 @@ Current remote UI gesture mapping:
 - Home: `long_press` enters Settings.
 - Settings: `short_press` moves the selected item.
 - Settings: `long_press` enters the selected detail page.
+- Brightness detail: `short_press` cycles brightness, `long_press` applies it.
 - Settings/Detail: `double_press` goes back one level.
 
 The firmware only recognizes gestures and posts them; all page routing lives in
 the Docker service.
+
+Brightness uses a separate command channel because it is a local hardware side
+effect, not pixels. The current command response is JSON:
+
+```json
+{
+  "id": 12,
+  "type": "set_brightness",
+  "value": 70,
+  "persist": true
+}
+```
+
+`GET /commands` returns `204` when there is no command newer than `after`.
+The device applies `set_brightness` locally through PWM, stores the value in
+EEPROM when `persist=true`, then advances its local `after` id so the command is
+not applied repeatedly.
 
 Input de-duplication uses both `seq` and `uptime_ms`. A higher `seq` is accepted
 normally. If `seq` moves backwards while `uptime_ms` also moves backwards, the
@@ -253,6 +272,8 @@ In scope:
 - Full-frame rendering from Docker.
 - Per-second dirty rectangle refresh for the clock region.
 - Server-side settings/detail navigation state.
+- Server-side brightness detail UI and a JSON command channel for local
+  hardware side effects.
 - Basic server-side navigation animation, currently capped at 20 FPS by the
   registry scheduler. Page transitions render the destination page immediately
   and animate only a tiny accent bar so follow-up frames stay small.
@@ -261,6 +282,7 @@ In scope:
 - Server/device frame diagnostics for large updates.
 - Full-frame resync for cold clients and Docker service restarts.
 - Button POSTs.
+- Device command polling for `set_brightness`.
 - `204` no-change handling.
 - Binary frame parsing with CRC.
 - Raw RGB565 rectangle drawing.

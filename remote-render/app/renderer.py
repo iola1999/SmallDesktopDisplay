@@ -186,11 +186,17 @@ def _render_settings_page(state: DeviceUiState) -> Image.Image:
         number_width = _text_width(draw, number, font_small)
         draw.text((31 - number_width // 2, y + 6), number, fill=index_fill, font=font_small)
         draw.text((54, y + 4), item, fill=text_fill, font=font_item)
+        if item == "Brightness":
+            value = f"{state.brightness}%"
+            draw.text((186, y + 6), value, fill=text_fill, font=font_small)
 
     return image
 
 
 def _render_detail_page(state: DeviceUiState) -> Image.Image:
+    if state.detail_index == 0:
+        return _render_brightness_detail_page(state)
+
     image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
     draw = ImageDraw.Draw(image)
     font_title = _load_font(22)
@@ -212,6 +218,45 @@ def _render_detail_page(state: DeviceUiState) -> Image.Image:
         ((SCREEN_WIDTH - _text_width(draw, hint, font_small)) // 2, 199),
         hint,
         fill=(214, 248, 236),
+        font=font_small,
+    )
+    return image
+
+
+def _render_brightness_detail_page(state: DeviceUiState) -> Image.Image:
+    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
+    draw = ImageDraw.Draw(image)
+    font_title = _load_font(22)
+    font_value = _load_font(42)
+    font_body = _load_font(16)
+    font_small = _load_font(13)
+
+    value = max(0, min(100, state.pending_brightness))
+    fill_width = int(170 * value / 100)
+
+    draw.rounded_rectangle((8, 8, 232, 232), radius=14, outline=(50, 62, 72), width=2)
+    draw.text((20, 18), "Brightness", fill=(238, 246, 236), font=font_title)
+    draw.text((20, 49), "short cycle  hold apply", fill=(100, 155, 170), font=font_small)
+
+    value_text = f"{value}%"
+    value_width = _text_width(draw, value_text, font_value)
+    draw.text(((SCREEN_WIDTH - value_width) // 2, 82), value_text, fill=(240, 248, 238), font=font_value)
+
+    draw.rounded_rectangle((34, 146, 206, 164), radius=9, fill=(17, 27, 32))
+    if fill_width > 0:
+        draw.rounded_rectangle((35, 147, 35 + fill_width, 163), radius=8, fill=(112, 224, 196))
+    draw.ellipse((30, 141, 48, 169), fill=(34, 44, 50), outline=(93, 118, 124), width=1)
+    knob_x = 35 + fill_width
+    draw.ellipse((knob_x - 8, 140, knob_x + 8, 170), fill=(220, 248, 236), outline=(77, 155, 145), width=2)
+
+    status = "applied" if state.brightness == state.pending_brightness else f"saved {state.brightness}%"
+    draw.text((34, 184), status, fill=(142, 178, 180), font=font_body)
+
+    hint = "double tap back"
+    draw.text(
+        ((SCREEN_WIDTH - _text_width(draw, hint, font_small)) // 2, 210),
+        hint,
+        fill=(160, 190, 194),
         font=font_small,
     )
     return image
