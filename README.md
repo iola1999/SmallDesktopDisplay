@@ -1,151 +1,62 @@
 # SmallDesktopDisplay
 
-基于 ESP-12E 模块的桌面小屏显示器固件，使用 PlatformIO + Arduino framework。当前硬件固件仍通过 PlatformIO 的 `espressif8266` 平台和 `nodemcuv2` 板型配置构建。
+SmallDesktopDisplay 是一个基于 ESP-12E / ESP8266 的桌面小屏项目。当前主线已经改成远程渲染架构：设备端作为轻量网络显示客户端，负责 WiFi、按键、背光、配置持久化和 TFT 输出；Docker 服务负责生成 240x240 的实际界面帧，并维护页面状态。
 
-当前主线已切换为远程渲染瘦客户端：Docker 服务负责生成 240x240 RGB565 帧，设备只负责 WiFi、按键上报、HTTP 拉取最新帧和 TFT 刷屏。旧天气、NTP、设置页动效和本地复杂 UI 代码已删除。
+现在的默认界面是一个远端渲染的中文桌面时钟，并带有基础设置页。UI 逻辑尽量放在服务端，这样后续增加界面、动画和功能时，不需要每次都重新烧写设备固件。
 
-## Build
+## 基础架构
 
-固件构建、烧写仍然走 PlatformIO 的 `esp12e` 环境；远程渲染服务走
-`remote-render/` 下的 Docker Compose。日常开发时建议先启动 Docker 服务，
-再烧写/重启设备。
+- `src/`：ESP8266 固件，使用 PlatformIO + Arduino 构建。
+- `src/main.cpp`：设备入口，负责远程帧轮询、按键上报、命令和状态同步。
+- `src/remote/`：远程帧、输入事件、设备状态、远端命令相关客户端代码。
+- `src/ui/`：把远端 RGB565 矩形帧输出到 TFT 的桥接层。
+- `remote-render/`：Dockerized FastAPI + Pillow 渲染服务，负责生成画面、维护远端 UI 状态、接收设备输入和状态。
+- `docs/`：远程渲染协议、部署说明和近期迭代记录。
 
-如果 `pio` 已经在 PATH 中：
+## 快速开始
+
+启动远端渲染服务：
 
 ```bash
-pio run -e esp12e
+cd remote-render
+REMOTE_RENDER_PORT=18080 docker compose up -d --build
 ```
 
-如果只安装了 PlatformIO 的本地虚拟环境：
+构建固件：
 
 ```bash
 ~/.platformio/penv/bin/pio run -e esp12e
 ```
 
-烧录与串口监视：
+烧写并查看串口：
 
 ```bash
 ~/.platformio/penv/bin/pio run -e esp12e -t upload
 ~/.platformio/penv/bin/pio device monitor -b 115200
 ```
 
-## Architecture
-
-- `remote-render/*`: Dockerized FastAPI + Pillow 渲染服务
-- `remote-render/app/ui_state.py`: 远程页面状态机与单按钮导航语义
-- `src/remote/*`: HTTP 帧协议、帧拉取、按键事件上报
-- `src/ui/TftFrameSink.*`: RGB565 矩形帧到 TFT 的输出桥接，当前按 4 行一批推送
-- `src/main.cpp`: 设备入口、远程帧轮询、按键上报
-- `src/Display.*` / `src/Input.*` / `src/Net.*` / `src/Storage.*`: 保留的硬件基础层
-- `src/app/*`: 保留纯 C++ 配置、背光 PWM、WiFi 配网页生成
-- `test/test_native_app_core/*`: Host 侧基础逻辑与帧协议测试
-
-## Notes
-
-- 编译期开关集中在 `src/AppConfig.h`
-- `TFT_eSPI` 的引脚映射来自库自己的 `User_Setup.h`，不在本仓库内
-- 远程帧协议设计见 `docs/remote-rendering-http-frame-design.md`
-- 第一版远程服务 URL 只支持 `http://`
-
-## Remote Renderer
-
-本机 Docker 启动：
+常用检查：
 
 ```bash
-cd remote-render
-docker compose up --build
-```
-
-默认监听 `http://0.0.0.0:8080`。设备配网页中填写 Mac 的局域网地址，例如 `http://192.168.1.20:8080`。
-如果 8080 已被占用，可用 `REMOTE_RENDER_PORT=18080 docker compose up --build`，设备里对应填写 `http://<Mac局域网IP>:18080`。
-当前开发机默认配置使用 `http://192.168.1.7:18080`。
-
-服务端第一帧或重同步帧是 240x240 全屏 RGB565，约 115KB。正常时钟刷新和页面变化都走 dirty rect；大面积页面变化会拆成 `240x8` 小条并交错发送，避免设备端出现单个大矩形从上扫到底的观感。服务端会在这些场景强制返回全屏帧：
-
-- 设备传 `have=0`，表示冷启动或本地没有可用基准帧
-- 设备传来的 `have` 比服务端当前 frame id 还大，通常表示 Docker 服务刚重启
-- 后续 dirty rect 过大或需要重新建立画面基准时
-
-### Local Preview Client
-
-为了不用反复拍照排查显示问题，仓库提供了本地帧预览客户端。它会请求远端 HTTP 帧，按 `SDD1` 协议合成 PNG：
-
-```bash
-cd remote-render
-.venv/bin/python -m tools.frame_preview \
-  --base-url http://127.0.0.1:18080 \
-  --device-id preview-01 \
-  --frames 2 \
-  --output frame-previews/latest.png
-```
-
-输出目录 `remote-render/frame-previews/` 已加入 `.gitignore`。命令输出会标明每帧是 `full` 还是 `partial`，以及矩形范围，便于确认是否发生了错误的局部刷新。
-本地预览建议使用 `preview-01` 这类独立设备 ID，不要和实机默认的 `desk-01` 共用同一个远程状态。
-
-也可以先向远端服务发送一次按键事件再抓帧，例如长按进入设置页并捕获 8 帧动画：
-
-```bash
-cd remote-render
-.venv/bin/python -m tools.frame_preview \
-  --base-url http://127.0.0.1:18080 \
-  --device-id preview-01 \
-  --input-event long_press \
-  --input-seq 1 \
-  --frames 8 \
-  --wait-ms 60 \
-  --output frame-previews/settings.png
-```
-
-### Remote Renderer Development
-
-Python 依赖建议装在 `remote-render/.venv`，该目录也已忽略：
-
-```bash
-cd remote-render
-python3 -m venv .venv
-.venv/bin/pip install -e '.[test]'
-.venv/bin/pytest
-```
-
-Docker 镜像基于 `python:3.12-slim`，额外安装 `fonts-dejavu-core`，否则 Pillow 会退回默认小位图字体，导致设备端文字明显过小。
-Dockerfile 已把第三方依赖安装和 `app/` 代码复制拆开，并使用 BuildKit pip cache；日常只改远程渲染代码时，重建通常只会重装本地包，不会重新下载 Pillow/FastAPI。
-远程渲染容器关闭了 uvicorn access log，小 dirty frame 不再逐帧打印，并在 Compose 中限制 Docker 日志轮转为 `5m x 3`，避免高频帧轮询持续刷盘。
-
-本机 `clang-format` 由 Homebrew LLVM 提供，并通过 `~/.platformio/packages/tool-clangformat` 的本地 shim 暴露给 PlatformIO；因此下面这个命令可直接使用：
-
-```bash
-~/.platformio/penv/bin/pio pkg exec -- clang-format -i src/remote/HttpFrameClient.cpp
-```
-
-### Firmware Development Checks
-
-改动固件侧帧协议、TFT 输出、配置页或主循环后至少跑：
-
-```bash
+remote-render/.venv/bin/pytest -q
 ~/.platformio/penv/bin/pio test -e host
 ~/.platformio/penv/bin/pio run -e esp12e
 ```
 
-需要实机验证时再烧写：
+## 配置
 
-```bash
-~/.platformio/penv/bin/pio run -e esp12e -t upload
-```
-
-## Button Controls
-
-- 短按、双击、长按由设备识别后 POST 给远程渲染服务
-- 设备本地不再解释页面业务逻辑，但会执行远端下发的本地硬件命令，例如亮度 PWM
-- 当前远程语义：长按从首页进入设置；设置页短按移动选中项；设置页长按进入详情；亮度详情页短按循环档位、长按应用；详情或设置页双击返回
-- 按住过程中的长按进度条只由设备端本地绘制，占顶部 5px；它会等按住约 300ms 后才显示，达到长按阈值后只进入 armed 状态，松开时才 POST `long_press`
-
-## Remote Commands
-
-亮度这类设备本地副作用通过独立命令通道下发，不混在 RGB565 图片帧里：
+固件默认配置在 `src/AppConfig.h`。当前默认远端渲染地址指向本机 Mac 上的 Docker 服务：
 
 ```text
-GET /api/v1/devices/{device_id}/commands?after=<command_id>
-POST /api/v1/devices/{device_id}/status
+http://192.168.1.7:18080
 ```
 
-第一版命令只有 `set_brightness`。设备轮询到命令后调用本地 `display::setBrightness()`，并在 `persist=true` 时写入 EEPROM。设备启动、应用亮度命令后，以及连接期间会同步本地亮度状态给远端，避免 Docker 重启后设置页显示的亮度和设备实际背光不一致。
+如果渲染服务的主机或端口变化，可以通过设备配网页或固件配置修改。
+
+TFT 引脚映射来自 `TFT_eSPI` 库自己的 `User_Setup.h`，不在本仓库中维护。
+
+## 文档
+
+- `docs/remote-rendering-http-frame-design.md`：远程渲染架构、HTTP API、帧协议、命令/状态同步和部署说明。
+- `docs/recent-iterations.md`：近期迭代记录和当前开发注意事项。
+- `remote-render/tools/frame_preview.py`：本地帧预览工具，可抓取远端帧并生成 PNG。
