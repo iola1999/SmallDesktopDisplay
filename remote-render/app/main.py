@@ -39,5 +39,15 @@ def get_frame(
 def post_input(device_id: str, event: InputEvent) -> Response:
     if not device_id:
         raise HTTPException(status_code=400, detail="device_id is required")
-    registry.record_input(device_id=device_id, seq=event.seq, event=event.event)
+    accepted = registry.record_input(
+        device_id=device_id,
+        seq=event.seq,
+        event=event.event,
+        uptime_ms=event.uptime_ms,
+    )
+    print(
+        f"[RemoteInput] {'accepted' if accepted else 'ignored'} "
+        f"device={device_id} seq={event.seq} uptime_ms={event.uptime_ms}",
+        flush=True,
+    )
     return Response(status_code=202)

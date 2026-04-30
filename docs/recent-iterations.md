@@ -26,12 +26,34 @@ Update it whenever behavior, architecture, or interaction details change.
 - Added a local HTTP frame preview tool under `remote-render/tools/frame_preview.py` that decodes `SDD1` frames and writes PNG previews.
 - Batched TFT output in 4-row RGB565 blocks to reduce the visible top-to-bottom scan effect on full-frame updates.
 
+### Remote Settings UI Framework
+
+- Added a pure server-side `DeviceUiState` state machine for Home, Settings, and Detail pages.
+- Mapped the single button gestures remotely: long press enters Settings, short press moves selection, long press opens a detail page, and double press goes back.
+- Added Pillow-rendered Settings and Detail screens, keeping the ESP8266 as a thin display/input client.
+- Added first-pass navigation animation scheduling in the Docker service, capped at 20 FPS for now so animation pressure is explicit and measurable.
+- Changed navigation motion to a bounded accent-bar animation instead of full-screen sliding, keeping follow-up animation frames around a few KB instead of nearly full-screen payloads.
+- Moved hold-progress feedback back onto the device as a tiny local overlay, so press-and-hold feedback starts immediately and does not depend on HTTP round trips.
+- Changed long-press routing to POST `long_press` on `LongPressArmed`, with the later `LongPress` event only acting as a fallback, so Settings can open as soon as the threshold is reached.
+- Replaced large dirty bounding boxes with interleaved `240x8` tile strips for big page changes, reducing the visible top-to-bottom scan effect even when the total changed payload is still large.
+- Added server and device frame logs for large/full updates, including frame id, rect count, payload size, and device draw time.
+- Made partial frames carry the previous frame as `base_frame_id`; if a client misses that base, the service returns the latest full snapshot instead of an unsafe dirty diff.
+- Added a firmware-side stale-partial guard that refuses to draw partial frames whose `base_frame_id` does not match the device's current `have`.
+- Made input de-duplication tolerate device reboot/flash cycles: if `uptime_ms` moves backwards, the service accepts the restarted device's lower input sequence instead of silently ignoring all later button presses.
+- Added Docker-side input accepted/ignored logs for quicker button-path debugging.
+- Extended the local frame preview client so it can POST an input event before capturing frames, which makes navigation and animation debugging possible without reflashing or photographing the device.
+- Split Docker dependency installation from `app/` code copying and enabled BuildKit pip cache so renderer-only rebuilds do not repeatedly download Pillow/FastAPI.
+- Fixed the local `clang-format` tooling path by exposing Homebrew LLVM's `clang-format` through a PlatformIO package shim, so `pio pkg exec -- clang-format ...` works on this Mac.
+
 ### Current Development And Deployment Notes
 
 - Local Docker service is expected to run from `remote-render/` with `REMOTE_RENDER_PORT=18080 docker compose up -d --build` while 8080 is occupied.
 - Device setup should use the Mac LAN URL, currently `http://192.168.1.7:18080`, unless the Mac IP or host port changes.
 - For remote renderer changes, run `remote-render/.venv/bin/pytest`; for firmware changes, run `~/.platformio/penv/bin/pio test -e host` and `~/.platformio/penv/bin/pio run -e esp12e`.
 - Generated preview images live in `remote-render/frame-previews/` and are intentionally ignored.
+- To preview remote navigation locally, use `remote-render/.venv/bin/python -m tools.frame_preview --device-id preview-01 --input-event long_press --frames 8 --wait-ms 60 --output frame-previews/settings.png`.
+- Keep preview clients on a different `device_id` than the physical display, otherwise both clients advance the same remote frame state.
+- If button input appears stuck after flashing, check Docker logs for `input accepted` / `input ignored`; ignored low sequences with forward-moving uptime usually mean another client is sharing the same `device_id`.
 - If the screen shows only a partial region after a restart, first check `tools.frame_preview` output for whether `have=0` or a future `have` is incorrectly receiving a partial frame.
 
 ## 2026-04-18

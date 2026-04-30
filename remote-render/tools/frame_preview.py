@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import struct
 import time
 import urllib.error
@@ -136,6 +137,26 @@ def fetch_frame(base_url: str, device_id: str, have: int, wait_ms: int) -> bytes
         raise
 
 
+def post_input(base_url: str, device_id: str, event: str, seq: int) -> None:
+    url = base_url.rstrip("/") + f"/api/v1/devices/{device_id}/input"
+    payload = json.dumps(
+        {
+            "seq": seq,
+            "event": event,
+            "uptime_ms": int(time.monotonic() * 1000),
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=2.0) as response:
+        if response.status not in {200, 202, 204}:
+            raise RuntimeError(f"input event failed with status {response.status}")
+
+
 def preview_frames(
     *,
     base_url: str,
@@ -196,11 +217,16 @@ def _rgb565_to_rgb888(data: bytes) -> bytes:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch SDD1 frames and render a PNG preview.")
     parser.add_argument("--base-url", default="http://127.0.0.1:18080")
-    parser.add_argument("--device-id", default="desk-01")
+    parser.add_argument("--device-id", default="preview-01")
     parser.add_argument("--output", type=Path, default=Path("frame-preview.png"))
     parser.add_argument("--frames", type=int, default=2)
     parser.add_argument("--wait-ms", type=int, default=1200)
+    parser.add_argument("--input-event", choices=["short_press", "double_press", "long_press"])
+    parser.add_argument("--input-seq", type=int, default=1)
     args = parser.parse_args()
+
+    if args.input_event:
+        post_input(args.base_url, args.device_id, args.input_event, args.input_seq)
 
     preview_frames(
         base_url=args.base_url,

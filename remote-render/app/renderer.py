@@ -7,11 +7,18 @@ from zoneinfo import ZoneInfo
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 from app.protocol import FrameRect, rgb888_to_rgb565_bytes
+from app.ui_state import (
+    SETTINGS_ITEMS,
+    DeviceUiState,
+    ease_out_cubic,
+)
 
 SCREEN_WIDTH = 240
 SCREEN_HEIGHT = 240
 TIME_REGION = (0, 42, SCREEN_WIDTH, 142)
 FOOTER_REGION = (14, 166, 226, 218)
+DIRTY_TILE_WIDTH = 24
+DIRTY_TILE_HEIGHT = 8
 
 
 @dataclass(frozen=True)
@@ -31,12 +38,16 @@ def render_device_view(
     full_frame: bool = True,
     regions: list[tuple[int, int, int, int]] | None = None,
     now: datetime | None = None,
+    ui_state: DeviceUiState | None = None,
+    animation_progress: float = 1.0,
 ) -> RenderedFrame:
     current_time = now or datetime.now(ZoneInfo("Asia/Shanghai"))
     image = render_device_canvas(
         current_time=current_time,
         device_id=device_id,
         button_count=button_count,
+        ui_state=ui_state,
+        animation_progress=animation_progress,
     )
     return render_canvas_frame(
         image,
@@ -69,14 +80,52 @@ def render_canvas_frame(
     )
 
 
-def render_device_canvas(*, current_time: datetime, device_id: str, button_count: int) -> Image.Image:
-    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
-    draw = ImageDraw.Draw(image)
-
+def render_device_canvas(
+    *,
+    current_time: datetime,
+    device_id: str,
+    button_count: int,
+    ui_state: DeviceUiState | None = None,
+    animation_progress: float = 1.0,
+) -> Image.Image:
     font_time = _load_font(52)
     font_date = _load_font(20)
     font_label = _load_font(16)
     font_footer = _load_font(18)
+
+    state = ui_state or DeviceUiState()
+    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
+    if state.page == "settings":
+        page = _render_settings_page(state)
+    elif state.page == "detail":
+        page = _render_detail_page(state)
+    else:
+        page = _render_home_page(
+            current_time=current_time,
+            device_id=device_id,
+            button_count=button_count,
+            font_time=font_time,
+            font_date=font_date,
+            font_label=font_label,
+            font_footer=font_footer,
+        )
+
+    _paste_animated_page(image, page, state, animation_progress)
+    return image
+
+
+def _render_home_page(
+    *,
+    current_time: datetime,
+    device_id: str,
+    button_count: int,
+    font_time: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    font_date: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    font_label: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    font_footer: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+) -> Image.Image:
+    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
+    draw = ImageDraw.Draw(image)
 
     draw.rounded_rectangle((8, 8, 232, 232), radius=14, outline=(48, 64, 72), width=2)
     draw.text((20, 20), "Remote Display", fill=(130, 190, 180), font=font_label)
@@ -108,6 +157,93 @@ def render_device_canvas(*, current_time: datetime, device_id: str, button_count
     return image
 
 
+def _render_settings_page(state: DeviceUiState) -> Image.Image:
+    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (6, 9, 13))
+    draw = ImageDraw.Draw(image)
+    font_title = _load_font(24)
+    font_item = _load_font(17)
+    font_small = _load_font(13)
+
+    draw.rounded_rectangle((8, 8, 232, 232), radius=14, outline=(46, 58, 70), width=2)
+    draw.text((20, 18), "Settings", fill=(235, 242, 232), font=font_title)
+    draw.text((166, 25), "remote", fill=(96, 158, 174), font=font_small)
+
+    top = 58
+    row_h = 30
+    for index, item in enumerate(SETTINGS_ITEMS):
+        y = top + index * 33
+        selected = index == state.selected_index
+        if selected:
+            draw.rounded_rectangle((16, y - 2, 224, y + row_h), radius=10, fill=(27, 98, 101))
+            draw.rounded_rectangle((19, y + 1, 43, y + row_h - 3), radius=8, fill=(114, 224, 198))
+            text_fill = (244, 252, 244)
+            index_fill = (10, 42, 44)
+        else:
+            draw.rounded_rectangle((16, y - 2, 224, y + row_h), radius=10, fill=(17, 24, 30))
+            text_fill = (165, 183, 190)
+            index_fill = (88, 112, 120)
+
+        number = f"{index + 1}"
+        number_width = _text_width(draw, number, font_small)
+        draw.text((31 - number_width // 2, y + 6), number, fill=index_fill, font=font_small)
+        draw.text((54, y + 4), item, fill=text_fill, font=font_item)
+
+    return image
+
+
+def _render_detail_page(state: DeviceUiState) -> Image.Image:
+    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
+    draw = ImageDraw.Draw(image)
+    font_title = _load_font(22)
+    font_body = _load_font(18)
+    font_small = _load_font(13)
+
+    item = SETTINGS_ITEMS[state.detail_index % len(SETTINGS_ITEMS)]
+    draw.rounded_rectangle((8, 8, 232, 232), radius=14, outline=(50, 62, 72), width=2)
+    draw.text((20, 18), item, fill=(238, 246, 236), font=font_title)
+    draw.text((20, 49), "Setting detail", fill=(100, 155, 170), font=font_small)
+
+    draw.rounded_rectangle((18, 82, 222, 178), radius=12, fill=(18, 29, 34))
+    draw.text((34, 103), "Preview only", fill=(230, 238, 232), font=font_body)
+    draw.text((34, 132), "More controls next", fill=(137, 166, 172), font=font_small)
+
+    draw.rounded_rectangle((48, 196, 192, 216), radius=10, fill=(27, 98, 101))
+    hint = "double tap back"
+    draw.text(
+        ((SCREEN_WIDTH - _text_width(draw, hint, font_small)) // 2, 199),
+        hint,
+        fill=(214, 248, 236),
+        font=font_small,
+    )
+    return image
+
+
+def _paste_animated_page(
+    target: Image.Image,
+    page: Image.Image,
+    state: DeviceUiState,
+    progress: float,
+) -> None:
+    target.paste(page, (0, 0))
+    if not state.animation or progress >= 1.0:
+        return
+
+    eased = ease_out_cubic(progress)
+    draw = ImageDraw.Draw(target)
+    width = max(10, int(204 * eased))
+    if state.animation in {"settings_select", "detail_pulse", "home_tap"}:
+        y = 224
+        color = (95, 216, 190)
+        fill = (15, 42, 44)
+    else:
+        y = 11
+        color = (118, 229, 199)
+        fill = (14, 39, 42)
+
+    draw.rounded_rectangle((18, y, 222, y + 5), radius=3, fill=fill)
+    draw.rounded_rectangle((18, y, 18 + width, y + 5), radius=3, fill=color)
+
+
 def compute_dirty_rects(
     previous: Image.Image,
     current: Image.Image,
@@ -121,20 +257,63 @@ def compute_dirty_rects(
     dirty_regions = regions or [(0, 0, current.size[0], current.size[1])]
     rects: list[FrameRect] = []
     for region in dirty_regions:
-        left, top, right, bottom = region
-        previous_crop = previous.crop(region)
-        current_crop = current.crop(region)
-        diff_box = ImageChops.difference(previous_crop, current_crop).getbbox()
-        if diff_box is None:
-            continue
-
-        dirty_left = max(left + diff_box[0] - padding, 0)
-        dirty_top = max(top + diff_box[1] - padding, 0)
-        dirty_right = min(left + diff_box[2] + padding, current.size[0])
-        dirty_bottom = min(top + diff_box[3] + padding, current.size[1])
-        rects.append(_crop_rect(current, (dirty_left, dirty_top, dirty_right, dirty_bottom)))
+        rects.extend(_tile_dirty_rects(previous, current, region, padding=padding))
 
     return rects
+
+
+def _tile_dirty_rects(
+    previous: Image.Image,
+    current: Image.Image,
+    region: tuple[int, int, int, int],
+    *,
+    padding: int,
+) -> list[FrameRect]:
+    left, top, right, bottom = region
+    row_rects: list[tuple[int, int, int, int]] = []
+    for y in range(top, bottom, DIRTY_TILE_HEIGHT):
+        tile_bottom = min(y + DIRTY_TILE_HEIGHT, bottom)
+        run_left: int | None = None
+        run_right = left
+        for x in range(left, right, DIRTY_TILE_WIDTH):
+            tile_right = min(x + DIRTY_TILE_WIDTH, right)
+            tile = (x, y, tile_right, tile_bottom)
+            if ImageChops.difference(previous.crop(tile), current.crop(tile)).getbbox() is None:
+                if run_left is not None:
+                    row_rects.append(_padded_region(run_left, y, run_right, tile_bottom, current.size, 0))
+                    run_left = None
+                continue
+
+            if run_left is None:
+                run_left = x
+            run_right = tile_right
+
+        if run_left is not None:
+            row_rects.append(_padded_region(run_left, y, run_right, tile_bottom, current.size, 0))
+
+    return [_crop_rect(current, rect) for rect in _interleave_rect_rows(row_rects)]
+
+
+def _padded_region(
+    left: int,
+    top: int,
+    right: int,
+    bottom: int,
+    image_size: tuple[int, int],
+    padding: int,
+) -> tuple[int, int, int, int]:
+    return (
+        max(left - padding, 0),
+        max(top - padding, 0),
+        min(right + padding, image_size[0]),
+        min(bottom + padding, image_size[1]),
+    )
+
+
+def _interleave_rect_rows(rects: list[tuple[int, int, int, int]]) -> list[tuple[int, int, int, int]]:
+    if len(rects) <= 2:
+        return rects
+    return rects[0::4] + rects[1::4] + rects[2::4] + rects[3::4]
 
 
 def _crop_rect(image: Image.Image, region: tuple[int, int, int, int]) -> FrameRect:
@@ -161,3 +340,12 @@ def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
         except OSError:
             continue
     return ImageFont.load_default()
+
+
+def _text_width(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+) -> int:
+    box = draw.textbbox((0, 0), text, font=font)
+    return box[2] - box[0]

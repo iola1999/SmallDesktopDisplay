@@ -36,7 +36,7 @@ def test_button_input_advances_latest_frame_without_replaying_old_frames():
     base_frame_id = int.from_bytes(next_frame.content[12:16], "little")
 
     assert next_frame_id > first_frame_id
-    assert base_frame_id == 0
+    assert base_frame_id == first_frame_id
 
 
 def test_registry_refreshes_clock_with_partial_frame_after_tick():
@@ -103,3 +103,121 @@ def test_registry_returns_full_frame_when_client_frame_id_is_ahead_after_restart
     assert frame is not None
     assert frame[5] & 0x01 == 0x01
     assert int.from_bytes(frame[22:26], "little") == 240 * 240 * 2
+
+
+def test_registry_renders_animation_frames_after_navigation_input():
+    now = 0.0
+
+    def monotonic() -> float:
+        return now
+
+    registry = DeviceRegistry(monotonic=monotonic, frame_interval_seconds=1.0)
+
+    first = registry.get_frame(device_id="desk-ui", have=0, wait_ms=0)
+    assert first is not None
+    first_frame_id = int.from_bytes(first[8:12], "little")
+
+    registry.record_input(device_id="desk-ui", seq=1, event="long_press")
+    animated = registry.get_frame(device_id="desk-ui", have=first_frame_id, wait_ms=0)
+    assert animated is not None
+    animated_frame_id = int.from_bytes(animated[8:12], "little")
+
+    now = 0.05
+    next_animation_frame = registry.get_frame(
+        device_id="desk-ui",
+        have=animated_frame_id,
+        wait_ms=0,
+    )
+
+    assert next_animation_frame is not None
+    assert int.from_bytes(next_animation_frame[8:12], "little") > animated_frame_id
+    assert int.from_bytes(next_animation_frame[12:16], "little") == animated_frame_id
+    assert int.from_bytes(next_animation_frame[22:26], "little") < 5000
+
+
+def test_registry_accepts_restarted_device_input_sequence_when_uptime_goes_back():
+    registry = DeviceRegistry()
+
+    registry.get_frame(device_id="desk-input-restart", have=0, wait_ms=0)
+    assert registry.record_input(
+        device_id="desk-input-restart",
+        seq=50,
+        event="long_press",
+        uptime_ms=100_000,
+    )
+    state = registry._devices["desk-input-restart"]
+    assert state.ui.page == "settings"
+    assert state.ui.selected_index == 0
+
+    assert registry.record_input(
+        device_id="desk-input-restart",
+        seq=1,
+        event="short_press",
+        uptime_ms=1_000,
+    )
+    assert state.ui.page == "settings"
+    assert state.ui.selected_index == 1
+
+
+def test_registry_ignores_stale_input_sequence_when_uptime_keeps_moving_forward():
+    registry = DeviceRegistry()
+
+    registry.get_frame(device_id="desk-input-stale", have=0, wait_ms=0)
+    assert registry.record_input(
+        device_id="desk-input-stale",
+        seq=5,
+        event="long_press",
+        uptime_ms=1_000,
+    )
+    state = registry._devices["desk-input-stale"]
+
+    assert not registry.record_input(
+        device_id="desk-input-stale",
+        seq=4,
+        event="short_press",
+        uptime_ms=2_000,
+    )
+    assert state.ui.page == "settings"
+    assert state.ui.selected_index == 0
+
+
+def test_registry_returns_full_frame_when_client_missed_partial_base():
+    now = 0.0
+
+    def monotonic() -> float:
+        return now
+
+    registry = DeviceRegistry(monotonic=monotonic, frame_interval_seconds=1.0)
+
+    first = registry.get_frame(device_id="desk-stale-animation", have=0, wait_ms=0)
+    assert first is not None
+    first_frame_id = int.from_bytes(first[8:12], "little")
+
+    registry.record_input(device_id="desk-stale-animation", seq=1, event="long_press")
+    first_animation = registry.get_frame(
+        device_id="desk-stale-animation",
+        have=first_frame_id,
+        wait_ms=0,
+    )
+    assert first_animation is not None
+    first_animation_id = int.from_bytes(first_animation[8:12], "little")
+    assert first_animation[5] & 0x01 == 0
+
+    now = 0.05
+    second_animation = registry.get_frame(
+        device_id="desk-stale-animation",
+        have=first_animation_id,
+        wait_ms=0,
+    )
+    assert second_animation is not None
+    assert second_animation[5] & 0x01 == 0
+
+    stale_client_frame = registry.get_frame(
+        device_id="desk-stale-animation",
+        have=first_frame_id,
+        wait_ms=0,
+    )
+
+    assert stale_client_frame is not None
+    assert stale_client_frame[5] & 0x01 == 0x01
+    assert int.from_bytes(stale_client_frame[22:26], "little") == 240 * 240 * 2
