@@ -57,6 +57,7 @@ Update it whenever behavior, architecture, or interaction details change.
 - Current serial samples show normal clock dirty frames around `4.5KB` taking roughly `40-60ms` in `get_ms`, `39-44ms` in body reads, and `1-5ms` in TFT writes. A forced full-frame resync after Docker restart produced `payload=115200 begin_ms=0 get_ms=11 read_ms=1017 stream_reads=61 stream_bytes=115216 tft_ms=46 tft_calls=60 other_ms=129 total_ms=1203`, so the visible full-screen scan is dominated by ESP8266 HTTP/WiFi body transfer, not by connection setup or raw TFT push time.
 - Added optional RGB565 RLE rectangle encoding (`encoding=1`) to reduce HTTP body bytes while keeping the ESP8266 decoder streaming and low-RAM. The renderer only uses RLE when it is smaller than raw RGB565, and the firmware draws through a 2-row TFT batch buffer to leave enough loop-stack headroom for the RLE read buffer.
 - After RLE and the stack-safe 2-row draw buffer, the same home/settings full-frame class compresses from `115200B` to roughly `14.5-15.6KB`. Stable-network device samples show full frames around `get_ms=30-38`, `read_ms=6-14`, `tft_ms=38-56`, `tft_calls=120`, and `total_ms=136-148`. Normal clock dirty frames dropped to roughly `0.8-2.0KB` with `read_ms` usually `0-3ms`.
+- Added the first richer remote-only animation pass: page entry/back transitions now slide and fade the target page, Settings selection changes pulse the selected row, Brightness adjustments animate the value/bar/knob, detail placeholder pages can pulse their content panel, and Home short taps glow only the footer region. No firmware or protocol changes are required for these animations.
 
 ### Current Development And Deployment Notes
 
@@ -69,6 +70,7 @@ Update it whenever behavior, architecture, or interaction details change.
 - If button input appears stuck after flashing, check Docker logs for `input accepted` / `input ignored`; ignored low sequences with forward-moving uptime usually mean another client is sharing the same `device_id`.
 - If the screen shows only a partial region after a restart, first check `tools.frame_preview` output for whether `have=0` or a future `have` is incorrectly receiving a partial frame.
 - For frame performance diagnostics, `get_ms` answers whether connection/request/header time is expensive, while `read_ms` answers whether payload transfer is expensive. RLE has reduced the dominant full-frame `read_ms` cost from about `1s` to low double-digit milliseconds on the current home/settings screens. Further transport changes should be judged mainly against `get_ms`, which is now a larger share of small-frame latency.
+- Animation previews can be regenerated with `remote-render/.venv/bin/python -m tools.frame_preview --base-url http://127.0.0.1:18080 --device-id preview-animation-01 --input-event long_press --input-seq 1 --frames 8 --wait-ms 60 --output frame-previews/animation-settings.png`.
 
 ## 2026-04-18
 

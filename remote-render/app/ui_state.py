@@ -25,7 +25,7 @@ class DeviceUiState:
     pending_brightness: int = 50
     animation: str = ""
     animation_started_at: float = 0.0
-    animation_duration: float = 0.22
+    animation_duration: float = 0.32
 
 
 def apply_input_event(state: DeviceUiState, event: str, *, now: float) -> list[DeviceCommand]:

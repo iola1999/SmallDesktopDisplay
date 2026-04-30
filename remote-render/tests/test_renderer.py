@@ -80,9 +80,9 @@ def test_renderer_splits_large_dirty_area_into_small_strips():
     assert max(rect.height for rect in rects) <= 8
 
 
-def test_renderer_does_not_draw_remote_progress_bar_for_navigation_animation():
+def test_renderer_animates_page_entry_without_changing_final_static_frame():
     current_time = datetime(2026, 5, 1, 12, 34, 56, tzinfo=ZoneInfo("Asia/Shanghai"))
-    animated = render_device_canvas(
+    start = render_device_canvas(
         current_time=current_time,
         device_id="desk-01",
         button_count=0,
@@ -96,8 +96,80 @@ def test_renderer_does_not_draw_remote_progress_bar_for_navigation_animation():
         ui_state=DeviceUiState(page="settings"),
         animation_progress=1.0,
     )
+    end = render_device_canvas(
+        current_time=current_time,
+        device_id="desk-01",
+        button_count=0,
+        ui_state=DeviceUiState(page="settings", animation="enter_settings"),
+        animation_progress=1.0,
+    )
 
-    assert animated.tobytes() == static.tobytes()
+    assert start.tobytes() != static.tobytes()
+    assert end.tobytes() == static.tobytes()
+
+
+def test_renderer_animates_settings_selection_highlight():
+    current_time = datetime(2026, 5, 1, 12, 34, 56, tzinfo=ZoneInfo("Asia/Shanghai"))
+    animated = render_device_canvas(
+        current_time=current_time,
+        device_id="desk-01",
+        button_count=0,
+        ui_state=DeviceUiState(page="settings", selected_index=2, animation="settings_select"),
+        animation_progress=0.35,
+    )
+    static = render_device_canvas(
+        current_time=current_time,
+        device_id="desk-01",
+        button_count=0,
+        ui_state=DeviceUiState(page="settings", selected_index=2),
+        animation_progress=1.0,
+    )
+
+    assert animated.tobytes() != static.tobytes()
+
+
+def test_renderer_animates_brightness_adjustment():
+    current_time = datetime(2026, 5, 1, 12, 34, 56, tzinfo=ZoneInfo("Asia/Shanghai"))
+    animated = render_device_canvas(
+        current_time=current_time,
+        device_id="desk-01",
+        button_count=0,
+        ui_state=DeviceUiState(page="detail", detail_index=0, pending_brightness=80, animation="brightness_adjust"),
+        animation_progress=0.35,
+    )
+    static = render_device_canvas(
+        current_time=current_time,
+        device_id="desk-01",
+        button_count=0,
+        ui_state=DeviceUiState(page="detail", detail_index=0, pending_brightness=80),
+        animation_progress=1.0,
+    )
+
+    assert animated.tobytes() != static.tobytes()
+
+
+def test_renderer_animates_home_tap_inside_footer_region():
+    current_time = datetime(2026, 5, 1, 12, 34, 56, tzinfo=ZoneInfo("Asia/Shanghai"))
+    animated = render_device_canvas(
+        current_time=current_time,
+        device_id="desk-01",
+        button_count=1,
+        ui_state=DeviceUiState(animation="home_tap"),
+        animation_progress=0.45,
+    )
+    static = render_device_canvas(
+        current_time=current_time,
+        device_id="desk-01",
+        button_count=1,
+        ui_state=DeviceUiState(),
+        animation_progress=1.0,
+    )
+
+    rects = compute_dirty_rects(static, animated)
+
+    assert animated.tobytes() != static.tobytes()
+    assert max(rect.y + rect.height for rect in rects) <= 224
+    assert min(rect.y for rect in rects) >= 160
 
 
 def test_renderer_reflects_brightness_pending_value():

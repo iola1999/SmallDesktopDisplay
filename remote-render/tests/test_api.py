@@ -139,7 +139,8 @@ def test_registry_renders_animation_frames_after_navigation_input():
     assert next_animation_frame is not None
     assert int.from_bytes(next_animation_frame[8:12], "little") > animated_frame_id
     assert int.from_bytes(next_animation_frame[12:16], "little") == animated_frame_id
-    assert int.from_bytes(next_animation_frame[22:26], "little") < 5000
+    assert next_animation_frame[5] & 0x01 == 0
+    assert int.from_bytes(next_animation_frame[22:26], "little") < 240 * 240 * 2
 
 
 def test_registry_accepts_restarted_device_input_sequence_when_uptime_goes_back():

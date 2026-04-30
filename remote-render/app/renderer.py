@@ -10,6 +10,7 @@ from app.protocol import FrameRect, compress_rect_if_smaller, rgb888_to_rgb565_b
 from app.ui_state import (
     SETTINGS_ITEMS,
     DeviceUiState,
+    ease_out_cubic,
 )
 
 SCREEN_WIDTH = 240
@@ -95,14 +96,16 @@ def render_device_canvas(
     state = ui_state or DeviceUiState()
     image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
     if state.page == "settings":
-        page = _render_settings_page(state)
+        page = _render_settings_page(state, animation_progress=animation_progress)
     elif state.page == "detail":
-        page = _render_detail_page(state)
+        page = _render_detail_page(state, animation_progress=animation_progress)
     else:
         page = _render_home_page(
             current_time=current_time,
             device_id=device_id,
             button_count=button_count,
+            state=state,
+            animation_progress=animation_progress,
             font_time=font_time,
             font_date=font_date,
             font_label=font_label,
@@ -118,6 +121,8 @@ def _render_home_page(
     current_time: datetime,
     device_id: str,
     button_count: int,
+    state: DeviceUiState,
+    animation_progress: float,
     font_time: ImageFont.FreeTypeFont | ImageFont.ImageFont,
     font_date: ImageFont.FreeTypeFont | ImageFont.ImageFont,
     font_label: ImageFont.FreeTypeFont | ImageFont.ImageFont,
@@ -149,23 +154,27 @@ def _render_home_page(
         font=font_date,
     )
 
-    draw.rounded_rectangle((16, 168, 224, 216), radius=10, fill=(20, 28, 32))
+    tap_pulse = _pulse(animation_progress) if state.animation == "home_tap" else 0.0
+    draw.rounded_rectangle((16, 168, 224, 216), radius=10, fill=_mix_color((20, 28, 32), (26, 54, 52), tap_pulse))
+    if tap_pulse > 0:
+        draw.rounded_rectangle((14, 166, 226, 218), radius=12, outline=_mix_color((30, 68, 64), (116, 230, 205), tap_pulse), width=1)
     draw.text((30, 182), device_id[:14], fill=(210, 225, 218), font=font_footer)
     draw.text((156, 182), f"tap {button_count}", fill=(132, 206, 186), font=font_footer)
 
     return image
 
 
-def _render_settings_page(state: DeviceUiState) -> Image.Image:
+def _render_settings_page(state: DeviceUiState, *, animation_progress: float) -> Image.Image:
     image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (6, 9, 13))
     draw = ImageDraw.Draw(image)
     font_title = _load_font(24)
     font_item = _load_font(17)
     font_small = _load_font(13)
+    select_pulse = _pulse(animation_progress) if state.animation == "settings_select" else 0.0
 
     draw.rounded_rectangle((8, 8, 232, 232), radius=14, outline=(46, 58, 70), width=2)
     draw.text((20, 18), "Settings", fill=(235, 242, 232), font=font_title)
-    draw.text((166, 25), "remote", fill=(96, 158, 174), font=font_small)
+    draw.text((166, 25), "remote", fill=_mix_color((96, 158, 174), (118, 220, 204), select_pulse * 0.45), font=font_small)
 
     top = 58
     row_h = 30
@@ -173,29 +182,36 @@ def _render_settings_page(state: DeviceUiState) -> Image.Image:
         y = top + index * 33
         selected = index == state.selected_index
         if selected:
-            draw.rounded_rectangle((16, y - 2, 224, y + row_h), radius=10, fill=(27, 98, 101))
-            draw.rounded_rectangle((19, y + 1, 43, y + row_h - 3), radius=8, fill=(114, 224, 198))
+            row_shift = int(round((1.0 - ease_out_cubic(animation_progress)) * 4)) if state.animation == "settings_select" else 0
+            glow = select_pulse * 0.6
+            row_fill = _mix_color((27, 98, 101), (36, 139, 133), glow)
+            chip_fill = _mix_color((114, 224, 198), (178, 255, 228), glow)
+            draw.rounded_rectangle((16, y - 2 + row_shift, 224, y + row_h + row_shift), radius=10, fill=row_fill)
+            if select_pulse > 0:
+                draw.rounded_rectangle((14, y - 4 + row_shift, 226, y + row_h + 2 + row_shift), radius=12, outline=_mix_color((27, 98, 101), (124, 232, 211), glow), width=1)
+            draw.rounded_rectangle((19, y + 1 + row_shift, 43, y + row_h - 3 + row_shift), radius=8, fill=chip_fill)
             text_fill = (244, 252, 244)
             index_fill = (10, 42, 44)
         else:
+            row_shift = 0
             draw.rounded_rectangle((16, y - 2, 224, y + row_h), radius=10, fill=(17, 24, 30))
             text_fill = (165, 183, 190)
             index_fill = (88, 112, 120)
 
         number = f"{index + 1}"
         number_width = _text_width(draw, number, font_small)
-        draw.text((31 - number_width // 2, y + 6), number, fill=index_fill, font=font_small)
-        draw.text((54, y + 4), item, fill=text_fill, font=font_item)
+        draw.text((31 - number_width // 2, y + 6 + row_shift), number, fill=index_fill, font=font_small)
+        draw.text((54, y + 4 + row_shift), item, fill=text_fill, font=font_item)
         if item == "Brightness":
             value = f"{state.brightness}%"
-            draw.text((186, y + 6), value, fill=text_fill, font=font_small)
+            draw.text((186, y + 6 + row_shift), value, fill=text_fill, font=font_small)
 
     return image
 
 
-def _render_detail_page(state: DeviceUiState) -> Image.Image:
+def _render_detail_page(state: DeviceUiState, *, animation_progress: float) -> Image.Image:
     if state.detail_index == 0:
-        return _render_brightness_detail_page(state)
+        return _render_brightness_detail_page(state, animation_progress=animation_progress)
 
     image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
     draw = ImageDraw.Draw(image)
@@ -208,7 +224,8 @@ def _render_detail_page(state: DeviceUiState) -> Image.Image:
     draw.text((20, 18), item, fill=(238, 246, 236), font=font_title)
     draw.text((20, 49), "Setting detail", fill=(100, 155, 170), font=font_small)
 
-    draw.rounded_rectangle((18, 82, 222, 178), radius=12, fill=(18, 29, 34))
+    pulse = _pulse(animation_progress) if state.animation == "detail_pulse" else 0.0
+    draw.rounded_rectangle((18, 82, 222, 178), radius=12, fill=_mix_color((18, 29, 34), (23, 43, 48), pulse))
     draw.text((34, 103), "Preview only", fill=(230, 238, 232), font=font_body)
     draw.text((34, 132), "More controls next", fill=(137, 166, 172), font=font_small)
 
@@ -223,7 +240,7 @@ def _render_detail_page(state: DeviceUiState) -> Image.Image:
     return image
 
 
-def _render_brightness_detail_page(state: DeviceUiState) -> Image.Image:
+def _render_brightness_detail_page(state: DeviceUiState, *, animation_progress: float) -> Image.Image:
     image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
     draw = ImageDraw.Draw(image)
     font_title = _load_font(22)
@@ -232,7 +249,10 @@ def _render_brightness_detail_page(state: DeviceUiState) -> Image.Image:
     font_small = _load_font(13)
 
     value = max(0, min(100, state.pending_brightness))
-    fill_width = int(170 * value / 100)
+    adjust_pulse = _pulse(animation_progress) if state.animation in {"brightness_adjust", "brightness_applied"} else 0.0
+    eased = ease_out_cubic(animation_progress)
+    fill_scale = 0.92 + 0.08 * eased if state.animation == "brightness_adjust" else 1.0
+    fill_width = int(170 * value / 100 * fill_scale)
 
     draw.rounded_rectangle((8, 8, 232, 232), radius=14, outline=(50, 62, 72), width=2)
     draw.text((20, 18), "Brightness", fill=(238, 246, 236), font=font_title)
@@ -240,14 +260,21 @@ def _render_brightness_detail_page(state: DeviceUiState) -> Image.Image:
 
     value_text = f"{value}%"
     value_width = _text_width(draw, value_text, font_value)
-    draw.text(((SCREEN_WIDTH - value_width) // 2, 82), value_text, fill=(240, 248, 238), font=font_value)
+    value_y = 82 - int(round(adjust_pulse * 3))
+    draw.text(
+        ((SCREEN_WIDTH - value_width) // 2, value_y),
+        value_text,
+        fill=_mix_color((240, 248, 238), (178, 255, 226), adjust_pulse * 0.45),
+        font=font_value,
+    )
 
     draw.rounded_rectangle((34, 146, 206, 164), radius=9, fill=(17, 27, 32))
     if fill_width > 0:
-        draw.rounded_rectangle((35, 147, 35 + fill_width, 163), radius=8, fill=(112, 224, 196))
+        draw.rounded_rectangle((35, 147, 35 + fill_width, 163), radius=8, fill=_mix_color((112, 224, 196), (170, 255, 225), adjust_pulse * 0.55))
     draw.ellipse((30, 141, 48, 169), fill=(34, 44, 50), outline=(93, 118, 124), width=1)
     knob_x = 35 + fill_width
-    draw.ellipse((knob_x - 8, 140, knob_x + 8, 170), fill=(220, 248, 236), outline=(77, 155, 145), width=2)
+    knob_radius = 8 + int(round(adjust_pulse * 2))
+    draw.ellipse((knob_x - knob_radius, 140, knob_x + knob_radius, 170), fill=(220, 248, 236), outline=(77, 155, 145), width=2)
 
     status = "applied" if state.brightness == state.pending_brightness else f"saved {state.brightness}%"
     draw.text((34, 184), status, fill=(142, 178, 180), font=font_body)
@@ -268,7 +295,17 @@ def _paste_animated_page(
     state: DeviceUiState,
     progress: float,
 ) -> None:
-    target.paste(page, (0, 0))
+    if state.animation not in {"enter_settings", "enter_detail", "back_home", "back_to_settings"} or progress >= 1.0:
+        target.paste(page, (0, 0))
+        return
+
+    eased = ease_out_cubic(progress)
+    direction = -1 if state.animation in {"back_home", "back_to_settings"} else 1
+    offset_x = int(round(direction * (1.0 - eased) * 18))
+    alpha = int(120 + 135 * eased)
+    layer = page.convert("RGBA")
+    layer.putalpha(alpha)
+    target.paste(layer, (offset_x, 0), layer)
 
 
 def compute_dirty_rects(
@@ -341,6 +378,16 @@ def _interleave_rect_rows(rects: list[tuple[int, int, int, int]]) -> list[tuple[
     if len(rects) <= 2:
         return rects
     return rects[0::4] + rects[1::4] + rects[2::4] + rects[3::4]
+
+
+def _mix_color(a: tuple[int, int, int], b: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
+    amount = max(0.0, min(1.0, amount))
+    return tuple(int(round(start + (end - start) * amount)) for start, end in zip(a, b))
+
+
+def _pulse(progress: float) -> float:
+    progress = max(0.0, min(1.0, progress))
+    return 1.0 - abs(progress * 2.0 - 1.0)
 
 
 def _crop_rect(image: Image.Image, region: tuple[int, int, int, int]) -> FrameRect:

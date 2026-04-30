@@ -302,6 +302,19 @@ Preview Settings navigation:
   --output frame-previews/settings.png
 ```
 
+Preview the richer Settings entry animation:
+
+```bash
+.venv/bin/python -m tools.frame_preview \
+  --base-url http://127.0.0.1:18080 \
+  --device-id preview-animation-01 \
+  --input-event long_press \
+  --input-seq 1 \
+  --frames 8 \
+  --wait-ms 60 \
+  --output frame-previews/animation-settings.png
+```
+
 `frame-previews/` is ignored and can be freely regenerated.
 
 Use a preview-only device id such as `preview-01` when debugging from a laptop.
@@ -353,9 +366,10 @@ In scope:
 - Server-side settings/detail navigation state.
 - Server-side brightness detail UI and a JSON command channel for local
   hardware side effects.
-- Basic server-side navigation animation, currently capped at 20 FPS by the
-  registry scheduler. Page transitions render the destination page immediately
-  and animate only a tiny accent bar so follow-up frames stay small.
+- Server-side animation capped at 20 FPS by the registry scheduler. Page
+  entry/back transitions slide and fade the destination page, Settings selection
+  changes pulse the selected row, Brightness changes animate the value/bar/knob,
+  and Home short taps glow only the footer region.
 - Local device-side hold-progress overlay.
 - Interleaved tile-strip dirty frames for large page changes.
 - Server/device frame diagnostics for large updates.
