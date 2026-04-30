@@ -109,6 +109,7 @@ python3 -m venv .venv
 
 Docker 镜像基于 `python:3.12-slim`，额外安装 `fonts-dejavu-core`，否则 Pillow 会退回默认小位图字体，导致设备端文字明显过小。
 Dockerfile 已把第三方依赖安装和 `app/` 代码复制拆开，并使用 BuildKit pip cache；日常只改远程渲染代码时，重建通常只会重装本地包，不会重新下载 Pillow/FastAPI。
+远程渲染容器关闭了 uvicorn access log，小 dirty frame 不再逐帧打印，并在 Compose 中限制 Docker 日志轮转为 `5m x 3`，避免高频帧轮询持续刷盘。
 
 本机 `clang-format` 由 Homebrew LLVM 提供，并通过 `~/.platformio/packages/tool-clangformat` 的本地 shim 暴露给 PlatformIO；因此下面这个命令可直接使用：
 

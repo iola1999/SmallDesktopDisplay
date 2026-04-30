@@ -52,6 +52,7 @@ Update it whenever behavior, architecture, or interaction details change.
 - Moved the local hold-progress start from roughly 400ms to the 300ms double-click window, leaving a visible 200ms fill animation before the 500ms long-press threshold.
 - Added a remote brightness setting flow: the Docker UI cycles brightness values and confirms them through a JSON command channel, while the ESP8266 applies PWM locally and persists the value in EEPROM.
 - Added device status sync for persisted brightness so the Docker renderer can recover the actual device brightness after either side restarts.
+- Disabled uvicorn access logs for high-frequency frame/command polling, suppressed small dirty-frame logs, and pinned Docker json-file log rotation to `5m x 3` for the remote renderer container.
 
 ### Current Development And Deployment Notes
 

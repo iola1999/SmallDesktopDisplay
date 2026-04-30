@@ -269,7 +269,7 @@ def encode_rendered_frame(frame: RenderedFrame) -> bytes:
 
 def _log_rendered_frame(state: DeviceState, frame: RenderedFrame) -> None:
     payload_len = sum(len(rect.payload) for rect in frame.rects)
-    if not frame.full_frame and payload_len <= 12000 and len(frame.rects) <= 4:
+    if not frame.full_frame and payload_len <= 12000:
         return
 
     print(
