@@ -1,6 +1,8 @@
 # SmallDesktopDisplay
 
-基于 ESP-12E 模块的桌面小屏显示器固件，使用 PlatformIO + Arduino framework。当前硬件固件仍通过 PlatformIO 的 `espressif8266` 平台和 `nodemcuv2` 板型配置构建。主功能包括时钟、天气、滚动横幅、WiFi 配网，以及可选的 DHT11 与右下角动图。
+基于 ESP-12E 模块的桌面小屏显示器固件，使用 PlatformIO + Arduino framework。当前硬件固件仍通过 PlatformIO 的 `espressif8266` 平台和 `nodemcuv2` 板型配置构建。
+
+当前主线已切换为远程渲染瘦客户端：Docker 服务负责生成 240x240 RGB565 帧，设备只负责 WiFi、按键上报、HTTP 拉取最新帧和 TFT 刷屏。旧天气、NTP、设置页动效和本地复杂 UI 代码已删除。
 
 ## Build
 
@@ -25,26 +27,34 @@ pio run -e esp12e
 
 ## Architecture
 
-- `src/app/*`: 纯 C++ 的应用核心、状态机和动作分发
-- `src/ports/*`: 面向硬件/平台能力的抽象接口
-- `src/adapters/*`: EEPROM、WiFi、天气、NTP、DHT11 的 ESP-12E/Arduino 适配器
-- `src/ui/*`: `AppViewModel` 到 TFT 的渲染桥接
-- `src/main.cpp`: 设备入口、定时驱动、按键/CLI 编排
-- `src/Display.*` / `src/Screen.*`: 低层显示能力与高层页面绘制
-- `src/Input.*` / `src/Cli.*`: 输入事件与串口命令解析
-- `src/Animate/*`: 可选动图播放
-- `test/test_native_app_core/*`: Host 侧 `AppCore` / `AppDriver` 测试
+- `remote-render/*`: Dockerized FastAPI + Pillow 渲染服务
+- `src/remote/*`: HTTP 帧协议、帧拉取、按键事件上报
+- `src/ui/TftFrameSink.*`: RGB565 矩形帧到 TFT 的输出桥接
+- `src/main.cpp`: 设备入口、远程帧轮询、按键上报
+- `src/Display.*` / `src/Input.*` / `src/Net.*` / `src/Storage.*`: 保留的硬件基础层
+- `src/app/*`: 保留纯 C++ 配置、背光 PWM、WiFi 配网页生成
+- `test/test_native_app_core/*`: Host 侧基础逻辑与帧协议测试
 
 ## Notes
 
 - 编译期开关集中在 `src/AppConfig.h`
 - `TFT_eSPI` 的引脚映射来自库自己的 `User_Setup.h`，不在本仓库内
-- 仓库只保留当前架构，不再维护旧布局迁移或历史归档代码
+- 远程帧协议设计见 `docs/remote-rendering-http-frame-design.md`
+- 第一版远程服务 URL 只支持 `http://`
+
+## Remote Renderer
+
+本机 Docker 启动：
+
+```bash
+cd remote-render
+docker compose up --build
+```
+
+默认监听 `http://0.0.0.0:8080`。设备配网页中填写 Mac 的局域网地址，例如 `http://192.168.1.20:8080`。
+如果 8080 已被占用，可用 `REMOTE_RENDER_PORT=18080 docker compose up --build`，设备里对应填写 `http://<Mac局域网IP>:18080`。
 
 ## Button Controls
 
-- 首页：短按显示调试气泡，长按进入设置；右下角动图仅在首页播放
-- 菜单页：短按切到下一项，长按进入或执行当前项
-- 内容页：短按向下浏览内容，长按返回上一层
-- 亮度页：短按预览下一档亮度，长按保存并返回
-- 后台天气刷新：静默联网，不再弹出全屏 WiFi 进度页，也不会自动抢占当前页面
+- 短按、双击、长按由设备识别后 POST 给远程渲染服务
+- 设备本地不再解释页面业务逻辑

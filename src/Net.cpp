@@ -87,7 +87,7 @@ void drawPortalInstructions()
   display::tft.setTextColor(TFT_WHITE, app_config::kColorBg);
   display::tft.drawString("Open", 120, 156, 2);
   display::tft.drawString(s_portalIp.toString(), 120, 182, 4);
-  display::tft.drawString("Pick WiFi and set city code", 120, 220, 2);
+  display::tft.drawString("Set WiFi and render server", 120, 220, 2);
 }
 
 void scanNearbyNetworks()
@@ -137,14 +137,18 @@ void scanNearbyNetworks()
   });
 }
 
-void sendPortalPage(const String &message, const String &selectedSsid, const String &cityCode)
+void sendPortalPage(const String &message,
+                    const String &selectedSsid,
+                    const String &remoteBaseUrl,
+                    const String &deviceId)
 {
   const std::string apSsid = portalUsesAccessPoint() ? app_config::kWifiPortalApSsid : "";
   const std::string html = app::buildWifiPortalPage(apSsid,
                                                     s_portalIp.toString().c_str(),
                                                     s_networks,
                                                     selectedSsid.c_str(),
-                                                    cityCode.c_str(),
+                                                    remoteBaseUrl.c_str(),
+                                                    deviceId.c_str(),
                                                     message.c_str());
   s_server.send(200, "text/html", html.c_str());
 }
@@ -231,10 +235,9 @@ void startLanConfigServer(app::AppConfigData &config)
 void handlePortalRoot()
 {
   const String ssid = s_config ? String(s_config->wifiSsid.c_str()) : String();
-  const String cityCode = (s_config && !s_config->cityCode.empty())
-                            ? String(s_config->cityCode.c_str())
-                            : String();
-  sendPortalPage(String(), ssid, cityCode);
+  const String remoteBaseUrl = s_config ? String(s_config->remoteBaseUrl.c_str()) : String();
+  const String deviceId = s_config ? String(s_config->remoteDeviceId.c_str()) : String();
+  sendPortalPage(String(), ssid, remoteBaseUrl, deviceId);
 }
 
 void handlePortalSave()
@@ -247,27 +250,37 @@ void handlePortalSave()
 
   String ssid = s_server.arg("ssid");
   String psk = s_server.arg("psk");
-  String cityCodeInput = s_server.arg("CityCode");
+  String remoteBaseUrlInput = s_server.arg("RemoteBaseUrl");
+  String deviceId = s_server.arg("DeviceId");
   ssid.trim();
   psk.trim();
-  cityCodeInput.trim();
+  remoteBaseUrlInput.trim();
+  deviceId.trim();
 
   if (ssid.length() == 0)
   {
-    sendPortalPage("SSID is required.", ssid, cityCodeInput);
+    sendPortalPage("SSID is required.", ssid, remoteBaseUrlInput, deviceId);
     return;
   }
 
-  const std::string normalizedCityCode = app::normalizeCityCodeInput(cityCodeInput.c_str());
-  if (cityCodeInput.length() > 0 && cityCodeInput != "0" && normalizedCityCode.empty())
+  const std::string normalizedRemoteBaseUrl =
+    app::normalizeRemoteBaseUrlInput(remoteBaseUrlInput.c_str());
+  if (normalizedRemoteBaseUrl.empty())
   {
-    sendPortalPage("City code must be 9 digits or 0.", ssid, cityCodeInput);
+    sendPortalPage("Render server must start with http://.", ssid, remoteBaseUrlInput, deviceId);
+    return;
+  }
+
+  if (deviceId.length() == 0)
+  {
+    sendPortalPage("Device ID is required.", ssid, remoteBaseUrlInput, deviceId);
     return;
   }
 
   s_config->wifiSsid = ssid.c_str();
   s_config->wifiPsk = psk.c_str();
-  s_config->cityCode = normalizedCityCode;
+  s_config->remoteBaseUrl = normalizedRemoteBaseUrl;
+  s_config->remoteDeviceId = deviceId.c_str();
   storage::saveConfig(*s_config);
 
   s_server.send(
@@ -311,9 +324,9 @@ void runWebConfig(app::AppConfigData &config)
 
 } // namespace
 
-bool connect(app::AppConfigData &config, app::WifiConnectMode mode)
+bool connect(app::AppConfigData &config, WifiConnectMode mode)
 {
-  const bool blockingUi = (mode == app::WifiConnectMode::ForegroundBlocking);
+  const bool blockingUi = (mode == WifiConnectMode::ForegroundBlocking);
 
   if (WiFi.status() == WL_CONNECTED)
   {

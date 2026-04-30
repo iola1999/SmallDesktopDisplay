@@ -1,12 +1,9 @@
 #include "Display.h"
 
 #include <Arduino.h>
-#include <TJpg_Decoder.h>
 
 #include "AppConfig.h"
 #include "app/BacklightPwm.h"
-#include "img/humidity.h"
-#include "img/temperature.h"
 
 namespace display
 {
@@ -18,14 +15,6 @@ namespace
 {
 uint8_t s_loadingProgress = 6;
 bool s_loadingUiDrawn = false;
-}
-
-bool tftOutput(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap)
-{
-  if (y >= tft.height())
-    return false;
-  tft.pushImage(x, y, w, h, bitmap);
-  return true;
 }
 
 void begin(uint8_t rotation)
@@ -50,10 +39,6 @@ void begin(uint8_t rotation)
   Serial.println(F("[Display] text color"));
   tft.setTextColor(TFT_BLACK, app_config::kColorBg);
 
-  Serial.println(F("[Display] jpeg setup"));
-  TJpgDec.setJpgScale(1);
-  TJpgDec.setSwapBytes(true);
-  TJpgDec.setCallback(tftOutput);
   Serial.println(F("[Display] begin done"));
 }
 
@@ -108,12 +93,6 @@ void drawLoading(uint32_t delayMs, uint8_t step)
   {
     delay(delayMs);
   }
-}
-
-void drawTempHumidityIcons()
-{
-  TJpgDec.drawJpg(12, 172, temperature, sizeof(temperature));
-  TJpgDec.drawJpg(12, 204, humidity, sizeof(humidity));
 }
 
 } // namespace display

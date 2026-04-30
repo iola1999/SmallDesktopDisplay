@@ -16,7 +16,7 @@ namespace storage
 struct PersistedConfig
 {
   uint16_t magic;   // 0x5344 'SD'
-  uint8_t version;  // 当前 1
+  uint8_t version;  // 当前 3
   uint8_t reserved; // 对齐
 
   uint8_t brightness;
@@ -24,15 +24,14 @@ struct PersistedConfig
   uint8_t reserved1;
   uint8_t reserved2;
 
-  uint32_t weatherUpdateMinutes;
-  char cityCode[10]; // 9 字节 + NUL
-
   char wifiSsid[32];
   char wifiPsk[64];
+  char remoteBaseUrl[96];
+  char remoteDeviceId[24];
 };
 
 constexpr uint16_t kMagic = 0x5344;
-constexpr uint8_t kVersion = 1;
+constexpr uint8_t kVersion = 3;
 constexpr size_t kEepromSize = 1024;
 
 void begin();

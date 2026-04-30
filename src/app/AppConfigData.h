@@ -13,8 +13,8 @@ struct AppConfigData
 {
   std::string wifiSsid;
   std::string wifiPsk;
-  std::string cityCode = app_config::kDefaultCityCode;
-  uint32_t weatherUpdateMinutes = app_config::kDefaultWeatherUpdateMinutes;
+  std::string remoteBaseUrl = app_config::kDefaultRemoteRenderBaseUrl;
+  std::string remoteDeviceId = app_config::kDefaultRemoteDeviceId;
   uint8_t lcdBrightness = app_config::kDefaultLcdBrightness;
   uint8_t lcdRotation = app_config::kDefaultLcdRotation;
 };

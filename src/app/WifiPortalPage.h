@@ -16,11 +16,13 @@ struct WifiPortalNetwork
 };
 
 std::string normalizeCityCodeInput(const std::string &input);
+std::string normalizeRemoteBaseUrlInput(const std::string &input);
 std::string buildWifiPortalPage(const std::string &apSsid,
                                 const std::string &portalIp,
                                 const std::vector<WifiPortalNetwork> &networks,
                                 const std::string &selectedSsid,
-                                const std::string &cityCode,
+                                const std::string &remoteBaseUrl,
+                                const std::string &deviceId,
                                 const std::string &message);
 
 } // namespace app

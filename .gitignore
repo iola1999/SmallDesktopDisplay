@@ -5,6 +5,8 @@
 .vscode/launch.json
 .vscode/ipch
 .test/
+remote-render/.venv/
+*.egg-info/
 
 # macOS
 .DS_Store
@@ -12,3 +14,5 @@
 
 # Local personal overrides (see CLAUDE.md)
 CLAUDE.local.md
+__pycache__/
+*.pyc

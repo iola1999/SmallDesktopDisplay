@@ -25,20 +25,28 @@ void pack(const app::AppConfigData &config, PersistedConfig &cfg)
   cfg.version = kVersion;
   cfg.brightness = config.lcdBrightness;
   cfg.rotation = config.lcdRotation;
-  cfg.weatherUpdateMinutes = config.weatherUpdateMinutes;
-  copyString(cfg.cityCode, sizeof(cfg.cityCode), config.cityCode);
   copyString(cfg.wifiSsid, sizeof(cfg.wifiSsid), config.wifiSsid);
   copyString(cfg.wifiPsk, sizeof(cfg.wifiPsk), config.wifiPsk);
+  copyString(cfg.remoteBaseUrl, sizeof(cfg.remoteBaseUrl), config.remoteBaseUrl);
+  copyString(cfg.remoteDeviceId, sizeof(cfg.remoteDeviceId), config.remoteDeviceId);
 }
 
 void unpack(const PersistedConfig &cfg, app::AppConfigData &config)
 {
   config.lcdBrightness = cfg.brightness;
   config.lcdRotation = cfg.rotation;
-  config.weatherUpdateMinutes = cfg.weatherUpdateMinutes;
-  config.cityCode = cfg.cityCode;
   config.wifiSsid = cfg.wifiSsid;
   config.wifiPsk = cfg.wifiPsk;
+  config.remoteBaseUrl = cfg.remoteBaseUrl;
+  config.remoteDeviceId = cfg.remoteDeviceId;
+  if (config.remoteBaseUrl.empty())
+  {
+    config.remoteBaseUrl = app_config::kDefaultRemoteRenderBaseUrl;
+  }
+  if (config.remoteDeviceId.empty())
+  {
+    config.remoteDeviceId = app_config::kDefaultRemoteDeviceId;
+  }
 }
 
 void writeBlob(const void *buf, size_t len)

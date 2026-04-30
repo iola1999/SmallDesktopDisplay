@@ -3,6 +3,17 @@
 This file is the rolling log for recent firmware and UI iterations.
 Update it whenever behavior, architecture, or interaction details change.
 
+## 2026-04-30
+
+### Remote Rendering Thin Client
+
+- Added the `SDD/1` HTTP frame protocol design in `docs/remote-rendering-http-frame-design.md`.
+- Added a Dockerized `remote-render/` FastAPI + Pillow service that renders 240x240 RGB565 frames and accepts button gesture events.
+- Switched the `esp12e` firmware entrypoint to a remote-display loop: connect WiFi, poll the latest frame, draw raw RGB565 rectangles, and POST button events.
+- Added firmware-side frame header/rect parsing tests.
+- Removed old local weather/NTP/settings/motion code and made `esp12e` build the remaining remote-display firmware without source filtering.
+- First-version remote service URLs are intentionally `http://` only.
+
 ## 2026-04-18
 
 ### App Core And Settings Foundation

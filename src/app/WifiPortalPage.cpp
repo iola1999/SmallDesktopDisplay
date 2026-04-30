@@ -85,11 +85,28 @@ std::string normalizeCityCodeInput(const std::string &input)
   return isNineDigitCityCode(trimmed) ? trimmed : "";
 }
 
+std::string normalizeRemoteBaseUrlInput(const std::string &input)
+{
+  std::string trimmed = trimCopy(input);
+  while (!trimmed.empty() && trimmed[trimmed.size() - 1] == '/')
+  {
+    trimmed.erase(trimmed.size() - 1);
+  }
+
+  if (trimmed.find("http://") != 0)
+  {
+    return "";
+  }
+
+  return trimmed;
+}
+
 std::string buildWifiPortalPage(const std::string &apSsid,
                                 const std::string &portalIp,
                                 const std::vector<WifiPortalNetwork> &networks,
                                 const std::string &selectedSsid,
-                                const std::string &cityCode,
+                                const std::string &remoteBaseUrl,
+                                const std::string &deviceId,
                                 const std::string &message)
 {
   std::ostringstream html;
@@ -145,9 +162,10 @@ std::string buildWifiPortalPage(const std::string &apSsid,
        << "<p><label>SSID<br><input id='ssid' name='ssid' maxlength='31' style='width:100%;padding:10px' value='"
        << escapeHtml(selectedSsid) << "'></label></p>"
        << "<p><label>Password<br><input name='psk' type='password' maxlength='63' style='width:100%;padding:10px'></label></p>"
-       << "<p><label>City code<br><input name='CityCode' maxlength='9' style='width:100%;padding:10px' value='"
-       << escapeHtml(cityCode) << "'></label></p>"
-       << "<p>0 or blank = auto detect</p>"
+       << "<p><label>Render server<br><input name='RemoteBaseUrl' maxlength='95' style='width:100%;padding:10px' placeholder='http://192.168.1.20:8080' value='"
+       << escapeHtml(remoteBaseUrl) << "'></label></p>"
+       << "<p><label>Device ID<br><input name='DeviceId' maxlength='23' style='width:100%;padding:10px' value='"
+       << escapeHtml(deviceId) << "'></label></p>"
        << "<p><button type='submit' style='padding:10px 14px'>Save and Restart</button></p>"
        << "</form></body></html>";
 

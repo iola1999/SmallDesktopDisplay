@@ -1,0 +1,7 @@
+services:
+  remote-render:
+    build: .
+    ports:
+      - "${REMOTE_RENDER_PORT:-8080}:8080"
+    environment:
+      PYTHONUNBUFFERED: "1"
