@@ -1,5 +1,6 @@
 #include <doctest.h>
 
+#include "AppConfig.h"
 #include "app/HoldProgress.h"
 
 TEST_CASE("hold progress pixels clamp to the configured width")
@@ -23,4 +24,13 @@ TEST_CASE("delayed hold progress stays hidden until late in the hold gesture")
   CHECK(app::delayedHoldProgressPixels(400, 400, 500, 204) == 0);
   CHECK(app::delayedHoldProgressPixels(450, 400, 500, 204) == 102);
   CHECK(app::delayedHoldProgressPixels(500, 400, 500, 204) == 204);
+}
+
+TEST_CASE("configured hold progress leaves a visible animation window")
+{
+  CHECK(app_config::kHoldProgressDelayMs >= app_config::kButtonDoubleClickMs);
+  CHECK(app_config::kButtonLongPressMs - app_config::kHoldProgressDelayMs >= 200);
+  CHECK(app::delayedHoldProgressPixels(350, app_config::kHoldProgressDelayMs, app_config::kButtonLongPressMs, 204) > 0);
+  CHECK(app::delayedHoldProgressPixels(350, app_config::kHoldProgressDelayMs, app_config::kButtonLongPressMs, 204) <
+        204);
 }

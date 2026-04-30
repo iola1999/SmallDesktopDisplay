@@ -49,6 +49,7 @@ Update it whenever behavior, architecture, or interaction details change.
 - Fixed the local `clang-format` tooling path by exposing Homebrew LLVM's `clang-format` through a PlatformIO package shim, so `pio pkg exec -- clang-format ...` works on this Mac.
 - Changed device-side hold handling so the threshold only arms the long-press; `long_press` is POSTed on release, preventing an entered page from receiving a second long-press when the button is lifted.
 - Tracked whether the local hold overlay was actually drawn before clearing it, so ordinary taps no longer erase a thin black strip at the top of the remote frame.
+- Moved the local hold-progress start from roughly 400ms to the 300ms double-click window, leaving a visible 200ms fill animation before the 500ms long-press threshold.
 
 ### Current Development And Deployment Notes
 

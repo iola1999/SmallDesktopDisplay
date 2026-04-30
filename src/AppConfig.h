@@ -18,11 +18,12 @@ constexpr const char *kDefaultRemoteRenderBaseUrl = "http://192.168.1.7:18080";
 constexpr const char *kDefaultRemoteDeviceId = "desk-01";
 
 // 引脚
-constexpr uint8_t kPinLcdBacklight = 5;  // LCD 背光
-constexpr uint8_t kPinButton = 4;        // 按键
+constexpr uint8_t kPinLcdBacklight = 5; // LCD 背光
+constexpr uint8_t kPinButton = 4;       // 按键
 constexpr bool kKeepWifiAwake = true;
 constexpr uint32_t kButtonDoubleClickMs = 300;
 constexpr uint32_t kButtonLongPressMs = 500;
+constexpr uint32_t kHoldProgressDelayMs = kButtonDoubleClickMs;
 constexpr const char *kWifiPortalApSsid = "SDD-Setup";
 
 constexpr uint16_t kColorBg = 0x0000;

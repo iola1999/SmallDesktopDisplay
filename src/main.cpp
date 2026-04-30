@@ -32,7 +32,6 @@ constexpr int16_t kHoldBarX = 18;
 constexpr int16_t kHoldBarY = 0;
 constexpr uint16_t kHoldBarWidth = 204;
 constexpr uint16_t kHoldBarHeight = 5;
-constexpr uint32_t kHoldProgressDelayMs = 400;
 
 void drawStatus(const char *line1, const char *line2, const char *line3 = nullptr)
 {
@@ -110,7 +109,7 @@ void updateHoldOverlay(uint32_t nowMs)
     return;
   }
 
-  const uint16_t progress = app::delayedHoldProgressPixels(nowMs - g_holdStartedMs, kHoldProgressDelayMs,
+  const uint16_t progress = app::delayedHoldProgressPixels(nowMs - g_holdStartedMs, app_config::kHoldProgressDelayMs,
                                                            app_config::kButtonLongPressMs, kHoldBarWidth);
   if (progress == 0 && g_holdLastPixels == UINT16_MAX)
   {
