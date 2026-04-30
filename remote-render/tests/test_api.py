@@ -5,6 +5,12 @@ from app.state import DeviceRegistry
 from tools.frame_preview import decode_frame
 
 
+def _receive_ws_frame_chunks(websocket) -> tuple[dict, list[bytes]]:
+    stats = websocket.receive_json()
+    chunks = [websocket.receive_bytes() for _ in range(stats.get("chunks", 1))]
+    return stats, chunks
+
+
 def test_frame_endpoint_returns_latest_frame_then_204_for_same_have():
     client = TestClient(app)
 
@@ -21,6 +27,37 @@ def test_frame_endpoint_returns_latest_frame_then_204_for_same_have():
     assert second.headers["x-sdd-server-wait-ms"].isdigit()
     assert second.headers["x-sdd-server-render-ms"].isdigit()
     assert second.headers["x-sdd-server-total-ms"].isdigit()
+
+
+def test_websocket_frame_endpoint_sends_binary_frames_after_ack():
+    client = TestClient(app)
+    device_id = "desk-ws-api"
+
+    with client.websocket_connect(
+        f"/api/v1/devices/{device_id}/frames/ws?have=0&wait_ms=0"
+    ) as websocket:
+        websocket.send_json({"have": 0})
+        first_stats, first_chunks = _receive_ws_frame_chunks(websocket)
+        first = first_chunks[-1]
+        assert first_stats["type"] == "frame"
+        assert first_stats["frame_id"] == int.from_bytes(first[8:12], "little")
+        assert first_stats["chunks"] >= 1
+        assert all(chunk.startswith(b"SDD1") for chunk in first_chunks)
+
+        first_frame_id = int.from_bytes(first[8:12], "little")
+
+        assert client.post(
+            f"/api/v1/devices/{device_id}/input",
+            json={"seq": 1, "event": "short_press", "uptime_ms": 1000},
+        ).status_code == 202
+
+        websocket.send_json({"have": first_frame_id})
+        second_stats, second_chunks = _receive_ws_frame_chunks(websocket)
+        second = second_chunks[-1]
+        assert second_stats["type"] == "frame"
+        assert second_stats["frame_id"] == int.from_bytes(second[8:12], "little")
+        assert int.from_bytes(second[8:12], "little") > first_frame_id
+        assert all(len(chunk) <= 8192 for chunk in first_chunks + second_chunks)
 
 
 def test_button_input_advances_latest_frame_without_replaying_old_frames():

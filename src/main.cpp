@@ -13,6 +13,7 @@
 #include "remote/HttpFrameClient.h"
 #include "remote/RemoteInputClient.h"
 #include "remote/RemoteStatusClient.h"
+#include "remote/WsFrameClient.h"
 #include "ui/TftFrameSink.h"
 
 namespace
@@ -21,6 +22,7 @@ namespace
 app::AppConfigData g_config;
 ui::TftFrameSink g_frameSink;
 remote::HttpFrameClient g_frameClient(g_frameSink);
+remote::WsFrameClient g_wsFrameClient(g_frameSink);
 remote::RemoteInputClient g_inputClient;
 remote::RemoteCommandClient g_commandClient;
 remote::RemoteStatusClient g_statusClient;
@@ -215,9 +217,17 @@ bool pollFrame(uint32_t nowMs)
   g_lastFramePollMs = nowMs;
 
   uint32_t nextFrameId = g_haveFrameId;
-  const remote::FrameFetchResult result =
-      g_frameClient.fetchLatest(g_config.remoteBaseUrl.c_str(), g_config.remoteDeviceId.c_str(), g_haveFrameId,
-                                app_config::kRemoteFrameWaitMs, nextFrameId);
+  remote::FrameFetchResult result = remote::FrameFetchResult::Failed;
+  if (app_config::kRemoteFrameUseWebSocket)
+  {
+    result = g_wsFrameClient.poll(g_config.remoteBaseUrl.c_str(), g_config.remoteDeviceId.c_str(), g_haveFrameId,
+                                  app_config::kRemoteFrameWaitMs, nextFrameId);
+  }
+  else
+  {
+    result = g_frameClient.fetchLatest(g_config.remoteBaseUrl.c_str(), g_config.remoteDeviceId.c_str(), g_haveFrameId,
+                                       app_config::kRemoteFrameWaitMs, nextFrameId);
+  }
 
   if (result == remote::FrameFetchResult::Updated)
   {

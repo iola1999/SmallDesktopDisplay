@@ -8,9 +8,11 @@ from app.protocol import (
     FORMAT_RGB565,
     MAGIC,
     FrameRect,
+    decode_frame,
     encode_frame,
     encode_rgb565_rle,
     rgb888_to_rgb565_bytes,
+    split_frame_for_websocket,
 )
 
 
@@ -116,3 +118,24 @@ def test_encode_frame_accepts_rgb565_rle_payload():
 
     rect_header = struct.unpack("<HHHHBBHI", frame[32:48])
     assert rect_header == (0, 0, 2, 2, FORMAT_RGB565, ENCODING_RGB565_RLE, 0, len(payload))
+
+
+def test_split_frame_for_websocket_keeps_chunks_under_limit():
+    payload = bytes(range(32))
+    frame = encode_frame(
+        frame_id=42,
+        base_frame_id=7,
+        width=4,
+        height=4,
+        rects=[FrameRect(0, 0, 4, 4, payload)],
+        full_frame=True,
+    )
+
+    chunks = split_frame_for_websocket(frame, max_message_bytes=70)
+    decoded = [decode_frame(chunk) for chunk in chunks]
+
+    assert len(chunks) == 2
+    assert all(len(chunk) <= 70 for chunk in chunks)
+    assert [chunk.full_frame for chunk in decoded] == [True, False]
+    assert all(chunk.frame_id == 42 and chunk.base_frame_id == 7 for chunk in decoded)
+    assert [(chunk.rects[0].y, chunk.rects[0].height) for chunk in decoded] == [(0, 2), (2, 2)]

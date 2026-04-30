@@ -1,6 +1,7 @@
 #ifndef REMOTE_HTTP_FRAME_CLIENT_H
 #define REMOTE_HTTP_FRAME_CLIENT_H
 
+#include "remote/FrameFetchResult.h"
 #include "remote/FrameProtocol.h"
 #include "ui/TftFrameSink.h"
 
@@ -14,13 +15,6 @@
 
 namespace remote
 {
-
-enum class FrameFetchResult
-{
-  Updated,
-  NotModified,
-  Failed,
-};
 
 class HttpFrameClient
 {

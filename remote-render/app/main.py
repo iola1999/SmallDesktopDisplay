@@ -3,14 +3,17 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from app.protocol import split_frame_for_websocket
 from app.state import DeviceRegistry
 
 app = FastAPI(title="SmallDesktopDisplay Remote Renderer")
 registry = DeviceRegistry()
+
+WEBSOCKET_MAX_MESSAGE_BYTES = 8192
 
 
 class InputEvent(BaseModel):
@@ -52,6 +55,59 @@ def get_frame(
         media_type="application/octet-stream",
         headers=headers,
     )
+
+
+@app.websocket("/api/v1/devices/{device_id}/frames/ws")
+async def websocket_frames(
+    websocket: WebSocket,
+    device_id: str,
+    have: int = Query(ge=0),
+    wait_ms: int = Query(default=50, ge=0, le=5000),
+) -> None:
+    await websocket.accept()
+    client_have = have
+    try:
+        while True:
+            request = await websocket.receive_json()
+            request_have = request.get("have")
+            if isinstance(request_have, int) and request_have >= 0:
+                client_have = request_have
+
+            result = registry.get_frame_with_stats(
+                device_id=device_id,
+                have=client_have,
+                wait_ms=wait_ms,
+            )
+            if result.frame is not None:
+                frame_id = int.from_bytes(result.frame[8:12], "little")
+                chunks = split_frame_for_websocket(
+                    result.frame,
+                    max_message_bytes=WEBSOCKET_MAX_MESSAGE_BYTES,
+                )
+                await websocket.send_json(
+                    {
+                        "type": "frame",
+                        "frame_id": frame_id,
+                        "wait_ms": result.wait_ms,
+                        "render_ms": result.render_ms,
+                        "total_ms": result.total_ms,
+                        "bytes": len(result.frame),
+                        "chunks": len(chunks),
+                    }
+                )
+                for chunk in chunks:
+                    await websocket.send_bytes(chunk)
+            else:
+                await websocket.send_json(
+                    {
+                        "type": "not_modified",
+                        "wait_ms": result.wait_ms,
+                        "render_ms": result.render_ms,
+                        "total_ms": result.total_ms,
+                    }
+                )
+    except WebSocketDisconnect:
+        return
 
 
 @app.post("/api/v1/devices/{device_id}/input")

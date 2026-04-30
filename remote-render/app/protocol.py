@@ -26,6 +26,17 @@ class FrameRect:
     encoding: int = ENCODING_RAW
 
 
+@dataclass(frozen=True)
+class DecodedFrame:
+    frame_id: int
+    base_frame_id: int
+    width: int
+    height: int
+    full_frame: bool
+    reset_required: bool
+    rects: list[FrameRect]
+
+
 def rgb888_to_rgb565_bytes(rgb: bytes) -> bytes:
     if len(rgb) % 3 != 0:
         raise ValueError("RGB888 payload length must be divisible by 3")
@@ -79,6 +90,133 @@ def decode_rgb565_rle(payload: bytes, expected_pixels: int) -> bytes:
     if len(out) != expected_pixels * 2:
         raise ValueError("RGB565 RLE decoded length does not match geometry")
     return bytes(out)
+
+
+def decode_frame(data: bytes) -> DecodedFrame:
+    if len(data) < HEADER_LEN:
+        raise ValueError("frame is shorter than the SDD1 header")
+
+    (
+        magic,
+        version,
+        flags,
+        header_len,
+        frame_id,
+        base_frame_id,
+        width,
+        height,
+        rect_count,
+        payload_len,
+        _reserved,
+        expected_crc,
+    ) = struct.unpack("<4sBBHIIHHHIHI", data[:HEADER_LEN])
+
+    if magic != MAGIC:
+        raise ValueError("frame magic is not SDD1")
+    if version != VERSION:
+        raise ValueError(f"unsupported frame version {version}")
+    if header_len != HEADER_LEN:
+        raise ValueError(f"unsupported frame header length {header_len}")
+
+    body = data[header_len:]
+    if zlib.crc32(body) & 0xFFFFFFFF != expected_crc:
+        raise ValueError("frame CRC does not match")
+
+    rects: list[FrameRect] = []
+    offset = 0
+    total_payload_len = 0
+    for _ in range(rect_count):
+        if offset + 16 > len(body):
+            raise ValueError("rect header exceeds frame body")
+        x, y, rect_width, rect_height, fmt, encoding, _rect_reserved, rect_payload_len = struct.unpack(
+            "<HHHHBBHI",
+            body[offset : offset + 16],
+        )
+        offset += 16
+        if offset + rect_payload_len > len(body):
+            raise ValueError("rect payload exceeds frame body")
+        payload = body[offset : offset + rect_payload_len]
+        offset += rect_payload_len
+        total_payload_len += rect_payload_len
+        rect = FrameRect(
+            x=x,
+            y=y,
+            width=rect_width,
+            height=rect_height,
+            payload=payload,
+            format=fmt,
+            encoding=encoding,
+        )
+        _validate_rect(width, height, rect)
+        rects.append(rect)
+
+    if offset != len(body) or total_payload_len != payload_len:
+        raise ValueError("frame body length does not match header")
+
+    return DecodedFrame(
+        frame_id=frame_id,
+        base_frame_id=base_frame_id,
+        width=width,
+        height=height,
+        full_frame=(flags & FLAG_FULL_FRAME) != 0,
+        reset_required=(flags & FLAG_RESET_REQUIRED) != 0,
+        rects=rects,
+    )
+
+
+def split_frame_for_websocket(data: bytes, max_message_bytes: int = 8192) -> list[bytes]:
+    frame = decode_frame(data)
+    if len(data) <= max_message_bytes:
+        return [data]
+
+    chunks: list[bytes] = []
+    first_chunk = True
+    for rect in frame.rects:
+        for split_rect in _split_rect_for_websocket(rect, max_message_bytes=max_message_bytes):
+            chunk = encode_frame(
+                frame_id=frame.frame_id,
+                base_frame_id=frame.base_frame_id,
+                width=frame.width,
+                height=frame.height,
+                rects=[split_rect],
+                full_frame=frame.full_frame and first_chunk,
+                reset_required=frame.reset_required and first_chunk,
+            )
+            if len(chunk) > max_message_bytes and split_rect.height > 1:
+                raise ValueError("websocket chunk exceeds max message size")
+            chunks.append(chunk)
+            first_chunk = False
+
+    return chunks or [data]
+
+
+def _split_rect_for_websocket(rect: FrameRect, *, max_message_bytes: int) -> list[FrameRect]:
+    raw_payload = (
+        decode_rgb565_rle(rect.payload, rect.width * rect.height)
+        if rect.encoding == ENCODING_RGB565_RLE
+        else rect.payload
+    )
+    max_body_bytes = max(2, max_message_bytes - HEADER_LEN - 16)
+    max_rows = max(1, min(16, max_body_bytes // (rect.width * 2)))
+    rows: list[FrameRect] = []
+    for top in range(0, rect.height, max_rows):
+        height = min(max_rows, rect.height - top)
+        start = top * rect.width * 2
+        end = (top + height) * rect.width * 2
+        rows.append(
+            compress_rect_if_smaller(
+                FrameRect(
+                    x=rect.x,
+                    y=rect.y + top,
+                    width=rect.width,
+                    height=height,
+                    payload=raw_payload[start:end],
+                    format=rect.format,
+                    encoding=ENCODING_RAW,
+                )
+            )
+        )
+    return rows
 
 
 def compress_rect_if_smaller(rect: FrameRect) -> FrameRect:
