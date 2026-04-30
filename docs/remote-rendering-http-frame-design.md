@@ -239,9 +239,10 @@ the setup page can be reached from another LAN device without opening serial
 monitor.
 
 Hold progress is intentionally local. The device uses press lifecycle events to
-draw a 5px progress bar immediately, then POSTs `long_press` when the long-press
-threshold is armed. This keeps tactile feedback independent from HTTP latency
-while preserving remote ownership of page state.
+draw a 5px progress bar only after the double-click window has passed, then
+POSTs `long_press` when the long-press threshold is armed. This keeps tactile
+feedback independent from HTTP latency while preserving remote ownership of page
+state.
 
 ## First Implementation Scope
 

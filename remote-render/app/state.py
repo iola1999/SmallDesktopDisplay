@@ -91,11 +91,12 @@ class DeviceRegistry:
             if not self._should_accept_input_locked(state, seq, uptime_ms):
                 return False
 
+            previous_page = state.ui.page
             state.last_input_seq = seq
             state.last_input_uptime_ms = uptime_ms
             state.button_count += 1
             apply_input_event(state.ui, event, now=self._monotonic())
-            regions = [FOOTER_REGION] if state.ui.page == "home" else None
+            regions = [FOOTER_REGION] if previous_page == "home" and state.ui.page == "home" else None
             self._render_locked(state, full_frame=False, regions=regions)
             self._condition.notify_all()
             return True

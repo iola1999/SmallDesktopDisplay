@@ -15,3 +15,12 @@ TEST_CASE("hold progress handles zero duration")
 {
   CHECK(app::holdProgressPixels(10, 0, 204) == 204);
 }
+
+TEST_CASE("delayed hold progress stays hidden until double click window passes")
+{
+  CHECK(app::delayedHoldProgressPixels(0, 300, 500, 204) == 0);
+  CHECK(app::delayedHoldProgressPixels(299, 300, 500, 204) == 0);
+  CHECK(app::delayedHoldProgressPixels(300, 300, 500, 204) == 0);
+  CHECK(app::delayedHoldProgressPixels(400, 300, 500, 204) == 102);
+  CHECK(app::delayedHoldProgressPixels(500, 300, 500, 204) == 204);
+}

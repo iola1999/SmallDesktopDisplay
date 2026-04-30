@@ -221,3 +221,40 @@ def test_registry_returns_full_frame_when_client_missed_partial_base():
     assert stale_client_frame is not None
     assert stale_client_frame[5] & 0x01 == 0x01
     assert int.from_bytes(stale_client_frame[22:26], "little") == 240 * 240 * 2
+
+
+def test_registry_back_to_home_redraws_more_than_footer_region():
+    registry = DeviceRegistry()
+
+    first = registry.get_frame(device_id="desk-back-home", have=0, wait_ms=0)
+    assert first is not None
+    first_frame_id = int.from_bytes(first[8:12], "little")
+
+    registry.record_input(
+        device_id="desk-back-home",
+        seq=1,
+        event="long_press",
+        uptime_ms=1_000,
+    )
+    settings_frame = registry.get_frame(
+        device_id="desk-back-home",
+        have=first_frame_id,
+        wait_ms=0,
+    )
+    assert settings_frame is not None
+    settings_frame_id = int.from_bytes(settings_frame[8:12], "little")
+
+    registry.record_input(
+        device_id="desk-back-home",
+        seq=2,
+        event="double_press",
+        uptime_ms=2_000,
+    )
+    home_frame = registry.get_frame(
+        device_id="desk-back-home",
+        have=settings_frame_id,
+        wait_ms=0,
+    )
+
+    assert home_frame is not None
+    assert int.from_bytes(home_frame[22:26], "little") > 60000

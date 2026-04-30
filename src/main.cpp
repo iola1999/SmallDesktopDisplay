@@ -109,8 +109,12 @@ void updateHoldOverlay(uint32_t nowMs)
     return;
   }
 
-  const uint16_t progress =
-      app::holdProgressPixels(nowMs - g_holdStartedMs, app_config::kButtonLongPressMs, kHoldBarWidth);
+  const uint16_t progress = app::delayedHoldProgressPixels(nowMs - g_holdStartedMs, app_config::kButtonDoubleClickMs,
+                                                           app_config::kButtonLongPressMs, kHoldBarWidth);
+  if (progress == 0 && g_holdLastPixels == UINT16_MAX)
+  {
+    return;
+  }
   if (progress == g_holdLastPixels)
   {
     return;
