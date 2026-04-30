@@ -14,6 +14,26 @@ Update it whenever behavior, architecture, or interaction details change.
 - Removed old local weather/NTP/settings/motion code and made `esp12e` build the remaining remote-display firmware without source filtering.
 - First-version remote service URLs are intentionally `http://` only.
 
+## 2026-05-01
+
+### Remote Rendering Runtime Polish
+
+- Changed the default remote renderer URL to `http://192.168.1.7:18080` for the current Mac-based Docker setup.
+- Added the device's own LAN IP to the local status/debug screen so the config page can be found without serial logs.
+- Installed DejaVu TrueType fonts in the Docker image so Pillow renders readable clock text instead of falling back to a tiny default bitmap font.
+- Made the remote renderer advance clock frames once per second and send dirty rectangles for normal time refreshes.
+- Preserved a latest full-frame snapshot per device and force full-frame resync for cold clients (`have=0`) and server-restart frame-id mismatches.
+- Added a local HTTP frame preview tool under `remote-render/tools/frame_preview.py` that decodes `SDD1` frames and writes PNG previews.
+- Batched TFT output in 4-row RGB565 blocks to reduce the visible top-to-bottom scan effect on full-frame updates.
+
+### Current Development And Deployment Notes
+
+- Local Docker service is expected to run from `remote-render/` with `REMOTE_RENDER_PORT=18080 docker compose up -d --build` while 8080 is occupied.
+- Device setup should use the Mac LAN URL, currently `http://192.168.1.7:18080`, unless the Mac IP or host port changes.
+- For remote renderer changes, run `remote-render/.venv/bin/pytest`; for firmware changes, run `~/.platformio/penv/bin/pio test -e host` and `~/.platformio/penv/bin/pio run -e esp12e`.
+- Generated preview images live in `remote-render/frame-previews/` and are intentionally ignored.
+- If the screen shows only a partial region after a restart, first check `tools.frame_preview` output for whether `have=0` or a future `have` is incorrectly receiving a partial frame.
+
 ## 2026-04-18
 
 ### App Core And Settings Foundation

@@ -6,6 +6,10 @@
 
 ## Build
 
+固件构建、烧写仍然走 PlatformIO 的 `esp12e` 环境；远程渲染服务走
+`remote-render/` 下的 Docker Compose。日常开发时建议先启动 Docker 服务，
+再烧写/重启设备。
+
 如果 `pio` 已经在 PATH 中：
 
 ```bash
@@ -29,7 +33,7 @@ pio run -e esp12e
 
 - `remote-render/*`: Dockerized FastAPI + Pillow 渲染服务
 - `src/remote/*`: HTTP 帧协议、帧拉取、按键事件上报
-- `src/ui/TftFrameSink.*`: RGB565 矩形帧到 TFT 的输出桥接
+- `src/ui/TftFrameSink.*`: RGB565 矩形帧到 TFT 的输出桥接，当前按 4 行一批推送
 - `src/main.cpp`: 设备入口、远程帧轮询、按键上报
 - `src/Display.*` / `src/Input.*` / `src/Net.*` / `src/Storage.*`: 保留的硬件基础层
 - `src/app/*`: 保留纯 C++ 配置、背光 PWM、WiFi 配网页生成
@@ -53,6 +57,56 @@ docker compose up --build
 
 默认监听 `http://0.0.0.0:8080`。设备配网页中填写 Mac 的局域网地址，例如 `http://192.168.1.20:8080`。
 如果 8080 已被占用，可用 `REMOTE_RENDER_PORT=18080 docker compose up --build`，设备里对应填写 `http://<Mac局域网IP>:18080`。
+当前开发机默认配置使用 `http://192.168.1.7:18080`。
+
+服务端第一帧或重同步帧是 240x240 全屏 RGB565，约 115KB。正常时钟刷新只发送上半部时间区域的增量矩形，约 48KB。服务端会在这些场景强制返回全屏帧：
+
+- 设备传 `have=0`，表示冷启动或本地没有可用基准帧
+- 设备传来的 `have` 比服务端当前 frame id 还大，通常表示 Docker 服务刚重启
+- 后续 dirty rect 过大或需要重新建立画面基准时
+
+### Local Preview Client
+
+为了不用反复拍照排查显示问题，仓库提供了本地帧预览客户端。它会请求远端 HTTP 帧，按 `SDD1` 协议合成 PNG：
+
+```bash
+cd remote-render
+.venv/bin/python -m tools.frame_preview \
+  --base-url http://127.0.0.1:18080 \
+  --device-id desk-01 \
+  --frames 2 \
+  --output frame-previews/latest.png
+```
+
+输出目录 `remote-render/frame-previews/` 已加入 `.gitignore`。命令输出会标明每帧是 `full` 还是 `partial`，以及矩形范围，便于确认是否发生了错误的局部刷新。
+
+### Remote Renderer Development
+
+Python 依赖建议装在 `remote-render/.venv`，该目录也已忽略：
+
+```bash
+cd remote-render
+python3 -m venv .venv
+.venv/bin/pip install -e '.[test]'
+.venv/bin/pytest
+```
+
+Docker 镜像基于 `python:3.12-slim`，额外安装 `fonts-dejavu-core`，否则 Pillow 会退回默认小位图字体，导致设备端文字明显过小。
+
+### Firmware Development Checks
+
+改动固件侧帧协议、TFT 输出、配置页或主循环后至少跑：
+
+```bash
+~/.platformio/penv/bin/pio test -e host
+~/.platformio/penv/bin/pio run -e esp12e
+```
+
+需要实机验证时再烧写：
+
+```bash
+~/.platformio/penv/bin/pio run -e esp12e -t upload
+```
 
 ## Button Controls
 

@@ -6,6 +6,7 @@
 #include "Input.h"
 #include "Net.h"
 #include "Storage.h"
+#include "app/DeviceStatusText.h"
 #include "remote/HttpFrameClient.h"
 #include "remote/RemoteInputClient.h"
 #include "ui/TftFrameSink.h"
@@ -22,14 +23,32 @@ uint32_t g_inputSequence = 0;
 uint32_t g_lastFramePollMs = 0;
 uint32_t g_lastErrorDrawMs = 0;
 
-void drawStatus(const char *line1, const char *line2)
+void drawStatus(const char *line1, const char *line2, const char *line3 = nullptr)
 {
   display::tft.fillScreen(app_config::kColorBg);
   display::tft.setTextDatum(CC_DATUM);
+  const int titleY = line3 == nullptr ? 96 : 78;
+  const int detailY = line3 == nullptr ? 128 : 116;
   display::tft.setTextColor(TFT_WHITE, app_config::kColorBg);
-  display::tft.drawString(line1, 120, 96, 2);
+  display::tft.drawString(line1, 120, titleY, 2);
   display::tft.setTextColor(TFT_YELLOW, app_config::kColorBg);
-  display::tft.drawString(line2, 120, 128, 2);
+  display::tft.drawString(line2, 120, detailY, 2);
+  if (line3 != nullptr)
+  {
+    display::tft.setTextColor(TFT_WHITE, app_config::kColorBg);
+    display::tft.drawString(line3, 120, 154, 2);
+  }
+}
+
+std::string currentDeviceIpStatusLine()
+{
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    return app::buildDeviceIpStatusLine("");
+  }
+
+  const String localIp = WiFi.localIP().toString();
+  return app::buildDeviceIpStatusLine(localIp.c_str());
 }
 
 const char *eventName(input::ButtonEvent event)
@@ -105,7 +124,8 @@ void pollFrame(uint32_t nowMs)
       nowMs - g_lastErrorDrawMs > 3000U)
   {
     g_lastErrorDrawMs = nowMs;
-    drawStatus("Render server offline", g_config.remoteBaseUrl.c_str());
+    const std::string ipLine = currentDeviceIpStatusLine();
+    drawStatus("Render server offline", g_config.remoteBaseUrl.c_str(), ipLine.c_str());
   }
 }
 
@@ -135,7 +155,8 @@ void setup()
                 g_config.remoteBaseUrl.c_str(),
                 g_config.remoteDeviceId.c_str(),
                 WiFi.localIP().toString().c_str());
-  drawStatus("Remote renderer", g_config.remoteBaseUrl.c_str());
+  const std::string ipLine = currentDeviceIpStatusLine();
+  drawStatus("Remote renderer", g_config.remoteBaseUrl.c_str(), ipLine.c_str());
 }
 
 void loop()

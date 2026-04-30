@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.state import DeviceRegistry
 
 
 def test_frame_endpoint_returns_latest_frame_then_204_for_same_have():
@@ -36,3 +37,69 @@ def test_button_input_advances_latest_frame_without_replaying_old_frames():
 
     assert next_frame_id > first_frame_id
     assert base_frame_id == 0
+
+
+def test_registry_refreshes_clock_with_partial_frame_after_tick():
+    now = 0.0
+
+    def monotonic() -> float:
+        return now
+
+    registry = DeviceRegistry(monotonic=monotonic, frame_interval_seconds=1.0)
+
+    first = registry.get_frame(device_id="desk-clock", have=0, wait_ms=0)
+    assert first is not None
+    first_frame_id = int.from_bytes(first[8:12], "little")
+    first_payload_len = int.from_bytes(first[22:26], "little")
+
+    now = 1.1
+    second = registry.get_frame(
+        device_id="desk-clock",
+        have=first_frame_id,
+        wait_ms=0,
+    )
+
+    assert second is not None
+    second_frame_id = int.from_bytes(second[8:12], "little")
+    second_payload_len = int.from_bytes(second[22:26], "little")
+
+    assert second_frame_id > first_frame_id
+    assert second_payload_len < first_payload_len
+
+
+def test_registry_returns_full_frame_for_cold_client_after_partial_update():
+    now = 0.0
+
+    def monotonic() -> float:
+        return now
+
+    registry = DeviceRegistry(monotonic=monotonic, frame_interval_seconds=1.0)
+
+    first = registry.get_frame(device_id="desk-reboot", have=0, wait_ms=0)
+    assert first is not None
+    first_frame_id = int.from_bytes(first[8:12], "little")
+
+    now = 1.1
+    partial = registry.get_frame(
+        device_id="desk-reboot",
+        have=first_frame_id,
+        wait_ms=0,
+    )
+    assert partial is not None
+    assert partial[5] & 0x01 == 0
+
+    cold_client_frame = registry.get_frame(device_id="desk-reboot", have=0, wait_ms=0)
+
+    assert cold_client_frame is not None
+    assert cold_client_frame[5] & 0x01 == 0x01
+    assert int.from_bytes(cold_client_frame[22:26], "little") == 240 * 240 * 2
+
+
+def test_registry_returns_full_frame_when_client_frame_id_is_ahead_after_restart():
+    registry = DeviceRegistry()
+
+    frame = registry.get_frame(device_id="desk-after-server-restart", have=999, wait_ms=0)
+
+    assert frame is not None
+    assert frame[5] & 0x01 == 0x01
+    assert int.from_bytes(frame[22:26], "little") == 240 * 240 * 2

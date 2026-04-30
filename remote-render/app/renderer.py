@@ -10,6 +10,8 @@ from app.protocol import FrameRect, rgb888_to_rgb565_bytes
 
 SCREEN_WIDTH = 240
 SCREEN_HEIGHT = 240
+TIME_REGION = (0, 42, SCREEN_WIDTH, 142)
+FOOTER_REGION = (14, 166, 226, 218)
 
 
 @dataclass(frozen=True)
@@ -25,48 +27,76 @@ def render_device_view(
     device_id: str,
     button_count: int,
     frame_id: int = 1,
+    base_frame_id: int = 0,
+    full_frame: bool = True,
+    regions: list[tuple[int, int, int, int]] | None = None,
     now: datetime | None = None,
 ) -> RenderedFrame:
     current_time = now or datetime.now(ZoneInfo("Asia/Shanghai"))
-    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (8, 10, 12))
-    draw = ImageDraw.Draw(image)
+    image = _render_canvas(current_time=current_time, device_id=device_id, button_count=button_count)
 
-    font_large = _load_font(52)
-    font_medium = _load_font(20)
-    font_small = _load_font(14)
+    if full_frame:
+        payload = rgb888_to_rgb565_bytes(image.tobytes())
+        rects = [FrameRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, payload)]
+    else:
+        rects = [_crop_rect(image, region) for region in (regions or [TIME_REGION])]
 
-    draw.rounded_rectangle((10, 10, 230, 230), radius=12, outline=(48, 64, 72), width=2)
-    draw.text((20, 24), "SmallDesktopDisplay", fill=(130, 190, 180), font=font_small)
-
-    time_text = current_time.strftime("%H:%M:%S")
-    time_box = draw.textbbox((0, 0), time_text, font=font_large)
-    time_width = time_box[2] - time_box[0]
-    draw.text(
-        ((SCREEN_WIDTH - time_width) // 2, 70),
-        time_text,
-        fill=(238, 245, 230),
-        font=font_large,
-    )
-
-    date_text = current_time.strftime("%Y-%m-%d")
-    date_box = draw.textbbox((0, 0), date_text, font=font_medium)
-    date_width = date_box[2] - date_box[0]
-    draw.text(
-        ((SCREEN_WIDTH - date_width) // 2, 135),
-        date_text,
-        fill=(150, 168, 180),
-        font=font_medium,
-    )
-
-    draw.rounded_rectangle((24, 172, 216, 210), radius=8, fill=(20, 27, 31))
-    draw.text((36, 183), f"{device_id}  inputs:{button_count}", fill=(210, 225, 218), font=font_small)
-
-    payload = rgb888_to_rgb565_bytes(image.tobytes())
     return RenderedFrame(
         frame_id=frame_id,
-        base_frame_id=0,
-        full_frame=True,
-        rects=[FrameRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, payload)],
+        base_frame_id=base_frame_id,
+        full_frame=full_frame,
+        rects=rects,
+    )
+
+
+def _render_canvas(*, current_time: datetime, device_id: str, button_count: int) -> Image.Image:
+    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
+    draw = ImageDraw.Draw(image)
+
+    font_time = _load_font(52)
+    font_date = _load_font(20)
+    font_label = _load_font(16)
+    font_footer = _load_font(18)
+
+    draw.rounded_rectangle((8, 8, 232, 232), radius=14, outline=(48, 64, 72), width=2)
+    draw.text((20, 20), "Remote Display", fill=(130, 190, 180), font=font_label)
+
+    time_text = current_time.strftime("%H:%M:%S")
+    time_box = draw.textbbox((0, 0), time_text, font=font_time)
+    time_width = time_box[2] - time_box[0]
+    draw.text(
+        ((SCREEN_WIDTH - time_width) // 2, 58),
+        time_text,
+        fill=(238, 245, 230),
+        font=font_time,
+    )
+
+    date_text = current_time.strftime("%m-%d %a")
+    date_box = draw.textbbox((0, 0), date_text, font=font_date)
+    date_width = date_box[2] - date_box[0]
+    draw.text(
+        ((SCREEN_WIDTH - date_width) // 2, 126),
+        date_text.upper(),
+        fill=(170, 188, 198),
+        font=font_date,
+    )
+
+    draw.rounded_rectangle((16, 168, 224, 216), radius=10, fill=(20, 28, 32))
+    draw.text((30, 182), device_id[:14], fill=(210, 225, 218), font=font_footer)
+    draw.text((156, 182), f"tap {button_count}", fill=(132, 206, 186), font=font_footer)
+
+    return image
+
+
+def _crop_rect(image: Image.Image, region: tuple[int, int, int, int]) -> FrameRect:
+    left, top, right, bottom = region
+    cropped = image.crop(region)
+    return FrameRect(
+        left,
+        top,
+        right - left,
+        bottom - top,
+        rgb888_to_rgb565_bytes(cropped.tobytes()),
     )
 
 

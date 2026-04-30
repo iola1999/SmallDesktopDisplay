@@ -1,5 +1,7 @@
 #include "remote/HttpFrameClient.h"
 
+#include <algorithm>
+
 #include <ESP8266HTTPClient.h>
 #include <WiFiClient.h>
 
@@ -103,9 +105,10 @@ bool HttpFrameClient::readExact(Stream &stream, uint8_t *buffer, std::size_t len
 
 bool HttpFrameClient::consumeFrame(Stream &stream, const FrameHeader &header)
 {
+  constexpr uint16_t kMaxBatchRows = 4;
   uint32_t crc = crc32Begin();
   uint32_t remainingPayload = header.payloadLength;
-  uint16_t rowBuffer[240];
+  uint16_t rowBuffer[240 * kMaxBatchRows];
 
   for (uint16_t index = 0; index < header.rectCount; ++index)
   {
@@ -128,15 +131,19 @@ bool HttpFrameClient::consumeFrame(Stream &stream, const FrameHeader &header)
     }
 
     const std::size_t rowBytes = static_cast<std::size_t>(rect.width) * 2U;
-    for (uint16_t row = 0; row < rect.height; ++row)
+    for (uint16_t row = 0; row < rect.height;)
     {
+      const uint16_t rowsThisBatch =
+        std::min<uint16_t>(kMaxBatchRows, rect.height - row);
+      const std::size_t batchBytes = rowBytes * rowsThisBatch;
       uint8_t *rowData = reinterpret_cast<uint8_t *>(rowBuffer);
-      if (!readExact(stream, rowData, rowBytes))
+      if (!readExact(stream, rowData, batchBytes))
       {
         return false;
       }
-      crc = crc32Update(crc, rowData, rowBytes);
-      sink_.drawRgb565Row(rect.x, rect.y + row, rect.width, rowBuffer);
+      crc = crc32Update(crc, rowData, batchBytes);
+      sink_.drawRgb565Block(rect.x, rect.y + row, rect.width, rowsThisBatch, rowBuffer);
+      row += rowsThisBatch;
     }
 
     remainingPayload -= rect.payloadLength;

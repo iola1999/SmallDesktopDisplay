@@ -6,6 +6,7 @@
 .vscode/ipch
 .test/
 remote-render/.venv/
+remote-render/frame-previews/
 *.egg-info/
 
 # macOS

@@ -8,7 +8,7 @@ only the newest frame state. The device keeps WiFi, button input, EEPROM config,
 and TFT output, while local weather, NTP, settings pages, UI motion, and complex
 screen drawing can be removed.
 
-## First Version
+## Current Version
 
 - Transport: HTTP polling with short long-poll support.
 - Frame model: latest-state sync, not queued playback.
@@ -19,6 +19,11 @@ screen drawing can be removed.
 The protocol intentionally accepts dropped intermediate frames. The device sends
 the frame id it has fully drawn; the server either returns the newest update
 relative to that frame or falls back to a newest full-screen frame.
+
+The current implementation renders the clock view on the server, stores both
+the latest dirty update and a full-frame snapshot, and uses the full snapshot for
+cold clients or resync. This avoids a device booting into a partial frame and
+leaving old local debug text on untouched screen regions.
 
 ## HTTP API
 
@@ -52,15 +57,23 @@ Supported first-version events:
 
 ## Latest Frame Semantics
 
-The server maintains only current device state plus a small recent-frame window.
+The server maintains current device state plus two encoded frame forms:
+
+- `frame`: latest update, usually a partial dirty rectangle.
+- `full_frame`: latest full-screen snapshot for cold start and resync.
+
 It does not make the ESP8266 catch up through stale frames.
 
 1. The device requests `GET /frame?have=N`.
-2. If `N` is already latest, the server waits up to `wait_ms`.
-3. If a newer frame appears during that wait, the server returns it immediately.
-4. If no newer frame appears, the server returns `204`.
-5. If `N` is too old for a safe diff, the server returns the newest full frame.
-6. The device updates local `have` only after the frame is fully read, validated,
+2. If `N == 0`, the server returns `full_frame`.
+3. If `N` is greater than the server's current frame id, the server also returns
+   `full_frame`; this usually means the Docker service restarted while the
+   device kept its old `have` value.
+4. If `N` is already latest, the server waits up to `wait_ms`.
+5. If a newer frame appears during that wait, the server returns it immediately.
+6. If no newer frame appears, the server returns `204`.
+7. If a dirty update is unsafe or insufficient, the server returns a full frame.
+8. The device updates local `have` only after the frame is fully read, validated,
    and drawn.
 
 ## Binary Frame Format
@@ -94,9 +107,10 @@ RectHeader repeated rect_count times, immediately followed by payload
   payload        bytes
 ```
 
-A full boot frame is one 240x240 rectangle. Later frames should prefer dirty
-rectangles, such as the clock text region. If dirty rectangles become too large
-or too numerous, the service should send one full-screen frame.
+A full boot/resync frame is one 240x240 rectangle. Later frames prefer dirty
+rectangles, such as the clock text region `(0,42,240x100)` and the footer/input
+region. If dirty rectangles become too large or too numerous, the service should
+send one full-screen frame.
 
 ## Docker Service Structure
 
@@ -110,7 +124,11 @@ remote-render/
     protocol.py
     renderer.py
     state.py
+  tools/
+    frame_preview.py
   tests/
+    test_api.py
+    test_frame_preview.py
     test_protocol.py
     test_renderer.py
 ```
@@ -119,8 +137,37 @@ Responsibilities:
 
 - `protocol.py`: encode `SDD/1` binary frames and validate rectangle payloads.
 - `renderer.py`: use Pillow to render a 240x240 UI and produce RGB565 rects.
-- `state.py`: track device frame ids, button sequence, and dirty/full frames.
+- `state.py`: track device frame ids, button sequence, dirty frames, and full-frame
+  resync snapshots.
 - `main.py`: expose FastAPI routes.
+- `tools/frame_preview.py`: local HTTP frame client that decodes `SDD1` frames and
+  writes PNG previews for debugging without photographing the physical display.
+
+Docker uses `python:3.12-slim` plus `fonts-dejavu-core`. The font package is
+intentional: without a TrueType font, Pillow falls back to a tiny bitmap font and
+the physical 240x240 display becomes hard to read.
+
+Local development commands:
+
+```bash
+cd remote-render
+python3 -m venv .venv
+.venv/bin/pip install -e '.[test]'
+.venv/bin/pytest
+REMOTE_RENDER_PORT=18080 docker compose up -d --build
+```
+
+Preview a live service:
+
+```bash
+.venv/bin/python -m tools.frame_preview \
+  --base-url http://127.0.0.1:18080 \
+  --device-id desk-01 \
+  --frames 2 \
+  --output frame-previews/latest.png
+```
+
+`frame-previews/` is ignored and can be freely regenerated.
 
 ## Firmware Structure
 
@@ -139,19 +186,27 @@ The firmware main loop becomes:
 1. Connect WiFi using the existing setup portal path.
 2. Poll button events and POST gestures to the Docker service.
 3. Poll `/frame?have=...`.
-4. Draw each rectangle directly to TFT.
+4. Draw each rectangle directly to TFT, batching up to 4 RGB565 rows per
+   `pushImage` call to reduce visible top-to-bottom scan artifacts.
 5. Show a minimal local error message if WiFi or the render service is down.
+
+The local status/error screen now also includes the device IP when connected, so
+the setup page can be reached from another LAN device without opening serial
+monitor.
 
 ## First Implementation Scope
 
 In scope:
 
 - Full-frame rendering from Docker.
+- Per-second dirty rectangle refresh for the clock region.
+- Full-frame resync for cold clients and Docker service restarts.
 - Button POSTs.
 - `204` no-change handling.
 - Binary frame parsing with CRC.
 - Raw RGB565 rectangle drawing.
 - Basic `http://` service URL configuration through the setup portal.
+- Local PNG preview tooling for HTTP frames.
 
 Out of scope:
 
