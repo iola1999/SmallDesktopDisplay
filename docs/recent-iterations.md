@@ -53,6 +53,7 @@ Update it whenever behavior, architecture, or interaction details change.
 - Added a remote brightness setting flow: the Docker UI cycles brightness values and confirms them through a JSON command channel, while the ESP8266 applies PWM locally and persists the value in EEPROM.
 - Added device status sync for persisted brightness so the Docker renderer can recover the actual device brightness after either side restarts.
 - Disabled uvicorn access logs for high-frequency frame/command polling, suppressed small dirty-frame logs, and pinned Docker json-file log rotation to `5m x 3` for the remote renderer container.
+- Split device-side frame timing logs into `http_ms`, `header_ms`, `read_ms`, `tft_ms`, `other_ms`, and `total_ms`. Initial serial samples show full-frame `115200B` updates spending about `1024ms` in stream reads and about `46ms` in TFT writes, so the current full-screen scan bottleneck is mostly HTTP/WiFi body transfer on the ESP8266 path rather than raw TFT push time.
 
 ### Current Development And Deployment Notes
 
