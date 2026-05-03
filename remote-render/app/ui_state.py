@@ -5,7 +5,16 @@ from typing import Literal
 
 PageName = Literal["home", "settings", "detail"]
 
-SETTINGS_ITEMS = ("Brightness", "Device", "Renderer", "About")
+FONT_WENKAI_SCREEN = "lxgw_wenkai_screen"
+FONT_MAPLE_MONO_NF_CN = "maple_mono_nf_cn"
+FONT_NOTO_CJK = "noto_cjk"
+FONT_OPTIONS = (FONT_WENKAI_SCREEN, FONT_MAPLE_MONO_NF_CN, FONT_NOTO_CJK)
+FONT_LABELS = {
+    FONT_WENKAI_SCREEN: "WenKai",
+    FONT_MAPLE_MONO_NF_CN: "Maple",
+    FONT_NOTO_CJK: "Noto",
+}
+SETTINGS_ITEMS = ("Brightness", "Font", "Device", "Renderer", "About")
 BRIGHTNESS_OPTIONS = (20, 40, 50, 60, 80, 100)
 
 
@@ -32,6 +41,8 @@ class DeviceUiState:
     detail_index: int = 0
     brightness: int = 50
     pending_brightness: int = 50
+    font_key: str = FONT_WENKAI_SCREEN
+    pending_font_key: str = FONT_WENKAI_SCREEN
     diagnostics: DeviceDiagnostics = field(default_factory=DeviceDiagnostics)
     animation: str = ""
     animation_started_at: float = 0.0
@@ -57,6 +68,8 @@ def apply_input_event(state: DeviceUiState, event: str, *, now: float) -> list[D
             state.detail_index = state.selected_index
             if _is_brightness_detail(state):
                 state.pending_brightness = state.brightness
+            elif _is_font_detail(state):
+                state.pending_font_key = state.font_key
             _start_animation(state, "enter_detail", now)
         elif event == "double_press":
             state.page = "home"
@@ -73,6 +86,19 @@ def apply_input_event(state: DeviceUiState, event: str, *, now: float) -> list[D
                 _start_animation(state, "brightness_applied", now)
                 return [DeviceCommand("set_brightness", state.brightness)]
             elif event == "double_press":
+                state.page = "settings"
+                _start_animation(state, "back_to_settings", now)
+            return []
+
+        if _is_font_detail(state):
+            if event == "short_press":
+                state.pending_font_key = _next_font_key(state.pending_font_key)
+                _start_animation(state, "font_select", now)
+            elif event == "long_press":
+                state.font_key = state.pending_font_key
+                _start_animation(state, "font_applied", now)
+            elif event == "double_press":
+                state.pending_font_key = state.font_key
                 state.page = "settings"
                 _start_animation(state, "back_to_settings", now)
             return []
@@ -109,7 +135,11 @@ def _start_animation(state: DeviceUiState, name: str, now: float) -> None:
 
 
 def _is_brightness_detail(state: DeviceUiState) -> bool:
-    return state.detail_index == 0
+    return SETTINGS_ITEMS[state.detail_index % len(SETTINGS_ITEMS)] == "Brightness"
+
+
+def _is_font_detail(state: DeviceUiState) -> bool:
+    return SETTINGS_ITEMS[state.detail_index % len(SETTINGS_ITEMS)] == "Font"
 
 
 def _next_brightness_value(value: int) -> int:
@@ -117,3 +147,11 @@ def _next_brightness_value(value: int) -> int:
         if option > value:
             return option
     return BRIGHTNESS_OPTIONS[0]
+
+
+def _next_font_key(value: str) -> str:
+    try:
+        index = FONT_OPTIONS.index(value)
+    except ValueError:
+        return FONT_OPTIONS[0]
+    return FONT_OPTIONS[(index + 1) % len(FONT_OPTIONS)]

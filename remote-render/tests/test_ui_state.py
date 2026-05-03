@@ -1,4 +1,10 @@
-from app.ui_state import DeviceUiState, apply_input_event, current_animation_progress
+from app.ui_state import (
+    FONT_MAPLE_MONO_NF_CN,
+    FONT_WENKAI_SCREEN,
+    DeviceUiState,
+    apply_input_event,
+    current_animation_progress,
+)
 
 
 def test_long_press_enters_settings_from_home():
@@ -69,3 +75,23 @@ def test_brightness_detail_long_press_confirms_command():
     assert commands[0].persist is True
     assert state.brightness == 80
     assert state.animation == "brightness_applied"
+
+
+def test_font_detail_short_press_previews_next_font_and_long_press_applies():
+    state = DeviceUiState(page="settings", selected_index=1)
+    apply_input_event(state, "long_press", now=1.0)
+
+    commands = apply_input_event(state, "short_press", now=1.1)
+
+    assert commands == []
+    assert state.page == "detail"
+    assert state.detail_index == 1
+    assert state.font_key == FONT_WENKAI_SCREEN
+    assert state.pending_font_key == FONT_MAPLE_MONO_NF_CN
+    assert state.animation == "font_select"
+
+    commands = apply_input_event(state, "long_press", now=1.2)
+
+    assert commands == []
+    assert state.font_key == FONT_MAPLE_MONO_NF_CN
+    assert state.animation == "font_applied"

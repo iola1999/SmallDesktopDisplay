@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from PIL import Image, ImageChops, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 from app.protocol import FrameRect, compress_rect_if_smaller, rgb888_to_rgb565_bytes
 from app.ui_state import (
+    FONT_LABELS,
+    FONT_MAPLE_MONO_NF_CN,
+    FONT_NOTO_CJK,
+    FONT_WENKAI_SCREEN,
     SETTINGS_ITEMS,
     DeviceUiState,
     ease_out_cubic,
@@ -19,6 +24,70 @@ TIME_REGION = (0, 42, SCREEN_WIDTH, 142)
 FOOTER_REGION = (14, 166, 226, 218)
 DIRTY_TILE_WIDTH = 24
 DIRTY_TILE_HEIGHT = 8
+SUPERSAMPLE_SCALE = 2
+FALLBACK_FONT_CANDIDATES = (
+    Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+    Path("/System/Library/Fonts/PingFang.ttc"),
+    Path("/System/Library/Fonts/STHeiti Light.ttc"),
+    Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+    Path("/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"),
+)
+FONT_CANDIDATES_BY_KEY = {
+    FONT_WENKAI_SCREEN: (
+        Path("/usr/local/share/fonts/lxgw-wenkai-screen/LXGWWenKaiScreen.ttf"),
+        Path("/usr/share/fonts/truetype/lxgw-wenkai-screen/LXGWWenKaiScreen.ttf"),
+        Path.home() / "Library/Fonts/LXGWWenKaiScreen.ttf",
+        Path("/Library/Fonts/LXGWWenKaiScreen.ttf"),
+    ),
+    FONT_MAPLE_MONO_NF_CN: (
+        Path("/usr/local/share/fonts/maple-mono-nf-cn/MapleMono-NF-CN-Regular.ttf"),
+        Path("/usr/share/fonts/truetype/maple-mono-nf-cn/MapleMono-NF-CN-Regular.ttf"),
+        Path.home() / "Library/Fonts/MapleMono-NF-CN-Regular.ttf",
+        Path("/Library/Fonts/MapleMono-NF-CN-Regular.ttf"),
+    ),
+    FONT_NOTO_CJK: (Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),),
+}
+FONT_CANDIDATES = FONT_CANDIDATES_BY_KEY[FONT_WENKAI_SCREEN]
+
+
+class _ScaledDraw:
+    def __init__(self, image: Image.Image, scale: int) -> None:
+        self._draw = ImageDraw.Draw(image)
+        self._scale = max(1, scale)
+
+    def rounded_rectangle(self, xy, *, radius=0, width=1, **kwargs) -> None:
+        self._draw.rounded_rectangle(
+            self._box(xy),
+            radius=self._scalar(radius),
+            width=max(1, self._scalar(width)),
+            **kwargs,
+        )
+
+    def ellipse(self, xy, *, width=1, **kwargs) -> None:
+        self._draw.ellipse(self._box(xy), width=max(1, self._scalar(width)), **kwargs)
+
+    def line(self, xy, *, width=1, **kwargs) -> None:
+        self._draw.line(self._coords(xy), width=max(1, self._scalar(width)), **kwargs)
+
+    def text(self, xy, text: str, **kwargs) -> None:
+        self._draw.text(self._point(xy), text, **kwargs)
+
+    def textbbox(self, xy, text: str, **kwargs) -> tuple[int, int, int, int]:
+        box = self._draw.textbbox(self._point(xy), text, **kwargs)
+        return tuple(int(round(value / self._scale)) for value in box)
+
+    def _scalar(self, value: int | float) -> int:
+        return int(round(value * self._scale))
+
+    def _point(self, xy) -> tuple[int, int]:
+        return (self._scalar(xy[0]), self._scalar(xy[1]))
+
+    def _box(self, xy) -> tuple[int, int, int, int]:
+        return tuple(self._scalar(value) for value in xy)
+
+    def _coords(self, xy) -> tuple[int, ...]:
+        return tuple(self._scalar(value) for value in xy)
 
 
 @dataclass(frozen=True)
@@ -98,17 +167,21 @@ def render_device_canvas(
     ui_state: DeviceUiState | None = None,
     animation_progress: float = 1.0,
 ) -> Image.Image:
-    font_time = _load_font(52)
-    font_date = _load_font(20)
-    font_label = _load_font(16)
-    font_footer = _load_font(18)
-
     state = ui_state or DeviceUiState()
-    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
+    font_key = state.font_key
+    if state.page == "detail" and SETTINGS_ITEMS[state.detail_index % len(SETTINGS_ITEMS)] == "Font":
+        font_key = state.pending_font_key
+    scale = SUPERSAMPLE_SCALE
+    font_time = _load_font(52, font_key=font_key, scale=scale)
+    font_date = _load_font(20, font_key=font_key, scale=scale)
+    font_label = _load_font(16, font_key=font_key, scale=scale)
+    font_footer = _load_font(18, font_key=font_key, scale=scale)
+
+    image = _new_canvas((5, 8, 10))
     if state.page == "settings":
-        page = _render_settings_page(state, animation_progress=animation_progress)
+        page = _render_settings_page(state, animation_progress=animation_progress, font_key=font_key, scale=scale)
     elif state.page == "detail":
-        page = _render_detail_page(state, device_id=device_id, animation_progress=animation_progress)
+        page = _render_detail_page(state, device_id=device_id, animation_progress=animation_progress, font_key=font_key, scale=scale)
     else:
         page = _render_home_page(
             current_time=current_time,
@@ -118,10 +191,11 @@ def render_device_canvas(
             font_date=font_date,
             font_label=font_label,
             font_footer=font_footer,
+            scale=scale,
         )
 
-    _paste_animated_page(image, page, state, animation_progress)
-    return image
+    _paste_animated_page(image, page, state, animation_progress, scale=scale)
+    return _downsample_canvas(image)
 
 
 def _render_home_page(
@@ -133,9 +207,10 @@ def _render_home_page(
     font_date: ImageFont.FreeTypeFont | ImageFont.ImageFont,
     font_label: ImageFont.FreeTypeFont | ImageFont.ImageFont,
     font_footer: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    scale: int,
 ) -> Image.Image:
-    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
-    draw = ImageDraw.Draw(image)
+    image = _new_canvas((5, 8, 10))
+    draw = _ScaledDraw(image, scale)
     copy = build_home_copy(current_time)
 
     _draw_home_background(draw)
@@ -164,10 +239,11 @@ def _render_home_page(
 
     tap_pulse = _pulse(animation_progress) if state.animation == "home_tap" else 0.0
     status = _home_status_text(state)
-    status_width = _text_width(draw, status, font_label)
-    draw.rounded_rectangle((46, 202, 194, 221), radius=8, fill=_mix_color((16, 25, 29), (21, 46, 43), tap_pulse))
+    status_box = (46, 202, 194, 221)
+    text_box = (75, status_box[1], 183, status_box[3])
+    draw.rounded_rectangle(status_box, radius=8, fill=_mix_color((16, 25, 29), (21, 46, 43), tap_pulse))
     draw.ellipse((58, 208, 66, 216), fill=_mix_color((66, 160, 142), (130, 252, 214), tap_pulse))
-    draw.text((75 + max(0, 68 - status_width) // 2, 204), status, fill=(154, 184, 184), font=font_label)
+    draw.text(_text_position_in_box(draw, status, font_label, text_box), status, fill=(154, 184, 184), font=font_label)
 
     return image
 
@@ -249,12 +325,12 @@ def _subtitle_for_hour(hour: int) -> str:
     return "早点休息也很好"
 
 
-def _render_settings_page(state: DeviceUiState, *, animation_progress: float) -> Image.Image:
-    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (6, 9, 13))
-    draw = ImageDraw.Draw(image)
-    font_title = _load_font(24)
-    font_item = _load_font(17)
-    font_small = _load_font(13)
+def _render_settings_page(state: DeviceUiState, *, animation_progress: float, font_key: str, scale: int) -> Image.Image:
+    image = _new_canvas((6, 9, 13))
+    draw = _ScaledDraw(image, scale)
+    font_title = _load_font(24, font_key=font_key, scale=scale)
+    font_item = _load_font(17, font_key=font_key, scale=scale)
+    font_small = _load_font(13, font_key=font_key, scale=scale)
     select_pulse = _pulse(animation_progress) if state.animation == "settings_select" else 0.0
 
     draw.rounded_rectangle((8, 8, 232, 232), radius=14, outline=(46, 58, 70), width=2)
@@ -290,6 +366,9 @@ def _render_settings_page(state: DeviceUiState, *, animation_progress: float) ->
         if item == "Brightness":
             value = f"{state.brightness}%"
             draw.text((186, y + 6 + row_shift), value, fill=text_fill, font=font_small)
+        elif item == "Font":
+            value = FONT_LABELS.get(state.font_key, "Font")
+            draw.text((174, y + 6 + row_shift), value, fill=text_fill, font=font_small)
         elif item == "Device" and state.diagnostics.heap_free > 0:
             value = _format_kb(state.diagnostics.heap_free)
             draw.text((178, y + 6 + row_shift), value, fill=text_fill, font=font_small)
@@ -299,21 +378,23 @@ def _render_settings_page(state: DeviceUiState, *, animation_progress: float) ->
     return image
 
 
-def _render_detail_page(state: DeviceUiState, *, device_id: str, animation_progress: float) -> Image.Image:
+def _render_detail_page(state: DeviceUiState, *, device_id: str, animation_progress: float, font_key: str, scale: int) -> Image.Image:
     if state.detail_index == 0:
-        return _render_brightness_detail_page(state, animation_progress=animation_progress)
+        return _render_brightness_detail_page(state, animation_progress=animation_progress, font_key=font_key, scale=scale)
+    if SETTINGS_ITEMS[state.detail_index % len(SETTINGS_ITEMS)] == "Font":
+        return _render_font_detail_page(state, animation_progress=animation_progress, font_key=font_key, scale=scale)
     if SETTINGS_ITEMS[state.detail_index % len(SETTINGS_ITEMS)] == "Device":
-        return _render_device_detail_page(state, animation_progress=animation_progress)
+        return _render_device_detail_page(state, animation_progress=animation_progress, font_key=font_key, scale=scale)
     if SETTINGS_ITEMS[state.detail_index % len(SETTINGS_ITEMS)] == "Renderer":
-        return _render_renderer_detail_page(animation_progress=animation_progress)
+        return _render_renderer_detail_page(state, animation_progress=animation_progress, font_key=font_key, scale=scale)
     if SETTINGS_ITEMS[state.detail_index % len(SETTINGS_ITEMS)] == "About":
-        return _render_about_detail_page(device_id=device_id, animation_progress=animation_progress)
+        return _render_about_detail_page(device_id=device_id, animation_progress=animation_progress, font_key=font_key, scale=scale)
 
-    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
-    draw = ImageDraw.Draw(image)
-    font_title = _load_font(22)
-    font_body = _load_font(18)
-    font_small = _load_font(13)
+    image = _new_canvas((5, 8, 10))
+    draw = _ScaledDraw(image, scale)
+    font_title = _load_font(22, font_key=font_key, scale=scale)
+    font_body = _load_font(18, font_key=font_key, scale=scale)
+    font_small = _load_font(13, font_key=font_key, scale=scale)
 
     item = SETTINGS_ITEMS[state.detail_index % len(SETTINGS_ITEMS)]
     draw.rounded_rectangle((8, 8, 232, 232), radius=14, outline=(50, 62, 72), width=2)
@@ -336,12 +417,38 @@ def _render_detail_page(state: DeviceUiState, *, device_id: str, animation_progr
     return image
 
 
-def _render_device_detail_page(state: DeviceUiState, *, animation_progress: float) -> Image.Image:
-    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
-    draw = ImageDraw.Draw(image)
-    font_title = _load_font(22)
-    font_label = _load_font(13)
-    font_value = _load_font(16)
+def _render_font_detail_page(state: DeviceUiState, *, animation_progress: float, font_key: str, scale: int) -> Image.Image:
+    image = _new_canvas((5, 8, 10))
+    draw = _ScaledDraw(image, scale)
+    font_title = _load_font(22, font_key=font_key, scale=scale)
+    font_label = _load_font(13, font_key=font_key, scale=scale)
+    font_value = _load_font(25, font_key=font_key, scale=scale)
+    font_preview = _load_font(17, font_key=font_key, scale=scale)
+    pulse = _pulse(animation_progress) if state.animation in {"font_select", "font_applied"} else 0.0
+
+    label = FONT_LABELS.get(state.pending_font_key, "Font")
+    status = "applied" if state.font_key == state.pending_font_key else "preview"
+    draw.rounded_rectangle((8, 8, 232, 232), radius=14, outline=(50, 62, 72), width=2)
+    draw.text((20, 18), "Font", fill=(238, 246, 236), font=font_title)
+    draw.text((20, 49), "short cycle  hold apply", fill=(100, 155, 170), font=font_label)
+
+    draw.rounded_rectangle((18, 80, 222, 169), radius=12, fill=_mix_color((18, 29, 34), (24, 48, 47), pulse * 0.35))
+    draw.text(_text_position_in_box(draw, label, font_value, (28, 86, 212, 116)), label, fill=(238, 246, 236), font=font_value)
+    sample = "五月四日  夜深了"
+    draw.text(_text_position_in_box(draw, sample, font_preview, (28, 126, 212, 154)), sample, fill=(158, 216, 200), font=font_preview)
+
+    draw.text((34, 184), status, fill=_mix_color((142, 178, 180), (178, 255, 226), pulse * 0.45), font=font_preview)
+    hint = "double tap back"
+    draw.text(((SCREEN_WIDTH - _text_width(draw, hint, font_label)) // 2, 210), hint, fill=(160, 190, 194), font=font_label)
+    return image
+
+
+def _render_device_detail_page(state: DeviceUiState, *, animation_progress: float, font_key: str, scale: int) -> Image.Image:
+    image = _new_canvas((5, 8, 10))
+    draw = _ScaledDraw(image, scale)
+    font_title = _load_font(22, font_key=font_key, scale=scale)
+    font_label = _load_font(13, font_key=font_key, scale=scale)
+    font_value = _load_font(16, font_key=font_key, scale=scale)
     pulse = _pulse(animation_progress) if state.animation == "detail_pulse" else 0.0
 
     diagnostics = state.diagnostics
@@ -367,12 +474,12 @@ def _render_device_detail_page(state: DeviceUiState, *, animation_progress: floa
     return image
 
 
-def _render_renderer_detail_page(*, animation_progress: float) -> Image.Image:
-    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
-    draw = ImageDraw.Draw(image)
-    font_title = _load_font(22)
-    font_label = _load_font(13)
-    font_value = _load_font(16)
+def _render_renderer_detail_page(state: DeviceUiState, *, animation_progress: float, font_key: str, scale: int) -> Image.Image:
+    image = _new_canvas((5, 8, 10))
+    draw = _ScaledDraw(image, scale)
+    font_title = _load_font(22, font_key=font_key, scale=scale)
+    font_label = _load_font(13, font_key=font_key, scale=scale)
+    font_value = _load_font(16, font_key=font_key, scale=scale)
     pulse = _pulse(animation_progress) if animation_progress < 1.0 else 0.0
 
     draw.rounded_rectangle((8, 8, 232, 232), radius=14, outline=(50, 62, 72), width=2)
@@ -395,12 +502,12 @@ def _render_renderer_detail_page(*, animation_progress: float) -> Image.Image:
     return image
 
 
-def _render_about_detail_page(*, device_id: str, animation_progress: float) -> Image.Image:
-    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
-    draw = ImageDraw.Draw(image)
-    font_title = _load_font(22)
-    font_label = _load_font(13)
-    font_value = _load_font(16)
+def _render_about_detail_page(*, device_id: str, animation_progress: float, font_key: str, scale: int) -> Image.Image:
+    image = _new_canvas((5, 8, 10))
+    draw = _ScaledDraw(image, scale)
+    font_title = _load_font(22, font_key=font_key, scale=scale)
+    font_label = _load_font(13, font_key=font_key, scale=scale)
+    font_value = _load_font(16, font_key=font_key, scale=scale)
     pulse = _pulse(animation_progress) if animation_progress < 1.0 else 0.0
 
     draw.rounded_rectangle((8, 8, 232, 232), radius=14, outline=(50, 62, 72), width=2)
@@ -423,13 +530,13 @@ def _render_about_detail_page(*, device_id: str, animation_progress: float) -> I
     return image
 
 
-def _render_brightness_detail_page(state: DeviceUiState, *, animation_progress: float) -> Image.Image:
-    image = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (5, 8, 10))
-    draw = ImageDraw.Draw(image)
-    font_title = _load_font(22)
-    font_value = _load_font(42)
-    font_body = _load_font(16)
-    font_small = _load_font(13)
+def _render_brightness_detail_page(state: DeviceUiState, *, animation_progress: float, font_key: str, scale: int) -> Image.Image:
+    image = _new_canvas((5, 8, 10))
+    draw = _ScaledDraw(image, scale)
+    font_title = _load_font(22, font_key=font_key, scale=scale)
+    font_value = _load_font(42, font_key=font_key, scale=scale)
+    font_body = _load_font(16, font_key=font_key, scale=scale)
+    font_small = _load_font(13, font_key=font_key, scale=scale)
 
     value = max(0, min(100, state.pending_brightness))
     adjust_pulse = _pulse(animation_progress) if state.animation in {"brightness_adjust", "brightness_applied"} else 0.0
@@ -472,6 +579,8 @@ def _paste_animated_page(
     page: Image.Image,
     state: DeviceUiState,
     progress: float,
+    *,
+    scale: int,
 ) -> None:
     if state.animation not in {"enter_settings", "enter_detail", "back_home", "back_to_settings"} or progress >= 1.0:
         target.paste(page, (0, 0))
@@ -479,7 +588,7 @@ def _paste_animated_page(
 
     eased = ease_out_cubic(progress)
     direction = -1 if state.animation in {"back_home", "back_to_settings"} else 1
-    offset_x = int(round(direction * (1.0 - eased) * 18))
+    offset_x = int(round(direction * (1.0 - eased) * 18 * scale))
     alpha = int(120 + 135 * eased)
     layer = page.convert("RGBA")
     layer.putalpha(alpha)
@@ -582,6 +691,23 @@ def _format_uptime(uptime_ms: int) -> str:
     return f"{seconds}s"
 
 
+def _new_canvas(fill: tuple[int, int, int]) -> Image.Image:
+    return Image.new(
+        "RGB",
+        (SCREEN_WIDTH * SUPERSAMPLE_SCALE, SCREEN_HEIGHT * SUPERSAMPLE_SCALE),
+        fill,
+    )
+
+
+def _downsample_canvas(image: Image.Image) -> Image.Image:
+    if image.size == (SCREEN_WIDTH, SCREEN_HEIGHT):
+        return image
+    return image.resize(
+        (SCREEN_WIDTH, SCREEN_HEIGHT),
+        Image.Resampling.BOX,
+    ).filter(ImageFilter.UnsharpMask(radius=0.5, percent=60, threshold=2))
+
+
 def _draw_detail_back_hint(draw: ImageDraw.ImageDraw, font: ImageFont.FreeTypeFont | ImageFont.ImageFont) -> None:
     hint = "double tap back"
     draw.text(
@@ -611,18 +737,11 @@ def _crop_rect(image: Image.Image, region: tuple[int, int, int, int]) -> FrameRe
     )
 
 
-def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    candidates = [
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/System/Library/Fonts/PingFang.ttc",
-        "/System/Library/Fonts/STHeiti Light.ttc",
-        "/System/Library/Fonts/Supplemental/Arial.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
-    ]
+def _load_font(size: int, *, font_key: str = FONT_WENKAI_SCREEN, scale: int = SUPERSAMPLE_SCALE) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    candidates = FONT_CANDIDATES_BY_KEY.get(font_key, FONT_CANDIDATES) + FALLBACK_FONT_CANDIDATES
     for path in candidates:
         try:
-            return ImageFont.truetype(path, size)
+            return ImageFont.truetype(str(path), size * scale)
         except OSError:
             continue
     return ImageFont.load_default()
@@ -635,3 +754,19 @@ def _text_width(
 ) -> int:
     box = draw.textbbox((0, 0), text, font=font)
     return box[2] - box[0]
+
+
+def _text_position_in_box(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    box: tuple[int, int, int, int],
+) -> tuple[int, int]:
+    text_box = draw.textbbox((0, 0), text, font=font)
+    text_width = text_box[2] - text_box[0]
+    text_height = text_box[3] - text_box[1]
+    box_width = box[2] - box[0]
+    box_height = box[3] - box[1]
+    x = box[0] + max(0, box_width - text_width) // 2 - text_box[0]
+    y = box[1] + max(0, box_height - text_height) // 2 - text_box[1]
+    return x, y

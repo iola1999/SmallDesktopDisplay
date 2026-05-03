@@ -1,19 +1,95 @@
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 from app.protocol import ENCODING_RGB565_RLE, decode_rgb565_rle
 from app.renderer import (
+    FONT_CANDIDATES,
+    FONT_CANDIDATES_BY_KEY,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
+    SUPERSAMPLE_SCALE,
     build_home_copy,
     compute_dirty_rects,
     render_canvas_frame,
     render_device_canvas,
     render_device_view,
+    _new_canvas,
+    _text_position_in_box,
 )
-from app.ui_state import DeviceUiState
+from app.ui_state import (
+    FONT_MAPLE_MONO_NF_CN,
+    FONT_WENKAI_SCREEN,
+    DeviceUiState,
+)
+
+
+def test_renderer_defaults_to_lxgw_wenkai_screen_font():
+    assert list(FONT_CANDIDATES[:4]) == [
+        Path("/usr/local/share/fonts/lxgw-wenkai-screen/LXGWWenKaiScreen.ttf"),
+        Path("/usr/share/fonts/truetype/lxgw-wenkai-screen/LXGWWenKaiScreen.ttf"),
+        Path.home() / "Library/Fonts/LXGWWenKaiScreen.ttf",
+        Path("/Library/Fonts/LXGWWenKaiScreen.ttf"),
+    ]
+
+
+def test_renderer_keeps_maple_mono_available_as_selectable_font():
+    assert list(FONT_CANDIDATES_BY_KEY[FONT_MAPLE_MONO_NF_CN][:4]) == [
+        Path("/usr/local/share/fonts/maple-mono-nf-cn/MapleMono-NF-CN-Regular.ttf"),
+        Path("/usr/share/fonts/truetype/maple-mono-nf-cn/MapleMono-NF-CN-Regular.ttf"),
+        Path.home() / "Library/Fonts/MapleMono-NF-CN-Regular.ttf",
+        Path("/Library/Fonts/MapleMono-NF-CN-Regular.ttf"),
+    ]
+
+
+def test_text_position_in_box_visually_centers_font_bbox():
+    image = Image.new("RGB", (120, 40), (0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default()
+    text = "synced"
+    box = (10, 8, 110, 31)
+
+    x, y = _text_position_in_box(draw, text, font, box)
+    text_box = draw.textbbox((x, y), text, font=font)
+
+    assert (text_box[1] + text_box[3]) // 2 == (box[1] + box[3]) // 2
+
+
+def test_font_selection_changes_rendered_canvas_when_fonts_are_available():
+    if not FONT_CANDIDATES_BY_KEY[FONT_WENKAI_SCREEN][0].exists():
+        return
+
+    current_time = datetime(2026, 5, 1, 14, 32, 8, tzinfo=ZoneInfo("Asia/Shanghai"))
+    wenkai = render_device_canvas(
+        current_time=current_time,
+        device_id="desk-01",
+        button_count=0,
+        ui_state=DeviceUiState(font_key=FONT_WENKAI_SCREEN),
+    )
+    maple = render_device_canvas(
+        current_time=current_time,
+        device_id="desk-01",
+        button_count=0,
+        ui_state=DeviceUiState(font_key=FONT_MAPLE_MONO_NF_CN),
+    )
+
+    assert wenkai.tobytes() != maple.tobytes()
+
+
+def test_renderer_uses_global_2x_supersampling_canvas_before_downsampling():
+    assert SUPERSAMPLE_SCALE == 2
+    assert _new_canvas((0, 0, 0)).size == (SCREEN_WIDTH * 2, SCREEN_HEIGHT * 2)
+
+    current_time = datetime(2026, 5, 1, 14, 32, 8, tzinfo=ZoneInfo("Asia/Shanghai"))
+    canvas = render_device_canvas(
+        current_time=current_time,
+        device_id="desk-01",
+        button_count=0,
+    )
+
+    assert canvas.size == (SCREEN_WIDTH, SCREEN_HEIGHT)
 
 
 def test_renderer_returns_full_screen_rgb565_frame():
@@ -221,14 +297,14 @@ def test_renderer_reflects_brightness_pending_value():
 
 def test_renderer_reflects_device_diagnostics_detail():
     current_time = datetime(2026, 5, 1, 12, 34, 56, tzinfo=ZoneInfo("Asia/Shanghai"))
-    low_memory = DeviceUiState(page="detail", detail_index=1)
+    low_memory = DeviceUiState(page="detail", detail_index=2)
     low_memory.diagnostics.heap_free = 24000
     low_memory.diagnostics.heap_max_block = 18000
     low_memory.diagnostics.heap_fragmentation = 18
     low_memory.diagnostics.wifi_rssi = -70
     low_memory.diagnostics.uptime_ms = 120000
 
-    high_memory = DeviceUiState(page="detail", detail_index=1)
+    high_memory = DeviceUiState(page="detail", detail_index=2)
     high_memory.diagnostics.heap_free = 42000
     high_memory.diagnostics.heap_max_block = 39000
     high_memory.diagnostics.heap_fragmentation = 4
