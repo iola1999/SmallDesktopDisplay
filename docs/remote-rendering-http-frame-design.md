@@ -5,8 +5,8 @@
 Turn the ESP-12E device into a thin network display. A Docker service renders
 the 240x240 screen image, receives button gestures from the device, and returns
 only the newest frame state. The device keeps WiFi, button input, EEPROM config,
-and TFT output, while local weather, NTP, settings pages, UI motion, and complex
-screen drawing can be removed.
+local hold feedback, brightness PWM, HTTP polling, and TFT output, while local
+weather, NTP, page routing, and complex screen drawing stay out of the firmware.
 
 ## Current Version
 
@@ -14,17 +14,18 @@ screen drawing can be removed.
 - Frame model: latest-state sync, not queued playback.
 - Image format: RGB565 rectangles, either raw or RLE-compressed.
 - Rendering service: Dockerized Python FastAPI service under `remote-render/`.
-- Device role: fetch binary frames, draw rectangles to TFT, POST button events.
+- Device role: fetch binary frames, draw rectangles to TFT, POST button events,
+  POST status, and execute local hardware commands.
 
 The protocol intentionally accepts dropped intermediate frames. The device sends
 the frame id it has fully drawn; the server either returns the newest update
 relative to that frame or falls back to a newest full-screen frame.
 
-The current implementation renders the clock view and a first settings-page
-framework on the server, stores both the latest dirty update and a full-frame
-snapshot, and uses the full snapshot for cold clients or resync. This avoids a
-device booting into a partial frame and leaving old local debug text on
-untouched screen regions.
+The current implementation renders the Chinese clock home page, Settings, and
+detail pages on the server. It stores both the latest dirty update and a
+full-frame snapshot, then uses the full snapshot for cold clients or resync.
+This avoids a device booting into a partial frame and leaving old local debug
+text on untouched screen regions.
 
 ## HTTP API
 
@@ -38,7 +39,7 @@ GET  /api/v1/health
 
 `GET /frame` responses:
 
-- `200 application/octet-stream`: a binary `SDD/1` frame.
+- `200 application/octet-stream`: a binary `SDD1` frame.
 - `204 No Content`: no newer frame exists before `wait_ms` expires.
 - `400`: malformed request.
 
@@ -52,7 +53,7 @@ GET  /api/v1/health
 }
 ```
 
-Supported first-version events:
+Supported gesture events:
 
 - `short_press`
 - `double_press`
@@ -220,7 +221,7 @@ Field meaning:
   connection.
 - `get_ms`: `HTTPClient.GET()`, which includes TCP connect, HTTP request send,
   response status/header parsing, and any server long-poll wait.
-- `header_ms`: time to read the 32-byte `SDD/1` frame header after status 200.
+- `header_ms`: time to read the 32-byte `SDD1` frame header after status 200.
 - `srv_wait_ms`: server-side long-poll wait time before a newer frame became
   available.
 - `srv_render_ms`: server-side render time for frames generated inside this
@@ -254,12 +255,6 @@ responses:
 - `X-SDD-Server-Render-Ms`
 - `X-SDD-Server-Total-Ms`
 
-Device samples after adding the server split show normal small dirty frames with
-`client_overhead_ms` usually around `12-18ms`. Page-animation dirty frames are
-commonly around `13-16ms`, with one observed `27ms` sample. One forced
-full-frame resync showed `client_overhead_ms=94`, so persistent HTTP is worth a
-small experiment if that spike repeats in real use.
-
 The firmware now uses HTTP Keep-Alive for the frame polling path. `HttpFrameClient`
 owns a long-lived `WiFiClient` and `HTTPClient`, sets `Connection: keep-alive`,
 and calls `HTTPClient.end()` only after the body has been fully consumed so the
@@ -267,11 +262,13 @@ ESP8266 HTTP client can preserve the TCP socket. The reusable socket is reset on
 request failure, invalid frame headers/bodies, stale partial frames, and remote
 base URL changes.
 
-Keep-Alive changed static RAM from `37756B` to `37924B` in the ESP8266 release
-build. First device samples after flashing show `client_overhead_ms` usually
-around `9-12ms` on page transitions and small dirty frames, compared with the
-previous `12-18ms` baseline. That is a modest but real win, and much lower risk
-than jumping directly to WebSocket or raw TCP.
+Before Keep-Alive, normal small dirty frames usually showed
+`client_overhead_ms` around `12-18ms`, and one forced full-frame resync showed a
+`94ms` overhead spike. Keep-Alive changed static RAM from `37756B` to `37924B`
+in the ESP8266 release build. First device samples after flashing show
+`client_overhead_ms` usually around `9-12ms` on page transitions and small dirty
+frames. That is a modest but real win, and much lower risk than jumping directly
+to WebSocket or raw TCP.
 
 That points the next optimization work toward smaller payloads first:
 
@@ -312,7 +309,7 @@ remote-render/
 
 Responsibilities:
 
-- `protocol.py`: encode `SDD/1` binary frames and validate rectangle payloads.
+- `protocol.py`: encode `SDD1` binary frames and validate rectangle payloads.
 - `renderer.py`: use Pillow to render a 240x240 UI and produce RGB565 rects.
 - `state.py`: track device frame ids, button sequence, dirty frames, and full-frame
   resync snapshots. It also schedules animation frames after navigation input.
@@ -323,9 +320,10 @@ Responsibilities:
   writes PNG previews for debugging without photographing the physical display.
   It can optionally POST a gesture before capturing frames.
 
-Docker uses `python:3.12-slim` plus `fonts-dejavu-core`. The font package is
-intentional: without a TrueType font, Pillow falls back to a tiny bitmap font and
-the physical 240x240 display becomes hard to read.
+Docker uses `python:3.12-slim` plus `fonts-dejavu-core` and `fonts-noto-cjk`.
+The font packages are intentional: without TrueType fonts, Pillow falls back to
+a tiny bitmap font, and without CJK fonts the Chinese clock text does not render
+correctly in the container.
 
 Local development commands:
 
@@ -384,24 +382,38 @@ resyncs and make animation measurements misleading.
 
 ```text
 src/remote/
-  FrameProtocol.h/.cpp
+  DeviceCommand.h
+  DeviceStatusPayload.h
+  FrameProtocol.h
   HttpFrameClient.h/.cpp
+  RemoteCommandClient.h/.cpp
   RemoteInputClient.h/.cpp
+  RemoteStatusClient.h/.cpp
+
+src/app/
+  DeviceStatusText.h/.cpp
+  FrameDiagnostics.h/.cpp
+  HoldInteraction.h/.cpp
+  HoldProgress.h/.cpp
+  RemoteKeepAlivePolicy.h/.cpp
+  WifiPortalPage.h/.cpp
 
 src/ui/
   TftFrameSink.h/.cpp
 ```
 
-The firmware main loop becomes:
+The firmware main loop is:
 
 1. Connect WiFi using the existing setup portal path.
 2. Poll button events and POST gestures to the Docker service.
-3. Poll `/frame?have=...`.
-4. Draw each rectangle directly to TFT, batching up to 2 RGB565 rows per
+3. Poll `/commands?after=...` and execute local commands such as brightness PWM.
+4. POST local status periodically and after relevant state changes.
+5. Poll `/frame?have=...`.
+6. Draw each rectangle directly to TFT, batching up to 2 RGB565 rows per
    `pushImage` call. A previous 4-row buffer was faster, but too close to the
    ESP8266 loop stack limit once RLE decoding added a second read buffer.
-5. Draw only the hold-progress overlay locally while the button is pressed.
-6. Show a minimal local error message if WiFi or the render service is down.
+7. Draw only the hold-progress overlay locally while the button is pressed.
+8. Show a minimal local error message if WiFi or the render service is down.
 
 The local status/error screen now also includes the device IP when connected, so
 the setup page can be reached from another LAN device without opening serial
@@ -415,7 +427,7 @@ when the button is released. This keeps tactile feedback independent from HTTP
 latency while preserving remote ownership of page state and avoids entering a
 new page before the user lifts their finger.
 
-## First Implementation Scope
+## Current Implementation Scope
 
 In scope:
 
@@ -432,7 +444,8 @@ In scope:
 - Interleaved tile-strip dirty frames for large page changes.
 - Server/device frame diagnostics for large updates, including server wait,
   server render, server total, and estimated client HTTP overhead.
-- Full-frame resync for cold clients and Docker service restarts.
+- Full-frame resync for cold clients, Docker service restarts, and stale partial
+  bases.
 - Button POSTs.
 - Device command polling for `set_brightness`.
 - Device status sync for local persisted brightness.
@@ -447,4 +460,6 @@ Out of scope:
 - WebSocket, MQTT, or server-pushed streams.
 - PNG/JPEG decoding on-device.
 - Heavier compression such as LZ4 or image codecs.
-- Weather, local NTP, old settings pages, UI motion, and local page rendering.
+- Weather and local NTP in firmware.
+- Local firmware-owned settings pages, local page routing, and local page
+  rendering.

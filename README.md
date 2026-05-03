@@ -1,41 +1,43 @@
 # SmallDesktopDisplay
 
-SmallDesktopDisplay 是一个基于 ESP-12E / ESP8266 的桌面小屏项目。当前主线已经改成远程渲染架构：设备端作为轻量网络显示客户端，负责 WiFi、按键、背光、配置持久化和 TFT 输出；Docker 服务负责生成 240x240 的实际界面帧，并维护页面状态。
+[简体中文](README.zh-CN.md)
 
-现在的默认界面是一个远端渲染的中文桌面时钟，并带有基础设置页。UI 逻辑尽量放在服务端，这样后续增加界面、动画和功能时，不需要每次都重新烧写设备固件。
+SmallDesktopDisplay is a desktop mini-display project based on ESP-12E / ESP8266. The current mainline uses a remote-rendering architecture: the device firmware acts as a lightweight network display client, handling WiFi, buttons, backlight, persistent configuration, and TFT output, while a Docker service renders the actual 240x240 UI frames and maintains page state.
 
-## 基础架构
+The default UI is now a remotely rendered Chinese desktop clock with a basic settings page. Most UI logic lives on the server side, so new screens, animation, and features can be added without reflashing the device firmware every time.
 
-- `src/`：ESP8266 固件，使用 PlatformIO + Arduino 构建。
-- `src/main.cpp`：设备入口，负责远程帧轮询、按键上报、命令和状态同步。
-- `src/remote/`：远程帧、输入事件、设备状态、远端命令相关客户端代码。
-- `src/ui/`：把远端 RGB565 矩形帧输出到 TFT 的桥接层。
-- `remote-render/`：Dockerized FastAPI + Pillow 渲染服务，负责生成画面、维护远端 UI 状态、接收设备输入和状态。
-- `docs/`：远程渲染协议、部署说明和近期迭代记录。
+## Architecture
 
-## 快速开始
+- `src/`: ESP8266 firmware built with PlatformIO + Arduino.
+- `src/main.cpp`: Device entry point for remote frame polling, button reporting, commands, and status sync.
+- `src/remote/`: Client code for remote frames, input events, device status, and remote commands.
+- `src/ui/`: Bridge layer that writes remote RGB565 rectangle frames to the TFT.
+- `remote-render/`: Dockerized FastAPI + Pillow render service that generates frames, maintains remote UI state, and receives device input and status.
+- `docs/`: Remote-rendering protocol notes, deployment details, and recent iteration records.
 
-启动远端渲染服务：
+## Quick Start
+
+Start the remote render service:
 
 ```bash
 cd remote-render
 REMOTE_RENDER_PORT=18080 docker compose up -d --build
 ```
 
-构建固件：
+Build the firmware:
 
 ```bash
 pio run -e esp12e
 ```
 
-烧写并查看串口：
+Upload the firmware and open the serial monitor:
 
 ```bash
 pio run -e esp12e -t upload
 pio device monitor -b 115200
 ```
 
-常用检查：
+Common checks:
 
 ```bash
 remote-render/.venv/bin/pytest -q
@@ -43,17 +45,17 @@ pio test -e host
 pio run -e esp12e
 ```
 
-## 配置
+## Configuration
 
-固件默认配置在 `src/AppConfig.h`。远端渲染地址可以在设备配网页中修改。
+Firmware defaults live in `src/AppConfig.h`. The remote render service address can also be changed from the device configuration portal.
 
-如果设备已经连上 WiFi，可以在同一局域网内访问设备当前获取到的 IP 地址进入配网页。如果设备还没有连上 WiFi，可以用手机或电脑连接设备发出的 `SDD-Setup` WiFi 热点，再进入配网页完成 WiFi 和远端渲染地址配置。
+After the device joins WiFi, open its assigned LAN IP address from the same network to reach the configuration portal. If the device has not joined WiFi yet, connect a phone or computer to the `SDD-Setup` access point created by the device, then finish WiFi and remote-render address setup from the portal.
 
-TFT 引脚映射来自 `TFT_eSPI` 库自己的 `User_Setup.h`，不在本仓库中维护。
+TFT pin mapping comes from the `TFT_eSPI` library's own `User_Setup.h` and is not maintained in this repository.
 
-## 文档
+## Documentation
 
-- `docs/remote-rendering-http-frame-design.md`：远程渲染架构、HTTP API、帧协议、命令/状态同步和部署说明。
-- `docs/recent-iterations.md`：近期迭代记录和当前开发注意事项。
-- `docs/roadmap.md`：后续功能方向和迭代优先级。
-- `remote-render/tools/frame_preview.py`：本地帧预览工具，可抓取远端帧并生成 PNG。
+- `docs/remote-rendering-http-frame-design.md`: Remote-rendering architecture, HTTP API, frame protocol, command/status sync, and deployment notes.
+- `docs/recent-iterations.md`: Recent iteration records and current development notes.
+- `docs/roadmap.md`: Future feature direction and iteration priorities.
+- `remote-render/tools/frame_preview.py`: Local frame preview tool that fetches remote frames and writes PNG output.
