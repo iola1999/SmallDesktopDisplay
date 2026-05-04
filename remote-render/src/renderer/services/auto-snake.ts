@@ -71,6 +71,10 @@ export function advanceAutoSnakeRuntime(state: AutoSnakeRuntime, seed: string): 
   }
 
   const eats = sameCell(nextHead, state.food);
+  const occupied = new Set(state.body.slice(0, eats ? state.body.length : -1).map(cellKey));
+  if (occupied.has(cellKey(nextHead))) {
+    return {runtime: state, status: "failed"};
+  }
   const body = [nextHead, ...state.body];
   if (!eats) body.pop();
   const foodIndex = eats ? state.foodIndex + 1 : state.foodIndex;

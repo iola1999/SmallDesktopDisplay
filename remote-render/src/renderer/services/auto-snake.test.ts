@@ -1,6 +1,6 @@
 import {describe, expect, test} from "vitest";
 
-import {buildAutoSnakeViewModel} from "./auto-snake.js";
+import {advanceAutoSnakeRuntime, buildAutoSnakeViewModel, type AutoSnakeRuntime} from "./auto-snake.js";
 
 describe("auto snake view model", () => {
   test("moves toward food while avoiding immediate collisions", () => {
@@ -50,6 +50,29 @@ describe("auto snake view model", () => {
 
     expect(atBoundary).not.toEqual(initial);
     expect(manhattan(beforeBoundary.body[0].x, beforeBoundary.body[0].y, atBoundary.body[0].x, atBoundary.body[0].y)).toBe(1);
+  });
+
+  test("fails instead of moving through its own body when trapped", () => {
+    const runtime: AutoSnakeRuntime = {
+      columns: 5,
+      rows: 5,
+      cellSize: 6,
+      body: [
+        {x: 1, y: 1},
+        {x: 2, y: 1},
+        {x: 1, y: 2},
+        {x: 1, y: 0},
+        {x: 0, y: 0},
+      ],
+      food: {x: 4, y: 4},
+      direction: {x: 1, y: 0},
+      foodIndex: 0,
+    };
+
+    const advanced = advanceAutoSnakeRuntime(runtime, "trapped");
+
+    expect(advanced.status).toBe("failed");
+    expect(advanced.runtime).toEqual(runtime);
   });
 });
 
