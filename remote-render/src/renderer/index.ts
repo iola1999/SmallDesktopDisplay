@@ -236,7 +236,7 @@ function detailElement(state: DeviceUiState, deviceId: string, fontKey: string, 
   ], fontKey);
   if (item === "Renderer") return rowsDetailElement("Renderer", "remote frame link", [["Mode", "HTTP keep-alive"], ["Poll", "50 ms"], ["Wait", "10 ms"], ["Frames", "SDD1 diff"]], fontKey);
   if (item === "About") return rowsDetailElement("About", "SmallDesktopDisplay", [["Device", deviceId.slice(0, 14)], ["UI", "react-render"], ["Build", "node"], ["Protocol", "SDD1"]], fontKey);
-  if (item === "Font") return rowsDetailElement("Font", "short preview  hold apply", [["Current", FONT_LABELS[state.fontKey] ?? "Font"], ["Preview", FONT_LABELS[state.pendingFontKey] ?? "Font"], ["Engine", "React"], ["Layout", "Yoga"]], fontKey);
+  if (item === "Font") return rowsDetailElement("Font", "short apply", [["Current", FONT_LABELS[state.fontKey] ?? "Font"], ["Next", FONT_LABELS[nextFontLabel(state.fontKey)] ?? "Font"], ["Engine", "React"], ["Layout", "Yoga"]], fontKey);
   return rowsDetailElement(item, "Setting detail", [["Preview", "only"], ["More", "controls next"]], fontKey);
 }
 
@@ -249,7 +249,7 @@ function brightnessElement(state: DeviceUiState, fontKey: string, progress: numb
     {style: screenStyle(fontKey, "#05080a")},
     React.createElement("box", {style: {x: 8, y: 8, width: 224, height: 224, borderRadius: 14, borderColor: "#323e48", borderWidth: 2}}),
     text("Brightness", {x: 20, y: 18, width: 160, height: 28, fontSize: 22, color: "#eef6ec"}),
-    text("short cycle  hold apply", {x: 20, y: 49, width: 180, height: 18, fontSize: 13, color: "#649baa"}),
+    text("short apply", {x: 20, y: 49, width: 180, height: 18, fontSize: 13, color: "#649baa"}),
     text(`${value}%`, {x: 0, y: 82 - Math.round(pulse * 3), width: 240, height: 52, fontSize: 42, color: mixColor("#f0f8ee", "#b2ffe2", pulse * 0.45), alignItems: "center"}),
     React.createElement("box", {style: {x: 34, y: 146, width: 172, height: 18, borderRadius: 9, backgroundColor: "#111b20"}}),
     React.createElement("box", {style: {x: 35, y: 147, width: fillWidth, height: 16, borderRadius: 8, backgroundColor: "#70e0c4"}}),
@@ -301,7 +301,7 @@ function rasterHostTree(children: HostNode[], fontKey: string): CanvasImage {
   ctx.textBaseline = "top";
   for (const child of children) {
     const layout = layoutHostNode(child, ctx, fontKey);
-    paintLayout(ctx, layout, 0, 0);
+    paintLayout(ctx, layout, 0, 0, fontFamily(fontKey));
   }
   return {width: SCREEN_WIDTH, height: SCREEN_HEIGHT, rgba: Buffer.from(canvas.data())};
 }
@@ -351,10 +351,11 @@ function readLayout(host: HostNode, yoga: YogaNode): LayoutNode {
   return {host, style: styleOf(host), x: computed.left, y: computed.top, width: computed.width, height: computed.height, children};
 }
 
-function paintLayout(ctx: SKRSContext2D, node: LayoutNode, parentX: number, parentY: number): void {
+function paintLayout(ctx: SKRSContext2D, node: LayoutNode, parentX: number, parentY: number, inheritedFontFamily: string): void {
   const x = parentX + node.x;
   const y = parentY + node.y;
   if (node.host instanceof HostText) return;
+  const currentFontFamily = node.style.fontFamily ?? inheritedFontFamily;
 
   if (node.style.backgroundColor) {
     fillRoundedRect(ctx, x, y, node.width, node.height, node.style.borderRadius ?? 0, node.style.backgroundColor);
@@ -365,7 +366,7 @@ function paintLayout(ctx: SKRSContext2D, node: LayoutNode, parentX: number, pare
   if (node.host.type === "text") {
     const textValue = collectText(node.host);
     const fontSize = node.style.fontSize ?? 16;
-    ctx.font = `${fontSize}px ${node.style.fontFamily ?? fontFamily(FONT_WENKAI_SCREEN)}`;
+    ctx.font = `${fontSize}px ${currentFontFamily}`;
     ctx.fillStyle = node.style.color ?? "#ffffff";
     const metrics = ctx.measureText(textValue);
     let textX = x;
@@ -375,7 +376,7 @@ function paintLayout(ctx: SKRSContext2D, node: LayoutNode, parentX: number, pare
     ctx.fillText(textValue, textX, y + Math.max(0, (node.height - fontSize * 1.1) / 2));
   }
   for (const child of node.children) {
-    paintLayout(ctx, child, x, y);
+    paintLayout(ctx, child, x, y, currentFontFamily);
   }
 }
 
@@ -537,6 +538,12 @@ function fontFamily(fontKey: string): string {
   if (fontKey === FONT_MAPLE_MONO_NF_CN) return '"Maple Mono NF CN", "Noto Sans CJK", "PingFang SC", "STHeiti", sans-serif';
   if (fontKey === FONT_NOTO_CJK) return '"Noto Sans CJK", "PingFang SC", "STHeiti", sans-serif';
   return '"LXGW WenKai Screen", "Noto Sans CJK", "PingFang SC", "STHeiti", sans-serif';
+}
+
+function nextFontLabel(fontKey: string): string {
+  if (fontKey === FONT_WENKAI_SCREEN) return FONT_MAPLE_MONO_NF_CN;
+  if (fontKey === FONT_MAPLE_MONO_NF_CN) return FONT_NOTO_CJK;
+  return FONT_WENKAI_SCREEN;
 }
 
 function getShanghaiParts(date: Date): {month: number; day: number; weekday: number; hour: number; minute: number; second: number} {

@@ -93,11 +93,14 @@ export function applyInputEvent(state: DeviceUiState, event: InputEventName, now
   if (isBrightnessDetail(state)) {
     if (event === "short_press") {
       state.pendingBrightness = nextBrightnessValue(state.pendingBrightness);
+      state.brightness = state.pendingBrightness;
       startAnimation(state, "brightness_adjust", now);
+      return [new DeviceCommand("set_brightness", state.brightness)];
     } else if (event === "long_press") {
+      const changed = state.brightness !== state.pendingBrightness;
       state.brightness = state.pendingBrightness;
       startAnimation(state, "brightness_applied", now);
-      return [new DeviceCommand("set_brightness", state.brightness)];
+      return changed ? [new DeviceCommand("set_brightness", state.brightness)] : [];
     } else if (event === "double_press") {
       state.page = "settings";
       startAnimation(state, "back_to_settings", now);
@@ -108,6 +111,7 @@ export function applyInputEvent(state: DeviceUiState, event: InputEventName, now
   if (isFontDetail(state)) {
     if (event === "short_press") {
       state.pendingFontKey = nextFontKey(state.pendingFontKey);
+      state.fontKey = state.pendingFontKey;
       startAnimation(state, "font_select", now);
     } else if (event === "long_press") {
       state.fontKey = state.pendingFontKey;

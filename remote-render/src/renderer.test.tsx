@@ -1,6 +1,6 @@
 import {describe, expect, test} from "vitest";
 
-import {DeviceUiState} from "./ui-state.js";
+import {DeviceUiState, FONT_MAPLE_MONO_NF_CN, FONT_WENKAI_SCREEN} from "./ui-state.js";
 import {
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
@@ -97,5 +97,23 @@ describe("React remote renderer", () => {
 
     expect(Buffer.compare(start.rgba, staticFrame.rgba)).not.toBe(0);
     expect(Buffer.compare(end.rgba, staticFrame.rgba)).toBe(0);
+  });
+
+  test("font key changes the rendered text pixels", () => {
+    const now = new Date("2026-05-01T12:34:56.000+08:00");
+    const wenkai = renderDeviceCanvas({
+      currentTime: now,
+      deviceId: "desk-01",
+      buttonCount: 0,
+      uiState: new DeviceUiState({fontKey: FONT_WENKAI_SCREEN}),
+    });
+    const maple = renderDeviceCanvas({
+      currentTime: now,
+      deviceId: "desk-01",
+      buttonCount: 0,
+      uiState: new DeviceUiState({fontKey: FONT_MAPLE_MONO_NF_CN}),
+    });
+
+    expect(Buffer.compare(wenkai.rgba, maple.rgba)).not.toBe(0);
   });
 });
