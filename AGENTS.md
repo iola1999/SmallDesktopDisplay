@@ -22,6 +22,9 @@ ESP-12E 模块桌面小屏显示器，基于 PlatformIO + Arduino framework。�
 - 本机 Docker：`cd remote-render && REMOTE_RENDER_PORT=18080 docker compose up -d --build`
 - 帧预览：`cd remote-render && .venv/bin/python -m tools.frame_preview --base-url http://127.0.0.1:18080 --device-id desk-01 --frames 2 --output frame-previews/latest.png`
 
+修改 `remote-render/` 里的渲染逻辑、API 或依赖后，除了跑测试，还要重新启动本机 Docker 实例（通常用上面的 `REMOTE_RENDER_PORT=18080 docker compose up -d --build`），否则设备和预览看到的还是旧容器里的画面。
+`remote-render/docker-compose.yml` 要保持 `restart: unless-stopped`，让 Docker 启动后自动恢复远程渲染服务；除非用户明确要求，不要用会移除该容器的清理方式替代正常重启。
+
 依赖版本锁在 [platformio.ini](platformio.ini)，不要擅自升级（尤其 `espressif8266@2.6.3`）。
 
 ## 配置

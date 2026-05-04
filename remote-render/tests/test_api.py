@@ -23,7 +23,7 @@ def test_frame_endpoint_returns_latest_frame_then_204_for_same_have():
     assert second.headers["x-sdd-server-total-ms"].isdigit()
 
 
-def test_button_input_advances_latest_frame_without_replaying_old_frames():
+def test_home_short_press_without_visible_change_does_not_emit_frame():
     client = TestClient(app)
 
     first = client.get("/api/v1/devices/desk-02/frame?have=0")
@@ -38,12 +38,7 @@ def test_button_input_advances_latest_frame_without_replaying_old_frames():
     next_frame = client.get(
         f"/api/v1/devices/desk-02/frame?have={first_frame_id}&wait_ms=1"
     )
-    assert next_frame.status_code == 200
-    next_frame_id = int.from_bytes(next_frame.content[8:12], "little")
-    base_frame_id = int.from_bytes(next_frame.content[12:16], "little")
-
-    assert next_frame_id > first_frame_id
-    assert base_frame_id == first_frame_id
+    assert next_frame.status_code == 204
 
 
 def test_registry_refreshes_clock_with_partial_frame_after_tick():

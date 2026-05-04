@@ -55,8 +55,6 @@ def apply_input_event(state: DeviceUiState, event: str, *, now: float) -> list[D
             state.page = "settings"
             state.selected_index = 0
             _start_animation(state, "enter_settings", now)
-        elif event == "short_press":
-            _start_animation(state, "home_tap", now)
         return []
 
     if state.page == "settings":

@@ -21,7 +21,6 @@ from app.ui_state import (
 SCREEN_WIDTH = 240
 SCREEN_HEIGHT = 240
 TIME_REGION = (0, 42, SCREEN_WIDTH, 142)
-FOOTER_REGION = (14, 166, 226, 218)
 DIRTY_TILE_WIDTH = 24
 DIRTY_TILE_HEIGHT = 8
 SUPERSAMPLE_SCALE = 2
@@ -237,14 +236,6 @@ def _render_home_page(
     subtitle_width = _text_width(draw, copy.subtitle, font_label)
     draw.text(((SCREEN_WIDTH - subtitle_width) // 2, 166), copy.subtitle, fill=(124, 156, 158), font=font_label)
 
-    tap_pulse = _pulse(animation_progress) if state.animation == "home_tap" else 0.0
-    status = _home_status_text(state)
-    status_box = (46, 202, 194, 221)
-    text_box = (75, status_box[1], 183, status_box[3])
-    draw.rounded_rectangle(status_box, radius=8, fill=_mix_color((16, 25, 29), (21, 46, 43), tap_pulse))
-    draw.ellipse((58, 208, 66, 216), fill=_mix_color((66, 160, 142), (130, 252, 214), tap_pulse))
-    draw.text(_text_position_in_box(draw, status, font_label, text_box), status, fill=(154, 184, 184), font=font_label)
-
     return image
 
 
@@ -266,12 +257,6 @@ def _draw_home_background(draw: ImageDraw.ImageDraw) -> None:
     draw.line((42, 132, 198, 132), fill=(18, 34, 36), width=1)
     draw.ellipse((26, 28, 31, 33), fill=(67, 154, 139))
     draw.ellipse((209, 28, 214, 33), fill=(36, 78, 80))
-
-
-def _home_status_text(state: DeviceUiState) -> str:
-    if state.diagnostics.wifi_rssi < 0:
-        return f"已同步  {state.diagnostics.wifi_rssi}dBm"
-    return "已同步"
 
 
 def _chinese_month(month: int) -> str:

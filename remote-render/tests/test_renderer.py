@@ -253,28 +253,27 @@ def test_renderer_animates_brightness_adjustment():
     assert animated.tobytes() != static.tobytes()
 
 
-def test_renderer_animates_home_tap_inside_footer_region():
+def test_renderer_home_frame_ignores_diagnostics_footer_state():
     current_time = datetime(2026, 5, 1, 12, 34, 56, tzinfo=ZoneInfo("Asia/Shanghai"))
-    animated = render_device_canvas(
+    default_state = DeviceUiState()
+    diagnosed_state = DeviceUiState()
+    diagnosed_state.diagnostics.wifi_rssi = -42
+    diagnosed_state.diagnostics.uptime_ms = 12_000
+
+    default = render_device_canvas(
         current_time=current_time,
         device_id="desk-01",
-        button_count=1,
-        ui_state=DeviceUiState(animation="home_tap"),
-        animation_progress=0.45,
+        button_count=0,
+        ui_state=default_state,
     )
-    static = render_device_canvas(
+    diagnosed = render_device_canvas(
         current_time=current_time,
         device_id="desk-01",
-        button_count=1,
-        ui_state=DeviceUiState(),
-        animation_progress=1.0,
+        button_count=0,
+        ui_state=diagnosed_state,
     )
 
-    rects = compute_dirty_rects(static, animated)
-
-    assert animated.tobytes() != static.tobytes()
-    assert max(rect.y + rect.height for rect in rects) <= 224
-    assert min(rect.y for rect in rects) >= 160
+    assert diagnosed.tobytes() == default.tobytes()
 
 
 def test_renderer_reflects_brightness_pending_value():

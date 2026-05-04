@@ -18,6 +18,16 @@ def test_long_press_enters_settings_from_home():
     assert current_animation_progress(state, now=10.0) == 0.0
 
 
+def test_short_press_on_home_has_no_visible_state_change():
+    state = DeviceUiState()
+
+    commands = apply_input_event(state, "short_press", now=10.0)
+
+    assert commands == []
+    assert state.page == "home"
+    assert state.animation == ""
+
+
 def test_settings_short_press_scrolls_selection():
     state = DeviceUiState(page="settings")
 

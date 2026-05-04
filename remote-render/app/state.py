@@ -11,7 +11,6 @@ from PIL import Image
 
 from app.protocol import encode_frame
 from app.renderer import (
-    FOOTER_REGION,
     TIME_REGION,
     RenderedFrame,
     SCREEN_HEIGHT,
@@ -160,8 +159,10 @@ class DeviceRegistry:
             commands = apply_input_event(state.ui, event, now=self._monotonic())
             for command in commands:
                 self._queue_command_locked(state, command)
-            regions = [FOOTER_REGION] if previous_page == "home" and state.ui.page == "home" else None
-            self._render_locked(state, full_frame=False, regions=regions)
+            if previous_page == "home" and state.ui.page == "home" and not state.ui.animation:
+                self._condition.notify_all()
+                return True
+            self._render_locked(state, full_frame=False)
             self._condition.notify_all()
             return True
 
