@@ -63,7 +63,11 @@ export function createAutoSnakeRuntime(input: {columns?: number; rows?: number; 
 }
 
 export function advanceAutoSnakeRuntime(state: AutoSnakeRuntime, seed: string): {runtime: AutoSnakeRuntime; status: "playing" | "failed" | "won"} {
-  const direction = chooseDirection(state, state.columns, state.rows);
+  const direction = chooseDirection(state, seed);
+  return advanceSnakeInDirection(state, direction, seed);
+}
+
+function advanceSnakeInDirection(state: AutoSnakeRuntime, direction: SnakeCellViewModel, seed: string): {runtime: AutoSnakeRuntime; status: "playing" | "failed" | "won"} {
   const head = state.body[0];
   const nextHead = {x: head.x + direction.x, y: head.y + direction.y};
   if (!inside(nextHead, state.columns, state.rows)) {
@@ -89,22 +93,82 @@ export function autoSnakeRuntimeToViewModel(state: AutoSnakeRuntime): AutoSnakeV
   return {columns: state.columns, rows: state.rows, cellSize: state.cellSize, body: state.body, food: state.food};
 }
 
-function chooseDirection(state: AutoSnakeRuntime, columns: number, rows: number): SnakeCellViewModel {
-  const occupied = new Set(state.body.slice(0, -1).map(cellKey));
+function chooseDirection(state: AutoSnakeRuntime, seed: string): SnakeCellViewModel {
   const candidates = DIRECTIONS.filter((direction) => {
     if (direction.x === -state.direction.x && direction.y === -state.direction.y) return false;
     const head = state.body[0];
     const next = {x: head.x + direction.x, y: head.y + direction.y};
-    return inside(next, columns, rows) && !occupied.has(cellKey(next));
+    return inside(next, state.columns, state.rows) && !collisionAfterStep(state, next);
   });
   if (candidates.length === 0) return state.direction;
 
   return candidates
     .map((direction) => ({
       direction,
-      score: manhattan(state.body[0].x + direction.x, state.body[0].y + direction.y, state.food.x, state.food.y) + turnPenalty(direction, state.direction),
+      score: scoreDirection(state, direction, seed),
     }))
     .sort((left, right) => left.score - right.score)[0].direction;
+}
+
+function scoreDirection(state: AutoSnakeRuntime, direction: SnakeCellViewModel, seed: string): number {
+  const advanced = advanceSnakeInDirection(state, direction, seed);
+  if (advanced.status !== "playing") return 1_000_000;
+  const next = advanced.runtime;
+  const head = next.body[0];
+  const eats = sameCell(head, state.food);
+  const tail = next.body[next.body.length - 1];
+  const occupiedWithoutTail = new Set(next.body.slice(0, -1).map(cellKey));
+  const tailDistance = shortestPathDistance(head, tail, occupiedWithoutTail, next.columns, next.rows);
+  const foodDistance = shortestPathDistance(head, next.food, occupiedWithoutTail, next.columns, next.rows);
+  const area = reachableArea(head, occupiedWithoutTail, next.columns, next.rows);
+  const targetArea = Math.min(next.columns * next.rows, next.body.length + 4);
+
+  return (
+    (tailDistance < 0 ? 10_000 : tailDistance * 0.2) +
+    (foodDistance < 0 ? 2_000 + manhattan(head.x, head.y, next.food.x, next.food.y) : foodDistance) +
+    Math.max(0, targetArea - area) * 80 +
+    (eats && tailDistance >= 0 ? -120 : 0) +
+    turnPenalty(direction, state.direction)
+  );
+}
+
+function collisionAfterStep(state: AutoSnakeRuntime, nextHead: SnakeCellViewModel): boolean {
+  const eats = sameCell(nextHead, state.food);
+  return new Set(state.body.slice(0, eats ? state.body.length : -1).map(cellKey)).has(cellKey(nextHead));
+}
+
+function shortestPathDistance(start: SnakeCellViewModel, target: SnakeCellViewModel, occupied: Set<string>, columns: number, rows: number): number {
+  const targetKey = cellKey(target);
+  const queue: Array<{cell: SnakeCellViewModel; distance: number}> = [{cell: start, distance: 0}];
+  const seen = new Set<string>([cellKey(start)]);
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (cellKey(current.cell) === targetKey) return current.distance;
+    for (const direction of DIRECTIONS) {
+      const next = {x: current.cell.x + direction.x, y: current.cell.y + direction.y};
+      const key = cellKey(next);
+      if (!inside(next, columns, rows) || seen.has(key) || (occupied.has(key) && key !== targetKey)) continue;
+      seen.add(key);
+      queue.push({cell: next, distance: current.distance + 1});
+    }
+  }
+  return -1;
+}
+
+function reachableArea(start: SnakeCellViewModel, occupied: Set<string>, columns: number, rows: number): number {
+  const queue: SnakeCellViewModel[] = [start];
+  const seen = new Set<string>([cellKey(start)]);
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const direction of DIRECTIONS) {
+      const next = {x: current.x + direction.x, y: current.y + direction.y};
+      const key = cellKey(next);
+      if (!inside(next, columns, rows) || seen.has(key) || occupied.has(key)) continue;
+      seen.add(key);
+      queue.push(next);
+    }
+  }
+  return seen.size;
 }
 
 function nextFood(seed: string, foodIndex: number, body: SnakeCellViewModel[], columns: number, rows: number): SnakeCellViewModel {

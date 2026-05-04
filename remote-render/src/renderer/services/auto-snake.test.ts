@@ -74,8 +74,95 @@ describe("auto snake view model", () => {
     expect(advanced.status).toBe("failed");
     expect(advanced.runtime).toEqual(runtime);
   });
+
+  test("avoids a short food path that seals the snake away from its tail", () => {
+    const runtime: AutoSnakeRuntime = {
+      columns: 7,
+      rows: 6,
+      cellSize: 6,
+      body: [
+        {x: 2, y: 2},
+        {x: 1, y: 2},
+        {x: 1, y: 1},
+        {x: 2, y: 1},
+        {x: 3, y: 1},
+        {x: 4, y: 1},
+        {x: 5, y: 1},
+        {x: 5, y: 2},
+        {x: 5, y: 3},
+        {x: 4, y: 3},
+        {x: 3, y: 3},
+        {x: 3, y: 4},
+        {x: 2, y: 4},
+        {x: 1, y: 4},
+      ],
+      food: {x: 4, y: 2},
+      direction: {x: 1, y: 0},
+      foodIndex: 0,
+    };
+
+    const advanced = advanceAutoSnakeRuntime(runtime, "sealed-food");
+
+    expect(advanced.status).toBe("playing");
+    expect(advanced.runtime.body[0]).toEqual({x: 2, y: 3});
+  });
+
+  test("eats adjacent food when the move remains safe", () => {
+    const runtime: AutoSnakeRuntime = {
+      columns: 24,
+      rows: 10,
+      cellSize: 8,
+      body: [
+        {x: 20, y: 3},
+        {x: 21, y: 3},
+        {x: 21, y: 4},
+        {x: 21, y: 5},
+        {x: 20, y: 5},
+        {x: 19, y: 5},
+      ],
+      food: {x: 20, y: 4},
+      direction: {x: -1, y: 0},
+      foodIndex: 1,
+    };
+
+    const advanced = advanceAutoSnakeRuntime(runtime, "home-snake:0");
+
+    expect(advanced.status).toBe("playing");
+    expect(advanced.runtime.body[0]).toEqual(runtime.food);
+    expect(advanced.runtime.body.length).toBe(runtime.body.length + 1);
+  });
+
+  test("survives long autonomous runs while continuing to eat", () => {
+    for (const seed of ["home-snake:0", "home-snake:1", "home-snake:2"]) {
+      let runtime = createTestSnakeRuntime();
+      for (let step = 0; step < 300; step += 1) {
+        const advanced = advanceAutoSnakeRuntime(runtime, seed);
+        expect(advanced.status).toBe("playing");
+        runtime = advanced.runtime;
+      }
+      expect(runtime.body.length).toBeGreaterThan(10);
+    }
+  });
 });
 
 function manhattan(leftX: number, leftY: number, rightX: number, rightY: number): number {
   return Math.abs(leftX - rightX) + Math.abs(leftY - rightY);
+}
+
+function createTestSnakeRuntime(): AutoSnakeRuntime {
+  return {
+    columns: 24,
+    rows: 10,
+    cellSize: 8,
+    body: [
+      {x: 4, y: 5},
+      {x: 3, y: 5},
+      {x: 2, y: 5},
+      {x: 1, y: 5},
+      {x: 0, y: 5},
+    ],
+    food: {x: 20, y: 5},
+    direction: {x: 1, y: 0},
+    foodIndex: 0,
+  };
 }
