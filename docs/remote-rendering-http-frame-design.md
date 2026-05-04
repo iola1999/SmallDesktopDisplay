@@ -96,7 +96,10 @@ first 300ms after each second boundary. The registry passes explicit scheduler
 progress into the renderer, so the transition is not tied to wall-clock
 millisecond timing. Each changing digit is drawn inside a clipped slot with the
 old glyph sliding out and the new glyph sliding in; the dirty region is limited
-to the clock band.
+to the clock band. After the animation window expires, the registry emits one
+extra `progress=1` cleanup frame for the same clock band. That final partial
+clears any translucent outgoing glyph pixels before the second is considered
+settled.
 
 Brightness uses a separate command channel because it is a local hardware side
 effect, not pixels. The current command response is JSON:

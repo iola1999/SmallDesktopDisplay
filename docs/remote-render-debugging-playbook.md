@@ -207,6 +207,22 @@ function flipProgress(currentTime: Date, durationMs: number): number {
 3. Docker 重启后走 HTTP preview，确认真实服务连续返回局部动画帧。
 4. 最后再看物理设备。
 
+### 5. 动画必须有最终 cleanup 帧
+
+翻动动画不只要有中间帧，还要在动画窗口结束后发送一帧 `progress=1`
+的局部清理帧。否则客户端可能停在最后一个半透明中间帧上，直到下一秒
+新的局部刷新把它覆盖掉，看起来就像上一秒数字在上方留下淡淡虚影。
+
+这次设备侧现象已经确认：不是 TFT 烧屏，也不是设备读取帧、CRC、RLE
+解码、`base_frame_id` 校验或 partial rect 应用逻辑本身坏了。根因是
+服务端只发送了翻动中间帧，没有保证动画结束时再发一帧 settled state。
+补上 cleanup 帧后，物理屏幕上“上一秒数字淡淡残留在秒针上方”的问题消失。
+
+测试时不要只断言 cleanup 帧存在，还要把 full frame 和后续 partial frame
+按客户端逻辑逐帧 apply，最后和服务端 full snapshot 解码后的图像比较。
+这样可以同时验证 `base_frame_id`、dirty rect 覆盖范围、RGB565 编码和预览
+应用逻辑。
+
 ## 何时需要重启 Docker
 
 只要改了这些内容，就重启：

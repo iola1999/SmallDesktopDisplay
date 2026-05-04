@@ -44,6 +44,7 @@ export class DeviceState {
   lastAnimationFrameAt = -1;
   lastClockAnimationSecond = -1;
   lastClockAnimationFrameAt = -1;
+  lastClockAnimationCleanupSecond = -1;
   frame: Buffer<ArrayBufferLike> = Buffer.alloc(0);
   fullFrame: Buffer<ArrayBufferLike> = Buffer.alloc(0);
   latestBaseFrameId = 0;
@@ -197,6 +198,10 @@ export class DeviceRegistry {
       if (elapsed < this.clockFlipAnimationSeconds && now - state.lastClockAnimationFrameAt >= this.animationFrameIntervalSeconds) {
         state.lastClockAnimationFrameAt = now;
         return this.render(state, false, [TIME_REGION], elapsed / this.clockFlipAnimationSeconds);
+      }
+      if (elapsed >= this.clockFlipAnimationSeconds && state.lastClockAnimationCleanupSecond !== currentSecond) {
+        state.lastClockAnimationCleanupSecond = currentSecond;
+        return this.render(state, false, [TIME_REGION], 1);
       }
     }
     if (currentSecond <= state.lastRenderSecond) {

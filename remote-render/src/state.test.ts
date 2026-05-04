@@ -1,6 +1,6 @@
 import {describe, expect, test} from "vitest";
 
-import {decodeFrame} from "./tools/frame-preview.js";
+import {applyFrameToRgba, decodeFrame} from "./tools/frame-preview.js";
 import {DeviceRegistry} from "./state.js";
 
 describe("device registry", () => {
@@ -59,6 +59,43 @@ describe("device registry", () => {
     expect(decoded.fullFrame).toBe(true);
     expect(decoded.rects).toHaveLength(1);
     expect(decoded.rects[0]).toMatchObject({width: 240, height: 240});
+  });
+
+  test("emits a final clock flip cleanup frame after the animation window", async () => {
+    let now = 0;
+    const baseTime = new Date("2026-05-01T12:59:59.000+08:00").getTime();
+    const registry = new DeviceRegistry({
+      monotonic: () => now,
+      now: () => new Date(baseTime + now * 1000),
+      frameIntervalSeconds: 1,
+      animationFrameIntervalSeconds: 0.05,
+      clockFlipAnimationSeconds: 0.3,
+    });
+    const deviceId = "desk-clock-final";
+
+    const first = await registry.getFrame(deviceId, 0, 0);
+    let rgba = applyFrameToRgba(Buffer.alloc(0), 240, decodeFrame(first!));
+    let have = first!.readUInt32LE(8);
+
+    now = 1;
+    const startFlip = await registry.getFrame(deviceId, have, 0);
+    rgba = applyFrameToRgba(rgba, 240, decodeFrame(startFlip!));
+    have = startFlip!.readUInt32LE(8);
+
+    now = 1.1;
+    const midFlip = await registry.getFrame(deviceId, have, 0);
+    rgba = applyFrameToRgba(rgba, 240, decodeFrame(midFlip!));
+    have = midFlip!.readUInt32LE(8);
+
+    now = 1.31;
+    const cleanup = await registry.getFrame(deviceId, have, 0);
+    const decoded = decodeFrame(cleanup!);
+    rgba = applyFrameToRgba(rgba, 240, decoded);
+    const fullSnapshot = applyFrameToRgba(Buffer.alloc(0), 240, decodeFrame(registry.devices.get(deviceId)!.fullFrame));
+
+    expect(decoded.fullFrame).toBe(false);
+    expect(decoded.rects.length).toBeGreaterThan(0);
+    expect(Buffer.compare(rgba, fullSnapshot)).toBe(0);
   });
 
   test("emits a full final frame when a navigation animation expires between polls", async () => {
