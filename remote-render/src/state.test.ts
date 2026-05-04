@@ -16,15 +16,25 @@ describe("device registry", () => {
     expect(second).toBeNull();
   });
 
-  test("short press on home does not emit a new visual frame", async () => {
+  test("short press on home switches the ambient game and sends the full game region", async () => {
     const registry = new DeviceRegistry();
 
     const first = await registry.getFrame("desk-02", 0, 0);
     const frameId = first!.readUInt32LE(8);
+    const initialGame = registry.devices.get("desk-02")!.homeGame!.kind;
 
     expect(registry.recordInput("desk-02", 1, "short_press", 1000)).toBe(true);
 
-    await expect(registry.getFrame("desk-02", frameId, 1)).resolves.toBeNull();
+    const switched = await registry.getFrame("desk-02", frameId, 1);
+    const decoded = decodeFrame(switched!);
+
+    expect(registry.devices.get("desk-02")!.homeGame!.kind).not.toBe(initialGame);
+    expect(decoded.fullFrame).toBe(false);
+    expect(decoded.rects).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({x: HOME_GAME_REGION[0], y: HOME_GAME_REGION[1], width: HOME_GAME_REGION[2] - HOME_GAME_REGION[0], height: HOME_GAME_REGION[3] - HOME_GAME_REGION[1]}),
+      ]),
+    );
   });
 
   test("double press on home forces a full refresh frame", async () => {
@@ -119,23 +129,23 @@ describe("device registry", () => {
     await expect(registry.getFrame(deviceId, firstFrameId, 0)).resolves.toBeNull();
 
     now = 1;
-    const timeFrame = await registry.getFrame(deviceId, firstFrameId, 0);
-    let have = timeFrame!.readUInt32LE(8);
+    const gameFrame = await registry.getFrame(deviceId, firstFrameId, 0);
+    const gameDecoded = decodeFrame(gameFrame!);
+    let have = gameFrame!.readUInt32LE(8);
+
+    expect(gameDecoded.fullFrame).toBe(false);
+    expect(gameDecoded.rects.length).toBeGreaterThan(0);
+    expect(gameDecoded.rects.some((rect) => rect.y >= 136 && rect.y < 226)).toBe(true);
 
     now = 1.31;
     const cleanupFrame = await registry.getFrame(deviceId, have, 0);
     have = cleanupFrame!.readUInt32LE(8);
 
     now = 1.5;
-    const gameFrame = await registry.getFrame(deviceId, have, 0);
-    const decoded = decodeFrame(gameFrame!);
-
-    expect(decoded.fullFrame).toBe(false);
-    expect(decoded.rects.length).toBeGreaterThan(0);
-    expect(decoded.rects.every((rect) => rect.y >= 136 && rect.y < 226)).toBe(true);
+    await expect(registry.getFrame(deviceId, have, 0)).resolves.toBeNull();
   });
 
-  test("sends the full game region when the home game switches", async () => {
+  test("sends the full game region when the home game times out and switches", async () => {
     let now = 0;
     const baseTime = new Date("2026-05-01T12:09:59.000+08:00").getTime();
     const registry = new DeviceRegistry({
@@ -151,8 +161,9 @@ describe("device registry", () => {
     const first = await registry.getFrame(deviceId, 0, 0);
     let rgba = applyFrameToRgba(Buffer.alloc(0), 240, decodeFrame(first!));
     let have = first!.readUInt32LE(8);
+    const initialGame = registry.devices.get(deviceId)!.homeGame!.kind;
 
-    now = 1;
+    now = 600;
     const switched = await registry.getFrame(deviceId, have, 0);
     const decoded = decodeFrame(switched!);
     rgba = applyFrameToRgba(rgba, 240, decoded);
@@ -160,6 +171,7 @@ describe("device registry", () => {
     const fullSnapshot = applyFrameToRgba(Buffer.alloc(0), 240, decodeFrame(registry.devices.get(deviceId)!.fullFrame));
     const [left, top, right, bottom] = HOME_GAME_REGION;
 
+    expect(registry.devices.get(deviceId)!.homeGame!.kind).not.toBe(initialGame);
     expect(decoded.fullFrame).toBe(false);
     expect(decoded.rects).toEqual(
       expect.arrayContaining([

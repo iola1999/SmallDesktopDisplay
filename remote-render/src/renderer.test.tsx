@@ -11,6 +11,7 @@ import {
   renderDeviceView,
 } from "./renderer/index.js";
 import {decodeRgb565Rle, ENCODING_RGB565_RLE} from "./protocol.js";
+import {advanceHomeGameRuntime, createHomeGameRuntime, homeGameRuntimeToViewModel, switchHomeGameRuntime} from "./renderer/services/home-game-state.js";
 
 describe("React remote renderer", () => {
   test("uses Chinese date, weekday, time, and greeting copy", () => {
@@ -59,17 +60,19 @@ describe("React remote renderer", () => {
   });
 
   test("home view renders an autonomous snake in the lower area", () => {
+    const firstGame = createHomeGameRuntime("snake", 0, 0);
+    const nextGame = advanceHomeGameRuntime(firstGame, 1).runtime;
     const first = renderDeviceCanvas({
       currentTime: new Date("2026-05-01T12:34:56.000+08:00"),
       deviceId: "desk-01",
       buttonCount: 0,
-      homeGameStep: 100,
+      homeGame: homeGameRuntimeToViewModel(firstGame),
     });
     const next = renderDeviceCanvas({
       currentTime: new Date("2026-05-01T12:34:56.000+08:00"),
       deviceId: "desk-01",
       buttonCount: 0,
-      homeGameStep: 101,
+      homeGame: homeGameRuntimeToViewModel(nextGame),
     });
 
     const rects = computeDirtyRects(first, next, [[18, 136, 222, 226]]);
@@ -80,18 +83,20 @@ describe("React remote renderer", () => {
     expect(payloadLength).toBeLessThan(8_000);
   });
 
-  test("home view switches the lower game at five-minute boundaries", () => {
+  test("home view switches the lower game from explicit state", () => {
+    const snakeGame = createHomeGameRuntime("snake", 0, 0);
+    const lifeGame = switchHomeGameRuntime(snakeGame, 1);
     const snake = renderDeviceCanvas({
       currentTime: new Date("2026-05-01T12:00:10.000+08:00"),
       deviceId: "desk-01",
       buttonCount: 0,
-      homeGameStep: 12,
+      homeGame: homeGameRuntimeToViewModel(snakeGame),
     });
     const life = renderDeviceCanvas({
-      currentTime: new Date("2026-05-01T12:05:10.000+08:00"),
+      currentTime: new Date("2026-05-01T12:00:10.000+08:00"),
       deviceId: "desk-01",
       buttonCount: 0,
-      homeGameStep: 12,
+      homeGame: homeGameRuntimeToViewModel(lifeGame),
     });
 
     const rects = computeDirtyRects(snake, life, [[18, 136, 222, 226]]);

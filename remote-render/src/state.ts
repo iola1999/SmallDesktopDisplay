@@ -19,6 +19,13 @@ import {
   currentAnimationProgress,
   isAnimationActive,
 } from "./ui-state.js";
+import {
+  createHomeGameRuntime,
+  advanceHomeGameRuntime,
+  homeGameRuntimeToViewModel,
+  switchHomeGameRuntime,
+  type HomeGameRuntime,
+} from "./renderer/services/home-game-state.js";
 
 export class QueuedCommand {
   constructor(
@@ -46,8 +53,8 @@ export class DeviceState {
   lastClockAnimationSecond = -1;
   lastClockAnimationFrameAt = -1;
   lastClockAnimationCleanupSecond = -1;
-  lastHomeGameStep = -1;
-  lastHomeGameSlot = -1;
+  lastHomeGameFrameAt = -1;
+  homeGame: HomeGameRuntime | null = null;
   frame: Buffer<ArrayBufferLike> = Buffer.alloc(0);
   fullFrame: Buffer<ArrayBufferLike> = Buffer.alloc(0);
   latestBaseFrameId = 0;
@@ -147,6 +154,12 @@ export class DeviceRegistry {
       this.render(state, true);
       return true;
     }
+    if (previousPage === "home" && state.ui.page === "home" && event === "short_press" && !state.ui.animation) {
+      state.homeGame = switchHomeGameRuntime(this.ensureHomeGame(state), this.monotonic());
+      state.lastHomeGameFrameAt = this.monotonic();
+      this.render(state, false, [], 1, [HOME_GAME_REGION]);
+      return true;
+    }
     if (previousPage === "home" && state.ui.page === "home" && !state.ui.animation) {
       return true;
     }
@@ -203,43 +216,32 @@ export class DeviceRegistry {
       const elapsed = now - currentSecond * this.frameIntervalSeconds;
       if (elapsed < this.clockFlipAnimationSeconds && now - state.lastClockAnimationFrameAt >= this.animationFrameIntervalSeconds) {
         state.lastClockAnimationFrameAt = now;
-        return this.render(state, false, [TIME_REGION], elapsed / this.clockFlipAnimationSeconds, state.lastHomeGameStep);
+        return this.render(state, false, [TIME_REGION], elapsed / this.clockFlipAnimationSeconds);
       }
       if (elapsed >= this.clockFlipAnimationSeconds && state.lastClockAnimationCleanupSecond !== currentSecond) {
         state.lastClockAnimationCleanupSecond = currentSecond;
-        return this.render(state, false, [TIME_REGION], 1, state.lastHomeGameStep);
+        return this.render(state, false, [TIME_REGION], 1);
       }
     }
     if (currentSecond <= state.lastRenderSecond) {
       if (state.ui.page === "home") {
-        const gameStep = this.currentHomeGameStep(now);
-        if (gameStep > state.lastHomeGameStep) {
-          const gameSlotChanged = this.currentHomeGameSlot(this.now()) !== state.lastHomeGameSlot;
-          state.lastHomeGameStep = gameStep;
-          return this.render(
-            state,
-            false,
-            gameSlotChanged ? [] : [HOME_GAME_REGION],
-            1,
-            gameStep,
-            gameSlotChanged ? [HOME_GAME_REGION] : undefined,
-          );
+        const advanced = this.advanceHomeGameIfDue(state, now);
+        if (advanced) {
+          return this.render(state, false, advanced.status === "playing" ? [HOME_GAME_REGION] : [], 1, [HOME_GAME_REGION]);
         }
       }
       return 0;
     }
     if (state.ui.page === "home") {
-      const gameSlot = this.currentHomeGameSlot(this.now());
       state.lastClockAnimationSecond = currentSecond;
       state.lastClockAnimationFrameAt = now;
-      const gameSlotChanged = gameSlot !== state.lastHomeGameSlot;
+      const advanced = this.advanceHomeGameIfDue(state, now);
       return this.render(
         state,
         false,
-        [TIME_REGION],
+        advanced ? [TIME_REGION, HOME_GAME_REGION] : [TIME_REGION],
         0,
-        state.lastHomeGameStep,
-        gameSlotChanged ? [HOME_GAME_REGION] : undefined,
+        advanced && advanced.status !== "playing" ? [HOME_GAME_REGION] : undefined,
       );
     }
     return this.render(state, false, [TIME_REGION]);
@@ -269,12 +271,17 @@ export class DeviceRegistry {
     fullFrame: boolean,
     regions?: RectTuple[],
     clockFlipProgress?: number,
-    homeGameStep?: number,
     forcedRegions?: RectTuple[],
   ): number {
     const started = this.monotonic();
     const now = this.monotonic();
-    const gameStep = state.ui.page === "home" ? (homeGameStep ?? this.resolveHomeGameStep(state, now, fullFrame)) : undefined;
+    const homeGame = state.ui.page === "home" ? this.ensureHomeGame(state, now) : undefined;
+    if (state.ui.page !== "home") {
+      state.homeGame = null;
+      state.lastHomeGameFrameAt = -1;
+    } else if (fullFrame || state.lastHomeGameFrameAt < 0) {
+      state.lastHomeGameFrameAt = now;
+    }
     const baseFrameId = state.frameId;
     state.frameId += 1;
     state.lastRenderSecond = Math.floor(now / this.frameIntervalSeconds);
@@ -289,11 +296,8 @@ export class DeviceRegistry {
       uiState: state.ui,
       animationProgress: currentAnimationProgress(state.ui, now),
       clockFlipProgress,
-      homeGameStep: gameStep,
+      homeGame: homeGame ? homeGameRuntimeToViewModel(homeGame) : undefined,
     });
-    if (state.ui.page === "home") {
-      state.lastHomeGameSlot = this.currentHomeGameSlot(currentTime);
-    }
     let rendered: RenderedFrame;
     if (fullFrame || state.canvas === null) {
       rendered = renderCanvasFrame(currentCanvas, {frameId: state.frameId, baseFrameId: 0, fullFrame: true});
@@ -323,19 +327,22 @@ export class DeviceRegistry {
     return Math.max(0, this.monotonic() - started);
   }
 
-  private resolveHomeGameStep(state: DeviceState, now: number, fullFrame: boolean): number {
-    if (fullFrame || state.lastHomeGameStep < 0) {
-      state.lastHomeGameStep = this.currentHomeGameStep(now);
+  private ensureHomeGame(state: DeviceState, now = this.monotonic()): HomeGameRuntime {
+    if (!state.homeGame) {
+      state.homeGame = createHomeGameRuntime("snake", 0, now);
     }
-    return state.lastHomeGameStep;
+    return state.homeGame;
   }
 
-  private currentHomeGameStep(now: number): number {
-    return Math.floor(now / this.homeGameFrameIntervalSeconds);
-  }
-
-  private currentHomeGameSlot(currentTime: Date): number {
-    return Math.floor(currentTime.getTime() / (5 * 60 * 1000));
+  private advanceHomeGameIfDue(state: DeviceState, now: number): {status: string} | null {
+    const homeGame = this.ensureHomeGame(state, now);
+    if (state.lastHomeGameFrameAt >= 0 && now - state.lastHomeGameFrameAt < this.homeGameFrameIntervalSeconds) {
+      return null;
+    }
+    const advanced = advanceHomeGameRuntime(homeGame, now);
+    state.homeGame = advanced.runtime;
+    state.lastHomeGameFrameAt = now;
+    return {status: advanced.status};
   }
 
   private queueCommand(state: DeviceState, command: DeviceCommand): void {

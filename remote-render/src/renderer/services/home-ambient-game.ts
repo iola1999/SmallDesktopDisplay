@@ -1,26 +1,11 @@
 import type {HomeAmbientGameViewModel} from "../models/view-model.js";
-import {buildAutoSnakeViewModel} from "./auto-snake.js";
-import {buildConwayLifeViewModel} from "./conway-life.js";
-
-const SWITCH_INTERVAL_MS = 5 * 60 * 1000;
+import {createHomeGameRuntime, homeGameRuntimeToViewModel, type HomeGameKind} from "./home-game-state.js";
 
 interface HomeAmbientGameInput {
-  currentTime: Date;
-  step?: number;
+  kind?: HomeGameKind;
+  round?: number;
 }
 
 export function buildHomeAmbientGameViewModel(input: HomeAmbientGameInput): HomeAmbientGameViewModel {
-  const slot = Math.floor(input.currentTime.getTime() / SWITCH_INTERVAL_MS);
-  const slotElapsedSeconds = Math.floor((input.currentTime.getTime() - slot * SWITCH_INTERVAL_MS) / 1000);
-  const step = input.step ?? slotElapsedSeconds;
-  if (slot % 2 === 0) {
-    return {
-      kind: "snake",
-      snake: buildAutoSnakeViewModel({seed: `home-snake:${slot}`, step}),
-    };
-  }
-  return {
-    kind: "life",
-    life: buildConwayLifeViewModel({seed: `home-life:${slot}`, generation: step}),
-  };
+  return homeGameRuntimeToViewModel(createHomeGameRuntime(input.kind ?? "snake", input.round ?? 0, 0));
 }

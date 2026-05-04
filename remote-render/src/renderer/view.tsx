@@ -1,4 +1,5 @@
 import type {DeviceUiState} from "../ui-state.js";
+import type {HomeAmbientGameViewModel} from "./models/view-model.js";
 import {useDeviceViewModel} from "./hooks/useDeviceViewModel.js";
 import {DetailPage} from "./pages/detail.js";
 import {HomePage} from "./pages/home.js";
@@ -10,16 +11,16 @@ export function DeviceView({
   state,
   progress,
   clockFlipProgress,
-  homeGameStep,
+  homeGame,
 }: {
   currentTime: Date;
   deviceId: string;
   state: DeviceUiState;
   progress: number;
   clockFlipProgress?: number;
-  homeGameStep?: number;
+  homeGame?: HomeAmbientGameViewModel;
 }) {
-  const model = useDeviceViewModel({currentTime, deviceId, state, progress, clockFlipProgress, homeGameStep});
+  const model = useDeviceViewModel({currentTime, deviceId, state, progress, clockFlipProgress, homeGame});
   if (model.page === "settings") return <SettingsPage model={model} />;
   if (model.page === "detail") return <DetailPage model={model} />;
   return <HomePage model={model} />;

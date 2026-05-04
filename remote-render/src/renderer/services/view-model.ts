@@ -7,6 +7,7 @@ import type {
   DetailRowViewModel,
   DetailViewModel,
   DeviceViewModel,
+  HomeAmbientGameViewModel,
   SettingsRowViewModel,
 } from "../models/view-model.js";
 import {buildClockFlipGlyphs} from "./clock-flip.js";
@@ -20,7 +21,7 @@ export interface BuildDeviceViewModelInput {
   state: DeviceUiState;
   progress: number;
   clockFlipProgress?: number;
-  homeGameStep?: number;
+  homeGame?: HomeAmbientGameViewModel;
 }
 
 export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceViewModel {
@@ -41,7 +42,7 @@ export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceVi
     fontKey,
     copy: buildHomeCopy(input.currentTime),
     clockGlyphs: buildClockFlipGlyphs(input.currentTime, {progress: input.clockFlipProgress}),
-    game: buildHomeAmbientGameViewModel({currentTime: input.currentTime, step: input.homeGameStep}),
+    game: input.homeGame ?? buildHomeAmbientGameViewModel({kind: "snake"}),
   };
 }
 

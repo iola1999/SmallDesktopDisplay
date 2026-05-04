@@ -14,28 +14,63 @@ interface ConwayLifeInput {
   cellSize?: number;
 }
 
+export interface ConwayLifeRuntime {
+  seed: string;
+  columns: number;
+  rows: number;
+  cellSize: number;
+  alive: SnakeCellViewModel[];
+  seen: string[];
+  refreshIndex: number;
+}
+
 export function buildConwayLifeViewModel(input: ConwayLifeInput): ConwayLifeViewModel {
+  const generation = Math.max(0, Math.floor(input.generation));
+  let state = createConwayLifeRuntime(input);
+
+  for (let index = 0; index < generation; index += 1) {
+    state = advanceConwayLifeRuntime(state).runtime;
+  }
+
+  return conwayLifeRuntimeToViewModel(state);
+}
+
+export function createConwayLifeRuntime(input: {seed: string; columns?: number; rows?: number; cellSize?: number}): ConwayLifeRuntime {
   const columns = input.columns ?? DEFAULT_COLUMNS;
   const rows = input.rows ?? DEFAULT_ROWS;
   const cellSize = input.cellSize ?? DEFAULT_CELL_SIZE;
-  let alive = seededCells(input.seed, columns, rows);
-  const generation = Math.max(0, Math.floor(input.generation));
-  const seen = new Set<string>([cellSignature(alive)]);
+  const alive = seededCells(input.seed, columns, rows);
+  return {seed: input.seed, columns, rows, cellSize, alive, seen: [cellSignature(alive)], refreshIndex: 0};
+}
 
-  for (let index = 0; index < generation; index += 1) {
-    const next = evolveConwayCells(alive, columns, rows);
-    const signature = cellSignature(next);
-    if (next.length < minimumActiveCells(columns, rows) || seen.has(signature)) {
-      alive = seededCells(`${input.seed}:refresh:${index}`, columns, rows);
-      seen.clear();
-      seen.add(cellSignature(alive));
-      continue;
-    }
-    alive = next;
-    seen.add(signature);
+export function advanceConwayLifeRuntime(state: ConwayLifeRuntime): {runtime: ConwayLifeRuntime; status: "playing"} {
+  const next = evolveConwayCells(state.alive, state.columns, state.rows);
+  const signature = cellSignature(next);
+  if (next.length < minimumActiveCells(state.columns, state.rows) || state.seen.includes(signature)) {
+    const refreshIndex = state.refreshIndex + 1;
+    const alive = seededCells(`${state.seed}:refresh:${refreshIndex}`, state.columns, state.rows);
+    return {
+      runtime: {
+        ...state,
+        alive,
+        seen: [cellSignature(alive)],
+        refreshIndex,
+      },
+      status: "playing",
+    };
   }
+  return {
+    runtime: {
+      ...state,
+      alive: next,
+      seen: [...state.seen.slice(-180), signature],
+    },
+    status: "playing",
+  };
+}
 
-  return {columns, rows, cellSize, alive};
+export function conwayLifeRuntimeToViewModel(state: ConwayLifeRuntime): ConwayLifeViewModel {
+  return {columns: state.columns, rows: state.rows, cellSize: state.cellSize, alive: state.alive};
 }
 
 export function evolveConwayCells(alive: SnakeCellViewModel[], columns: number, rows: number): SnakeCellViewModel[] {

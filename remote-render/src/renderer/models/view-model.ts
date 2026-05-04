@@ -50,6 +50,10 @@ export type HomeAmbientGameViewModel =
   | {
       kind: "life";
       life: ConwayLifeViewModel;
+    }
+  | {
+      kind: "breakout";
+      breakout: AutoBreakoutViewModel;
     };
 
 export interface ConwayLifeViewModel {
@@ -57,6 +61,42 @@ export interface ConwayLifeViewModel {
   rows: number;
   cellSize: number;
   alive: SnakeCellViewModel[];
+}
+
+export interface AutoBreakoutViewModel {
+  width: number;
+  height: number;
+  bricks: BreakoutBrickViewModel[];
+  balls: BreakoutBallViewModel[];
+  drops: BreakoutDropViewModel[];
+  paddle: BreakoutPaddleViewModel;
+}
+
+export interface BreakoutBrickViewModel {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  strength: number;
+}
+
+export interface BreakoutBallViewModel {
+  x: number;
+  y: number;
+  radius: number;
+}
+
+export interface BreakoutDropViewModel {
+  x: number;
+  y: number;
+  size: number;
+}
+
+export interface BreakoutPaddleViewModel {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface SettingsViewModel extends BaseViewModel {

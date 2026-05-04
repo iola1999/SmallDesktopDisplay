@@ -1,55 +1,53 @@
 import {describe, expect, test} from "vitest";
 
 import {buildHomeAmbientGameViewModel} from "./home-ambient-game.js";
+import {advanceHomeGameRuntime, createHomeGameRuntime, switchHomeGameRuntime} from "./home-game-state.js";
 
 describe("home ambient game view model", () => {
-  test("switches between snake and Conway life every five minutes", () => {
-    const snake = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:00:00.000+08:00"), step: 10});
-    const life = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:05:00.000+08:00"), step: 10});
-    const snakeAgain = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:10:00.000+08:00"), step: 10});
+  test("builds a stable default game without wall-clock input", () => {
+    const first = buildHomeAmbientGameViewModel({kind: "snake", round: 0});
+    const again = buildHomeAmbientGameViewModel({kind: "snake", round: 0});
 
-    expect(snake.kind).toBe("snake");
+    expect(first.kind).toBe("snake");
+    expect(again).toEqual(first);
+  });
+
+  test("manual switch cycles snake, life, and breakout", () => {
+    const snake = createHomeGameRuntime("snake", 0, 0);
+    const life = switchHomeGameRuntime(snake, 3);
+    const breakout = switchHomeGameRuntime(life, 6);
+    const snakeAgain = switchHomeGameRuntime(breakout, 9);
+
     expect(life.kind).toBe("life");
+    expect(breakout.kind).toBe("breakout");
     expect(snakeAgain.kind).toBe("snake");
   });
 
-  test("regenerates Conway seeds for different life windows", () => {
-    const first = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:05:00.000+08:00"), step: 0});
-    const second = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:15:00.000+08:00"), step: 0});
+  test("ten-minute timeout switches to the next game", () => {
+    const runtime = createHomeGameRuntime("snake", 0, 0);
+    const advanced = advanceHomeGameRuntime(runtime, 600);
 
-    expect(first.kind).toBe("life");
-    expect(second.kind).toBe("life");
-    if (first.kind === "life" && second.kind === "life") {
-      expect(second.life.alive).not.toEqual(first.life.alive);
-    }
+    expect(advanced.status).toBe("timeout");
+    expect(advanced.runtime.kind).toBe("life");
+    expect(advanced.runtime.startedAt).toBe(600);
   });
 
-  test("advances Conway life inside the same five-minute window from wall clock time", () => {
-    const start = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:05:00.000+08:00")});
-    const later = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:06:00.000+08:00")});
+  test("normal ticks advance the current game without switching from wall-clock windows", () => {
+    const runtime = createHomeGameRuntime("snake", 0, 0);
+    const advanced = advanceHomeGameRuntime(runtime, 599);
 
-    expect(start.kind).toBe("life");
-    expect(later.kind).toBe("life");
-    if (start.kind === "life" && later.kind === "life") {
-      expect(later.life.alive).not.toEqual(start.life.alive);
-    }
+    expect(advanced.status).toBe("playing");
+    expect(advanced.runtime.kind).toBe("snake");
+    expect(advanced.runtime.snake?.body).not.toEqual(runtime.snake?.body);
   });
 
-  test("advances snake from wall clock time inside a five-minute snake window", () => {
-    const start = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:00:00.000+08:00")});
-    const later = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:03:00.000+08:00")});
+  test("finished rounds restart the same game instead of jumping by time", () => {
+    const runtime = createHomeGameRuntime("breakout", 4, 10);
+    runtime.breakout!.bricks = [];
+    const advanced = advanceHomeGameRuntime(runtime, 11);
 
-    expect(start.kind).toBe("snake");
-    expect(later.kind).toBe("snake");
-    if (start.kind === "snake" && later.kind === "snake") {
-      expect(later.snake).not.toEqual(start.snake);
-    }
-  });
-
-  test("uses explicit game step when the frame scheduler freezes game state", () => {
-    const start = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:00:00.000+08:00"), step: 0});
-    const later = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:03:00.000+08:00"), step: 0});
-
-    expect(start).toEqual(later);
+    expect(advanced.status).toBe("won");
+    expect(advanced.runtime.kind).toBe("breakout");
+    expect(advanced.runtime.round).toBe(5);
   });
 });

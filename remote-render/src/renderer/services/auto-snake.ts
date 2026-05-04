@@ -12,7 +12,10 @@ interface AutoSnakeInput {
   cellSize?: number;
 }
 
-interface SnakeState {
+export interface AutoSnakeRuntime {
+  columns: number;
+  rows: number;
+  cellSize: number;
   body: SnakeCellViewModel[];
   food: SnakeCellViewModel;
   direction: SnakeCellViewModel;
@@ -27,22 +30,25 @@ const DIRECTIONS: SnakeCellViewModel[] = [
 ];
 
 export function buildAutoSnakeViewModel(input: AutoSnakeInput): AutoSnakeViewModel {
+  const step = Math.max(0, Math.floor(input.step));
+  let state = createAutoSnakeRuntime(input);
+
+  for (let index = 0; index < step; index += 1) {
+    state = advanceAutoSnakeRuntime(state, input.seed).runtime;
+  }
+
+  return autoSnakeRuntimeToViewModel(state);
+}
+
+export function createAutoSnakeRuntime(input: {columns?: number; rows?: number; cellSize?: number} = {}): AutoSnakeRuntime {
   const columns = input.columns ?? DEFAULT_COLUMNS;
   const rows = input.rows ?? DEFAULT_ROWS;
   const cellSize = input.cellSize ?? DEFAULT_CELL_SIZE;
-  const step = Math.max(0, Math.floor(input.step));
-  let state = initialState(columns, rows);
-
-  for (let index = 0; index < step; index += 1) {
-    state = advanceSnake(state, columns, rows, input.seed);
-  }
-
-  return {columns, rows, cellSize, body: state.body, food: state.food};
-}
-
-function initialState(columns: number, rows: number): SnakeState {
   const y = Math.floor(rows / 2);
   return {
+    columns,
+    rows,
+    cellSize,
     body: [
       {x: 4, y},
       {x: 3, y},
@@ -56,21 +62,30 @@ function initialState(columns: number, rows: number): SnakeState {
   };
 }
 
-function advanceSnake(state: SnakeState, columns: number, rows: number, seed: string): SnakeState {
-  const direction = chooseDirection(state, columns, rows);
+export function advanceAutoSnakeRuntime(state: AutoSnakeRuntime, seed: string): {runtime: AutoSnakeRuntime; status: "playing" | "failed" | "won"} {
+  const direction = chooseDirection(state, state.columns, state.rows);
   const head = state.body[0];
   const nextHead = {x: head.x + direction.x, y: head.y + direction.y};
-  if (!inside(nextHead, columns, rows)) return initialState(columns, rows);
+  if (!inside(nextHead, state.columns, state.rows)) {
+    return {runtime: state, status: "failed"};
+  }
 
   const eats = sameCell(nextHead, state.food);
   const body = [nextHead, ...state.body];
   if (!eats) body.pop();
   const foodIndex = eats ? state.foodIndex + 1 : state.foodIndex;
-  const food = eats ? nextFood(seed, foodIndex, body, columns, rows) : state.food;
-  return {body, food, direction, foodIndex};
+  if (body.length >= state.columns * state.rows) {
+    return {runtime: {...state, body, direction, foodIndex}, status: "won"};
+  }
+  const food = eats ? nextFood(seed, foodIndex, body, state.columns, state.rows) : state.food;
+  return {runtime: {...state, body, food, direction, foodIndex}, status: "playing"};
 }
 
-function chooseDirection(state: SnakeState, columns: number, rows: number): SnakeCellViewModel {
+export function autoSnakeRuntimeToViewModel(state: AutoSnakeRuntime): AutoSnakeViewModel {
+  return {columns: state.columns, rows: state.rows, cellSize: state.cellSize, body: state.body, food: state.food};
+}
+
+function chooseDirection(state: AutoSnakeRuntime, columns: number, rows: number): SnakeCellViewModel {
   const occupied = new Set(state.body.slice(0, -1).map(cellKey));
   const candidates = DIRECTIONS.filter((direction) => {
     if (direction.x === -state.direction.x && direction.y === -state.direction.y) return false;
