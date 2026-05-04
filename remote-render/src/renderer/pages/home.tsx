@@ -1,5 +1,5 @@
 import {FrameBackground} from "../components/frame-background.js";
-import {Screen, Text} from "../components/primitives.js";
+import {Box, Screen, Text} from "../components/primitives.js";
 import type {ClockFlipGlyphViewModel, HomeViewModel} from "../models/view-model.js";
 import {mixColor} from "../services/color.js";
 
@@ -24,6 +24,7 @@ export function HomePage({model}: {model: HomeViewModel}) {
 }
 
 function ClockGlyph({glyph}: {glyph: ClockFlipGlyphViewModel}) {
+  const baseStyle = {x: 0, width: glyph.width, height: glyph.height, fontSize: glyph.fontSize, alignItems: "center"} as const;
   if (glyph.previousChar === glyph.char) {
     return (
       <Text style={{x: glyph.x, y: glyph.y, width: glyph.width, height: glyph.height, fontSize: glyph.fontSize, color: glyph.color, alignItems: "center"}}>
@@ -32,17 +33,18 @@ function ClockGlyph({glyph}: {glyph: ClockFlipGlyphViewModel}) {
     );
   }
 
-  const eased = 1 - Math.pow(1 - glyph.progress, 3);
-  const travel = glyph.height * 0.38;
+  const eased = glyph.progress;
+  const travel = glyph.height * 0.5;
   const muted = mixColor(glyph.color, "#05080a", 0.72);
   return (
-    <>
-      <Text style={{x: glyph.x, y: glyph.y - Math.round(travel * eased), width: glyph.width, height: glyph.height, fontSize: glyph.fontSize, color: mixColor(glyph.color, muted, eased), alignItems: "center"}}>
+    <Box style={{x: glyph.x, y: glyph.y, width: glyph.width, height: glyph.height, backgroundColor: "#05080a", overflow: "hidden"}}>
+      <Text style={{...baseStyle, y: -Math.round(travel * eased), color: mixColor(glyph.color, muted, eased), opacity: 1 - eased * 0.35}}>
         {glyph.previousChar}
       </Text>
-      <Text style={{x: glyph.x, y: glyph.y + Math.round(travel * (1 - eased)), width: glyph.width, height: glyph.height, fontSize: glyph.fontSize, color: mixColor(muted, glyph.color, eased), alignItems: "center"}}>
+      <Text style={{...baseStyle, y: Math.round(travel * (1 - eased)), color: mixColor(muted, glyph.color, eased), opacity: 0.35 + eased * 0.65}}>
         {glyph.char}
       </Text>
-    </>
+      <Box style={{x: 1, y: Math.round(glyph.height / 2), width: Math.max(1, glyph.width - 2), height: 1, backgroundColor: "#102326", opacity: 0.75}} />
+    </Box>
   );
 }

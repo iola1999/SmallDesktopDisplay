@@ -9,13 +9,15 @@ export function DeviceView({
   deviceId,
   state,
   progress,
+  clockFlipProgress,
 }: {
   currentTime: Date;
   deviceId: string;
   state: DeviceUiState;
   progress: number;
+  clockFlipProgress?: number;
 }) {
-  const model = useDeviceViewModel({currentTime, deviceId, state, progress});
+  const model = useDeviceViewModel({currentTime, deviceId, state, progress, clockFlipProgress});
   if (model.page === "settings") return <SettingsPage model={model} />;
   if (model.page === "detail") return <DetailPage model={model} />;
   return <HomePage model={model} />;

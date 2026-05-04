@@ -15,14 +15,20 @@ const SECONDS_LAYOUT = [
   {x: 202, width: 14},
 ] as const;
 
-export function buildClockFlipGlyphs(currentTime: Date, durationMs = 300): ClockFlipGlyphViewModel[] {
+export interface BuildClockFlipGlyphsOptions {
+  durationMs?: number;
+  progress?: number;
+}
+
+export function buildClockFlipGlyphs(currentTime: Date, options: BuildClockFlipGlyphsOptions = {}): ClockFlipGlyphViewModel[] {
   const previousTime = new Date(currentTime.getTime() - 1000);
+  const progress = options.progress ?? flipProgress(currentTime, options.durationMs ?? 300);
   return [
     ...buildGlyphs({
       group: "time",
       current: buildHomeCopy(currentTime).timeText,
       previous: buildHomeCopy(previousTime).timeText,
-      progress: flipProgress(currentTime, durationMs),
+      progress,
       y: 68,
       height: 62,
       fontSize: 52,
@@ -33,7 +39,7 @@ export function buildClockFlipGlyphs(currentTime: Date, durationMs = 300): Clock
       group: "seconds",
       current: buildHomeCopy(currentTime).secondsText,
       previous: buildHomeCopy(previousTime).secondsText,
-      progress: flipProgress(currentTime, durationMs),
+      progress,
       y: 92,
       height: 24,
       fontSize: 18,

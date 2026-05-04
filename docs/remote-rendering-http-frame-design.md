@@ -92,9 +92,11 @@ time-of-day greeting, and a short subtitle. Device id, tap count, sync status,
 RSSI, and other development-only labels are intentionally kept out of the first
 screen; detailed diagnostics live under Settings -> Device.
 Hour, minute, and second digits use a server-side flip-style transition for the
-first 300ms after each second boundary. The registry schedules those Home clock
-frames at the same capped animation cadence as page transitions and limits the
-dirty region to the clock band.
+first 300ms after each second boundary. The registry passes explicit scheduler
+progress into the renderer, so the transition is not tied to wall-clock
+millisecond timing. Each changing digit is drawn inside a clipped slot with the
+old glyph sliding out and the new glyph sliding in; the dirty region is limited
+to the clock band.
 
 Brightness uses a separate command channel because it is a local hardware side
 effect, not pixels. The current command response is JSON:

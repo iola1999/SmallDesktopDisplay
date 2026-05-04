@@ -35,25 +35,31 @@ function rasterHostTree(children: HostNode[], fontKey: string): CanvasImage {
 }
 
 function layoutHostNode(host: HostNode, ctx: SKRSContext2D, fontKey: string): LayoutNode {
+  const yoga = buildYogaTree(host, ctx, fontKey);
+  yoga.calculateLayout(SCREEN_WIDTH, SCREEN_HEIGHT, Direction.LTR);
+  const layout = readLayout(host, yoga);
+  yoga.freeRecursive();
+  return layout;
+}
+
+function buildYogaTree(host: HostNode, ctx: SKRSContext2D, fontKey: string): YogaNode {
   const yoga = Yoga.Node.create();
-  applyYogaStyle(yoga, styleOf(host), host.type);
+  const parentStyle = styleOf(host);
+  applyYogaStyle(yoga, parentStyle, host.type);
   for (const child of host.children) {
-    const childYoga = Yoga.Node.create();
+    let childYoga: YogaNode;
     if (child instanceof HostText) {
-      const parentStyle = styleOf(host);
+      childYoga = Yoga.Node.create();
       ctx.font = `${parentStyle.fontSize ?? 16}px ${parentStyle.fontFamily ?? fontFamily(fontKey)}`;
       const metrics = ctx.measureText(child.text);
       childYoga.setWidth(Math.ceil(metrics.width));
       childYoga.setHeight(Math.ceil((parentStyle.fontSize ?? 16) * 1.3));
     } else {
-      applyYogaStyle(childYoga, styleOf(child), child.type);
+      childYoga = buildYogaTree(child, ctx, fontKey);
     }
     yoga.insertChild(childYoga, yoga.getChildCount());
   }
-  yoga.calculateLayout(SCREEN_WIDTH, SCREEN_HEIGHT, Direction.LTR);
-  const layout = readLayout(host, yoga);
-  yoga.freeRecursive();
-  return layout;
+  return yoga;
 }
 
 function readLayout(host: HostNode, yoga: YogaNode): LayoutNode {
@@ -84,6 +90,8 @@ function paintLayout(ctx: SKRSContext2D, node: LayoutNode, parentX: number, pare
   const y = parentY + node.y;
   if (node.host instanceof HostText) return;
   const currentFontFamily = node.style.fontFamily ?? inheritedFontFamily;
+  ctx.save();
+  ctx.globalAlpha *= node.style.opacity ?? 1;
 
   if (node.style.backgroundColor) {
     fillRoundedRect(ctx, x, y, node.width, node.height, node.style.borderRadius ?? 0, node.style.backgroundColor);
@@ -103,9 +111,15 @@ function paintLayout(ctx: SKRSContext2D, node: LayoutNode, parentX: number, pare
     }
     ctx.fillText(textValue, textX, y + Math.max(0, (node.height - fontSize * 1.1) / 2));
   }
+  if (node.style.overflow === "hidden") {
+    ctx.beginPath();
+    ctx.rect(x, y, node.width, node.height);
+    ctx.clip();
+  }
   for (const child of node.children) {
     paintLayout(ctx, child, x, y, currentFontFamily);
   }
+  ctx.restore();
 }
 
 function collectText(node: HostNode): string {

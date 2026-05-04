@@ -18,6 +18,7 @@ export interface BuildDeviceViewModelInput {
   deviceId: string;
   state: DeviceUiState;
   progress: number;
+  clockFlipProgress?: number;
 }
 
 export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceViewModel {
@@ -37,7 +38,7 @@ export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceVi
     page: "home",
     fontKey,
     copy: buildHomeCopy(input.currentTime),
-    clockGlyphs: buildClockFlipGlyphs(input.currentTime),
+    clockGlyphs: buildClockFlipGlyphs(input.currentTime, {progress: input.clockFlipProgress}),
   };
 }
 

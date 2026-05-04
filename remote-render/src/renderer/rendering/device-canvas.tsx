@@ -11,6 +11,7 @@ export interface RenderDeviceCanvasOptions {
   buttonCount: number;
   uiState?: DeviceUiState;
   animationProgress?: number;
+  clockFlipProgress?: number;
 }
 
 export function renderDeviceCanvas(options: RenderDeviceCanvasOptions): CanvasImage {
@@ -18,7 +19,7 @@ export function renderDeviceCanvas(options: RenderDeviceCanvasOptions): CanvasIm
   const progress = options.animationProgress ?? 1;
   const fontKey = resolveFontKeyForView(state);
   const page = rasterizeElement(
-    <DeviceView currentTime={options.currentTime} deviceId={options.deviceId} state={state} progress={progress} />,
+    <DeviceView currentTime={options.currentTime} deviceId={options.deviceId} state={state} progress={progress} clockFlipProgress={options.clockFlipProgress} />,
     fontKey,
   );
 

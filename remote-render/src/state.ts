@@ -196,7 +196,7 @@ export class DeviceRegistry {
       const elapsed = now - currentSecond * this.frameIntervalSeconds;
       if (elapsed < this.clockFlipAnimationSeconds && now - state.lastClockAnimationFrameAt >= this.animationFrameIntervalSeconds) {
         state.lastClockAnimationFrameAt = now;
-        return this.render(state, false, [TIME_REGION]);
+        return this.render(state, false, [TIME_REGION], elapsed / this.clockFlipAnimationSeconds);
       }
     }
     if (currentSecond <= state.lastRenderSecond) {
@@ -206,7 +206,7 @@ export class DeviceRegistry {
       state.lastClockAnimationSecond = currentSecond;
       state.lastClockAnimationFrameAt = now;
     }
-    return this.render(state, false, [TIME_REGION]);
+    return this.render(state, false, [TIME_REGION], state.ui.page === "home" ? 0 : undefined);
   }
 
   private selectFrameForClient(state: DeviceState, have: number): Buffer | null {
@@ -228,7 +228,7 @@ export class DeviceRegistry {
     return uptimeMs < state.lastInputUptimeMs;
   }
 
-  private render(state: DeviceState, fullFrame: boolean, regions?: RectTuple[]): number {
+  private render(state: DeviceState, fullFrame: boolean, regions?: RectTuple[], clockFlipProgress?: number): number {
     const started = this.monotonic();
     const now = this.monotonic();
     const baseFrameId = state.frameId;
@@ -243,6 +243,7 @@ export class DeviceRegistry {
       buttonCount: state.buttonCount,
       uiState: state.ui,
       animationProgress: currentAnimationProgress(state.ui, now),
+      clockFlipProgress,
     });
     let rendered: RenderedFrame;
     if (fullFrame || state.canvas === null) {

@@ -23,8 +23,8 @@ describe("React remote renderer", () => {
     expect(copy.greeting).toBe("早上好");
   });
 
-  test("clock flip model animates hour, minute, and second digit changes", () => {
-    const glyphs = buildClockFlipGlyphs(new Date("2026-05-01T13:00:00.100+08:00"), 300);
+  test("clock flip model uses explicit scheduler progress for hour, minute, and second digit changes", () => {
+    const glyphs = buildClockFlipGlyphs(new Date("2026-05-01T13:00:00.900+08:00"), {progress: 0.5});
 
     const flippingGlyphs = glyphs.filter((glyph) => glyph.previousChar !== glyph.char);
 
@@ -32,7 +32,30 @@ describe("React remote renderer", () => {
     expect(flippingGlyphs.map((glyph) => glyph.previousChar).join("")).toContain("2");
     expect(flippingGlyphs.map((glyph) => glyph.previousChar).join("")).toContain("5");
     expect(flippingGlyphs.map((glyph) => glyph.previousChar).join("")).toContain("9");
-    expect(flippingGlyphs.every((glyph) => glyph.progress > 0 && glyph.progress < 1)).toBe(true);
+    expect(flippingGlyphs.every((glyph) => glyph.progress === 0.5)).toBe(true);
+  });
+
+  test("clock flip intermediate canvas differs from old and settled clock frames", () => {
+    const previous = renderDeviceCanvas({
+      currentTime: new Date("2026-05-01T12:59:59.900+08:00"),
+      deviceId: "desk-01",
+      buttonCount: 0,
+    });
+    const flipping = renderDeviceCanvas({
+      currentTime: new Date("2026-05-01T13:00:00.900+08:00"),
+      deviceId: "desk-01",
+      buttonCount: 0,
+      clockFlipProgress: 0.5,
+    });
+    const settled = renderDeviceCanvas({
+      currentTime: new Date("2026-05-01T13:00:00.900+08:00"),
+      deviceId: "desk-01",
+      buttonCount: 0,
+      clockFlipProgress: 1,
+    });
+
+    expect(Buffer.compare(flipping.rgba, previous.rgba)).not.toBe(0);
+    expect(Buffer.compare(flipping.rgba, settled.rgba)).not.toBe(0);
   });
 
   test("renders a full-screen RGB565 frame from React host primitives", () => {

@@ -39,4 +39,5 @@ export interface Style {
   fontSize?: number;
   fontFamily?: string;
   opacity?: number;
+  overflow?: "hidden" | "visible";
 }
