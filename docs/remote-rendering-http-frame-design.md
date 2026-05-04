@@ -64,7 +64,9 @@ Current remote UI gesture mapping:
 - Home: `long_press` enters Settings.
 - Settings: `short_press` moves the selected item.
 - Settings: `long_press` enters the selected detail page.
-- Brightness detail: `short_press` cycles brightness, `long_press` applies it.
+- Brightness detail: `short_press` applies the next brightness immediately and
+  queues a `set_brightness` command for the device.
+- Font detail: `short_press` applies the next renderer font immediately.
 - Settings/Detail: `double_press` goes back one level.
 
 The firmware only recognizes gestures and posts them; all page routing lives in
@@ -73,6 +75,8 @@ the Docker service.
 Current Settings items:
 
 - `Brightness`: local backlight PWM, changed through the command channel.
+- `Font`: server-side renderer font selection. It changes future frame pixels
+  only; no firmware command is needed.
 - `Device`: read-only client diagnostics reported by the ESP8266, including
   heap free bytes, max free heap block, heap fragmentation, WiFi RSSI, and
   uptime.
@@ -98,9 +102,10 @@ effect, not pixels. The current command response is JSON:
 ```
 
 `GET /commands` returns `204` when there is no command newer than `after`.
-The device applies `set_brightness` locally through PWM, stores the value in
-EEPROM when `persist=true`, then advances its local `after` id so the command is
-not applied repeatedly.
+The service emits `set_brightness` immediately when the Brightness detail value
+changes. The device applies it locally through PWM, stores the value in EEPROM
+when `persist=true`, then advances its local `after` id so the command is not
+applied repeatedly.
 
 The device also POSTs local status after startup, after applying brightness, and
 periodically while connected:
@@ -262,6 +267,11 @@ ESP8266 HTTP client can preserve the TCP socket. The reusable socket is reset on
 request failure, invalid frame headers/bodies, stale partial frames, and remote
 base URL changes.
 
+The Node service must send binary frame responses with `Content-Length`.
+`Transfer-Encoding: chunked` is intentionally avoided because the firmware reads
+the response stream as the raw `SDD1` frame body; chunk-size prefixes would
+appear before the magic bytes and make the frame header invalid.
+
 Before Keep-Alive, normal small dirty frames usually showed
 `client_overhead_ms` around `12-18ms`, and one forced full-frame resync showed a
 `94ms` overhead spike. Keep-Alive changed static RAM from `37756B` to `37924B`
@@ -317,7 +327,8 @@ Responsibilities:
 - `state.ts`: track device frame ids, button sequence, dirty frames, and full-frame
   resync snapshots. It also schedules animation frames after navigation input.
 - `ui-state.ts`: pure state machine for pages, selection, detail routing, and
-  animation progress.
+  animation progress. Brightness and font details apply changes immediately on
+  `short_press`.
 - `server.ts`: expose the Node HTTP routes.
 - `tools/frame-preview.ts`: local HTTP frame client that decodes `SDD1` frames and
   writes PNG previews for debugging without photographing the physical display.
@@ -436,11 +447,12 @@ In scope:
 - Per-second dirty rectangle refresh for the clock region.
 - Server-side settings/detail navigation state.
 - Server-side brightness detail UI and a JSON command channel for local
-  hardware side effects.
+  hardware side effects. Brightness changes apply immediately on `short_press`.
+- Server-side font selection for renderer text output.
 - Server-side animation capped at 20 FPS by the registry scheduler. Page
   entry/back transitions slide and fade the destination page, Settings selection
-  changes pulse the selected row, Brightness changes animate the value/bar/knob,
-  and Home short taps glow only the footer region.
+  changes pulse the selected row, and Brightness changes animate the value,
+  bar, and knob.
 - Local device-side hold-progress overlay.
 - Interleaved tile-strip dirty frames for large page changes.
 - Server/device frame diagnostics for large updates, including server wait,

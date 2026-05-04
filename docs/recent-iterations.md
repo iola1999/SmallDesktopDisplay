@@ -47,15 +47,22 @@ project moved to the thin-client architecture.
   - Home: `long_press` enters Settings.
   - Settings: `short_press` moves selection.
   - Settings: `long_press` opens the selected detail page.
-  - Brightness detail: `short_press` cycles brightness, `long_press` applies it.
+  - Brightness detail: `short_press` applies the next brightness immediately.
+  - Font detail: `short_press` applies the next renderer font immediately.
   - Settings/Detail: `double_press` goes back one level.
 - Added remote brightness control through a JSON command channel. The ESP8266
-  applies PWM locally and persists the selected brightness when commanded.
+  applies PWM locally and persists the selected brightness when commanded. The
+  service now sends that command as soon as brightness is changed in the detail
+  page, so the physical backlight follows the visible setting without a separate
+  confirm step.
+- Added server-side font selection for the renderer. The custom React/Yoga/Skia
+  renderer now applies the chosen font during text painting, not only during
+  text measurement.
 - Added device status sync for persisted brightness plus ESP8266-side
   diagnostics: free heap, max free heap block, heap fragmentation, WiFi RSSI,
   and uptime.
-- Settings currently contains `Brightness`, `Device`, `Renderer`, and `About`.
-  Placeholder-only items stay hidden until real features back them.
+- Settings currently contains `Brightness`, `Font`, `Device`, `Renderer`, and
+  `About`.
 - Reworked Home into a Chinese desktop clock with Chinese date, weekday, large
   `HH:MM`, compact seconds, a greeting, and a short subtitle. Development-only
   sync/RSSI text is intentionally kept off the first screen.
@@ -144,3 +151,7 @@ npm run preview -- \
 - If the screen shows only a partial region after a restart, first confirm with
   `npm run preview` whether `have=0` or a future `have` is incorrectly
   receiving a partial frame.
+- If the ESP8266 reports invalid frame headers after a backend change, confirm
+  with `curl --raw` that the frame body starts with `SDD1`. Node responses must
+  include `Content-Length`; chunked transfer encoding puts chunk-size bytes
+  before the binary frame and breaks the firmware stream parser.

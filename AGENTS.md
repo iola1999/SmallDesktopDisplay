@@ -40,11 +40,11 @@ ESP-12E 模块桌面小屏显示器，基于 PlatformIO + Arduino framework。�
 
 - [remote-render](remote-render) — Dockerized Node.js + React/Yoga/Skia 远程渲染服务
 - [remote-render/src/tools/frame-preview.ts](remote-render/src/tools/frame-preview.ts) — 本地 HTTP 帧预览客户端，生成 PNG 辅助排查显示问题
-- [src/main.cpp](src/main.cpp) — 设备入口、远程帧轮询、按键上报
-- [src/remote](src/remote) — HTTP 帧协议、帧拉取、输入事件 POST
+- [src/main.cpp](src/main.cpp) — 设备入口、远程帧轮询、按键上报、命令轮询和状态同步
+- [src/remote](src/remote) — HTTP 帧协议、帧拉取、输入事件 POST、状态 POST 和命令 GET
 - [src/ui/TftFrameSink.cpp](src/ui/TftFrameSink.cpp) — RGB565 矩形帧到 TFT 的输出桥接
 - [src/Display.cpp](src/Display.cpp) / [src/Input.cpp](src/Input.cpp) / [src/Net.cpp](src/Net.cpp) / [src/Storage.cpp](src/Storage.cpp) — 保留的硬件基础层
-- [src/app](src/app) — 纯 C++ 配置、背光 PWM、WiFi 配网页生成
+- [src/app](src/app) — 纯 C++ 配置、状态文本、帧诊断、长按反馈、Keep-Alive 策略和 WiFi 配网页生成
 - `test/test_native_app_core` — Host 侧基础逻辑与帧协议测试
 
 ## 代码风格
@@ -55,4 +55,4 @@ ESP-12E 模块桌面小屏显示器，基于 PlatformIO + Arduino framework。�
 
 ## 提交规范
 
-Conventional Commits：`feat:` / `fix:` / `chore:` / `refactor:` / `docs:`。历史仅有一条 `chore: init`，从本次开始遵守。
+Conventional Commits：`feat:` / `fix:` / `chore:` / `refactor:` / `docs:`。提交信息保持简短、具体，并与实际变更范围一致。

@@ -4,7 +4,7 @@
 
 SmallDesktopDisplay is a desktop mini-display project based on ESP-12E / ESP8266. The current mainline uses a remote-rendering architecture: the device firmware acts as a lightweight network display client, handling WiFi, buttons, backlight, persistent configuration, and TFT output, while a Docker service renders the actual 240x240 UI frames and maintains page state.
 
-The default UI is now a remotely rendered Chinese desktop clock with a basic settings page. Most UI logic lives on the server side, so new screens, animation, and features can be added without reflashing the device firmware every time.
+The default UI is now a remotely rendered Chinese desktop clock with a small settings flow for brightness, font selection, device diagnostics, and renderer status. Most UI logic lives on the server side, so new screens, animation, and features can be added without reflashing the device firmware every time.
 
 ## Architecture
 
