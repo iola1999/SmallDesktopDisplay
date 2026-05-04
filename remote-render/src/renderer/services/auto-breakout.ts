@@ -136,8 +136,8 @@ export function autoBreakoutRuntimeToViewModel(state: AutoBreakoutRuntime): Auto
 }
 
 function createBricks(width: number): BreakoutBrickViewModel[] {
-  const columns = 12;
-  const rows = 4;
+  const columns = 16;
+  const rows = 5;
   const gap = 2;
   const brickWidth = Math.floor((width - gap * (columns + 1)) / columns);
   const bricks: BreakoutBrickViewModel[] = [];
@@ -145,9 +145,9 @@ function createBricks(width: number): BreakoutBrickViewModel[] {
     for (let column = 0; column < columns; column += 1) {
       bricks.push({
         x: gap + column * (brickWidth + gap),
-        y: 5 + row * 8,
+        y: 4 + row * 7,
         width: brickWidth,
-        height: 6,
+        height: 5,
         strength: row === 0 ? 2 : 1,
       });
     }

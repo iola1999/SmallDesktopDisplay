@@ -8,7 +8,9 @@ describe("auto breakout runtime", () => {
     const next = advanceAutoBreakoutRuntime(runtime).runtime;
     const model = autoBreakoutRuntimeToViewModel(next);
 
-    expect(model.bricks.length).toBeGreaterThan(0);
+    expect(model.bricks.length).toBeGreaterThanOrEqual(80);
+    expect(Math.max(...model.bricks.map((brick) => brick.width))).toBeLessThanOrEqual(10);
+    expect(Math.max(...model.bricks.map((brick) => brick.height))).toBeLessThanOrEqual(5);
     expect(model.balls.length).toBe(1);
     expect(model.balls[0].x).toBeGreaterThanOrEqual(0);
     expect(model.balls[0].x).toBeLessThanOrEqual(model.width);
