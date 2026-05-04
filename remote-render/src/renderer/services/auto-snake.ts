@@ -3,7 +3,6 @@ import type {AutoSnakeViewModel, SnakeCellViewModel} from "../models/view-model.
 const DEFAULT_COLUMNS = 24;
 const DEFAULT_ROWS = 10;
 const DEFAULT_CELL_SIZE = 8;
-const CYCLE_STEPS = 180;
 
 interface AutoSnakeInput {
   seed: string;
@@ -31,7 +30,7 @@ export function buildAutoSnakeViewModel(input: AutoSnakeInput): AutoSnakeViewMod
   const columns = input.columns ?? DEFAULT_COLUMNS;
   const rows = input.rows ?? DEFAULT_ROWS;
   const cellSize = input.cellSize ?? DEFAULT_CELL_SIZE;
-  const step = positiveModulo(Math.floor(input.step), CYCLE_STEPS);
+  const step = Math.max(0, Math.floor(input.step));
   let state = initialState(columns, rows);
 
   for (let index = 0; index < step; index += 1) {

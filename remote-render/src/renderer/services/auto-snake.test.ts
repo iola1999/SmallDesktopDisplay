@@ -42,6 +42,15 @@ describe("auto snake view model", () => {
     expect(first.body.every((cell) => cell.x >= 0 && cell.x < first.columns && cell.y >= 0 && cell.y < first.rows)).toBe(true);
     expect(first.body.some((cell) => cell.x === first.food.x && cell.y === first.food.y)).toBe(false);
   });
+
+  test("does not restart at the old 180-step cycle boundary", () => {
+    const initial = buildAutoSnakeViewModel({seed: "home", step: 0});
+    const beforeBoundary = buildAutoSnakeViewModel({seed: "home", step: 179});
+    const atBoundary = buildAutoSnakeViewModel({seed: "home", step: 180});
+
+    expect(atBoundary).not.toEqual(initial);
+    expect(manhattan(beforeBoundary.body[0].x, beforeBoundary.body[0].y, atBoundary.body[0].x, atBoundary.body[0].y)).toBe(1);
+  });
 });
 
 function manhattan(leftX: number, leftY: number, rightX: number, rightY: number): number {

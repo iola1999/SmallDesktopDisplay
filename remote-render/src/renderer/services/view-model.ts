@@ -41,7 +41,7 @@ export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceVi
     fontKey,
     copy: buildHomeCopy(input.currentTime),
     clockGlyphs: buildClockFlipGlyphs(input.currentTime, {progress: input.clockFlipProgress}),
-    game: buildHomeAmbientGameViewModel({currentTime: input.currentTime, step: input.homeGameStep ?? Math.floor(input.currentTime.getTime() / 1000)}),
+    game: buildHomeAmbientGameViewModel({currentTime: input.currentTime, step: input.homeGameStep}),
   };
 }
 

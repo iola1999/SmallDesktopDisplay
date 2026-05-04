@@ -25,13 +25,31 @@ describe("home ambient game view model", () => {
   });
 
   test("advances Conway life inside the same five-minute window from wall clock time", () => {
-    const start = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:05:00.000+08:00"), step: 0});
-    const later = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:06:00.000+08:00"), step: 0});
+    const start = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:05:00.000+08:00")});
+    const later = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:06:00.000+08:00")});
 
     expect(start.kind).toBe("life");
     expect(later.kind).toBe("life");
     if (start.kind === "life" && later.kind === "life") {
       expect(later.life.alive).not.toEqual(start.life.alive);
     }
+  });
+
+  test("advances snake from wall clock time inside a five-minute snake window", () => {
+    const start = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:00:00.000+08:00")});
+    const later = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:03:00.000+08:00")});
+
+    expect(start.kind).toBe("snake");
+    expect(later.kind).toBe("snake");
+    if (start.kind === "snake" && later.kind === "snake") {
+      expect(later.snake).not.toEqual(start.snake);
+    }
+  });
+
+  test("uses explicit game step when the frame scheduler freezes game state", () => {
+    const start = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:00:00.000+08:00"), step: 0});
+    const later = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:03:00.000+08:00"), step: 0});
+
+    expect(start).toEqual(later);
   });
 });
