@@ -29,6 +29,17 @@ describe("auto breakout runtime", () => {
     expect(advanced.runtime.balls.length).toBeGreaterThan(runtime.balls.length);
   });
 
+  test("moves balls and falling drops at the faster play speed", () => {
+    const runtime = createAutoBreakoutRuntime({seed: "desk"});
+    runtime.drops = [{x: 20, y: 10, size: 4}];
+    const ballY = runtime.balls[0].y;
+
+    const advanced = advanceAutoBreakoutRuntime(runtime).runtime;
+
+    expect(advanced.balls[0].y).toBeLessThanOrEqual(ballY - 5);
+    expect(advanced.drops[0].y).toBeGreaterThanOrEqual(13);
+  });
+
   test("empty bricks win and empty balls fail", () => {
     const wonRuntime = createAutoBreakoutRuntime({seed: "desk"});
     wonRuntime.bricks = [];

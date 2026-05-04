@@ -11,8 +11,8 @@ const DEFAULT_HEIGHT = 84;
 const PADDLE_WIDTH = 34;
 const PADDLE_HEIGHT = 5;
 const BALL_RADIUS = 3;
-const BALL_SPEED = 4.2;
-const DROP_SPEED = 2.4;
+const BALL_SPEED = 5.2;
+const DROP_SPEED = 3.2;
 const MAX_BALLS = 5;
 
 export interface AutoBreakoutRuntime {
@@ -45,7 +45,7 @@ export function createAutoBreakoutRuntime(input: {seed: string; width?: number; 
     width,
     height,
     bricks: createBricks(width),
-    balls: [{x: width / 2, y: height - 18, radius: BALL_RADIUS, dx: 2.7, dy: -BALL_SPEED}],
+    balls: [{x: width / 2, y: height - 18, radius: BALL_RADIUS, dx: 3.2, dy: -BALL_SPEED}],
     drops: [],
     paddle,
     tick: 0,
@@ -107,7 +107,7 @@ export function advanceAutoBreakoutRuntime(state: AutoBreakoutRuntime): {runtime
       x: paddle.x + paddle.width / 2,
       y: paddle.y - BALL_RADIUS - 1,
       radius: BALL_RADIUS,
-      dx: drop.x < paddle.x + paddle.width / 2 ? -2.2 : 2.2,
+      dx: drop.x < paddle.x + paddle.width / 2 ? -2.7 : 2.7,
       dy: -BALL_SPEED,
     });
   }
