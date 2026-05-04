@@ -2,6 +2,7 @@ import {encodeFrame} from "./protocol.js";
 import {
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
+  HOME_SNAKE_REGION,
   TIME_REGION,
   type CanvasImage,
   type RectTuple,
@@ -45,6 +46,7 @@ export class DeviceState {
   lastClockAnimationSecond = -1;
   lastClockAnimationFrameAt = -1;
   lastClockAnimationCleanupSecond = -1;
+  lastHomeSnakeAnimationStep = -1;
   frame: Buffer<ArrayBufferLike> = Buffer.alloc(0);
   fullFrame: Buffer<ArrayBufferLike> = Buffer.alloc(0);
   latestBaseFrameId = 0;
@@ -71,6 +73,7 @@ interface DeviceRegistryOptions {
   frameIntervalSeconds?: number;
   animationFrameIntervalSeconds?: number;
   clockFlipAnimationSeconds?: number;
+  homeSnakeFrameIntervalSeconds?: number;
   now?: () => Date;
 }
 
@@ -80,6 +83,7 @@ export class DeviceRegistry {
   private frameIntervalSeconds: number;
   private animationFrameIntervalSeconds: number;
   private clockFlipAnimationSeconds: number;
+  private homeSnakeFrameIntervalSeconds: number;
   private now: () => Date;
 
   constructor(options: DeviceRegistryOptions = {}) {
@@ -87,6 +91,7 @@ export class DeviceRegistry {
     this.frameIntervalSeconds = options.frameIntervalSeconds ?? 1;
     this.animationFrameIntervalSeconds = options.animationFrameIntervalSeconds ?? 1 / 20;
     this.clockFlipAnimationSeconds = options.clockFlipAnimationSeconds ?? 0.3;
+    this.homeSnakeFrameIntervalSeconds = options.homeSnakeFrameIntervalSeconds ?? 0.25;
     this.now = options.now ?? (() => new Date());
   }
 
@@ -197,21 +202,28 @@ export class DeviceRegistry {
       const elapsed = now - currentSecond * this.frameIntervalSeconds;
       if (elapsed < this.clockFlipAnimationSeconds && now - state.lastClockAnimationFrameAt >= this.animationFrameIntervalSeconds) {
         state.lastClockAnimationFrameAt = now;
-        return this.render(state, false, [TIME_REGION], elapsed / this.clockFlipAnimationSeconds);
+        return this.render(state, false, [TIME_REGION], elapsed / this.clockFlipAnimationSeconds, state.lastHomeSnakeAnimationStep);
       }
       if (elapsed >= this.clockFlipAnimationSeconds && state.lastClockAnimationCleanupSecond !== currentSecond) {
         state.lastClockAnimationCleanupSecond = currentSecond;
-        return this.render(state, false, [TIME_REGION], 1);
+        return this.render(state, false, [TIME_REGION], 1, state.lastHomeSnakeAnimationStep);
       }
     }
     if (currentSecond <= state.lastRenderSecond) {
+      if (state.ui.page === "home") {
+        const snakeStep = this.currentHomeSnakeStep(now);
+        if (snakeStep > state.lastHomeSnakeAnimationStep) {
+          state.lastHomeSnakeAnimationStep = snakeStep;
+          return this.render(state, false, [HOME_SNAKE_REGION], 1, snakeStep);
+        }
+      }
       return 0;
     }
     if (state.ui.page === "home") {
       state.lastClockAnimationSecond = currentSecond;
       state.lastClockAnimationFrameAt = now;
     }
-    return this.render(state, false, [TIME_REGION], state.ui.page === "home" ? 0 : undefined);
+    return this.render(state, false, [TIME_REGION], state.ui.page === "home" ? 0 : undefined, state.lastHomeSnakeAnimationStep);
   }
 
   private selectFrameForClient(state: DeviceState, have: number): Buffer | null {
@@ -233,9 +245,10 @@ export class DeviceRegistry {
     return uptimeMs < state.lastInputUptimeMs;
   }
 
-  private render(state: DeviceState, fullFrame: boolean, regions?: RectTuple[], clockFlipProgress?: number): number {
+  private render(state: DeviceState, fullFrame: boolean, regions?: RectTuple[], clockFlipProgress?: number, homeAnimationStep?: number): number {
     const started = this.monotonic();
     const now = this.monotonic();
+    const snakeStep = state.ui.page === "home" ? (homeAnimationStep ?? this.resolveHomeSnakeStep(state, now, fullFrame)) : undefined;
     const baseFrameId = state.frameId;
     state.frameId += 1;
     state.lastRenderSecond = Math.floor(now / this.frameIntervalSeconds);
@@ -249,6 +262,7 @@ export class DeviceRegistry {
       uiState: state.ui,
       animationProgress: currentAnimationProgress(state.ui, now),
       clockFlipProgress,
+      homeAnimationStep: snakeStep,
     });
     let rendered: RenderedFrame;
     if (fullFrame || state.canvas === null) {
@@ -269,6 +283,17 @@ export class DeviceRegistry {
       ? state.frame
       : encodeRenderedFrame(renderCanvasFrame(currentCanvas, {frameId: state.frameId, baseFrameId: 0, fullFrame: true}));
     return Math.max(0, this.monotonic() - started);
+  }
+
+  private resolveHomeSnakeStep(state: DeviceState, now: number, fullFrame: boolean): number {
+    if (fullFrame || state.lastHomeSnakeAnimationStep < 0) {
+      state.lastHomeSnakeAnimationStep = this.currentHomeSnakeStep(now);
+    }
+    return state.lastHomeSnakeAnimationStep;
+  }
+
+  private currentHomeSnakeStep(now: number): number {
+    return Math.floor(now / this.homeSnakeFrameIntervalSeconds);
   }
 
   private queueCommand(state: DeviceState, command: DeviceCommand): void {

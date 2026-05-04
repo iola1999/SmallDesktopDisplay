@@ -19,11 +19,13 @@ const expectedModules = [
   "rendering/dirty-rects.ts",
   "rendering/rasterizer.ts",
   "services/color.ts",
+  "services/auto-snake.ts",
   "services/clock-flip.ts",
   "services/font-registry.ts",
   "services/home-copy.ts",
   "services/view-model.ts",
   "types.ts",
+  "widgets/auto-snake.tsx",
 ] as const;
 
 describe("renderer source structure", () => {

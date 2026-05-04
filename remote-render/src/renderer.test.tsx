@@ -58,6 +58,28 @@ describe("React remote renderer", () => {
     expect(Buffer.compare(flipping.rgba, settled.rgba)).not.toBe(0);
   });
 
+  test("home view renders an autonomous snake in the lower area", () => {
+    const first = renderDeviceCanvas({
+      currentTime: new Date("2026-05-01T12:34:56.000+08:00"),
+      deviceId: "desk-01",
+      buttonCount: 0,
+      homeAnimationStep: 100,
+    });
+    const next = renderDeviceCanvas({
+      currentTime: new Date("2026-05-01T12:34:56.000+08:00"),
+      deviceId: "desk-01",
+      buttonCount: 0,
+      homeAnimationStep: 101,
+    });
+
+    const rects = computeDirtyRects(first, next, [[18, 154, 222, 218]]);
+    const payloadLength = rects.reduce((sum, rect) => sum + rect.payload.length, 0);
+
+    expect(rects.length).toBeGreaterThan(0);
+    expect(payloadLength).toBeGreaterThan(0);
+    expect(payloadLength).toBeLessThan(8_000);
+  });
+
   test("renders a full-screen RGB565 frame from React host primitives", () => {
     const frame = renderDeviceView({
       deviceId: "desk-01",

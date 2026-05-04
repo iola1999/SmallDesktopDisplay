@@ -5,7 +5,7 @@ import {renderDeviceCanvas} from "./rendering/device-canvas.js";
 import {registerFonts} from "./services/font-registry.js";
 import type {RenderedFrame} from "./types.js";
 
-export {SCREEN_HEIGHT, SCREEN_WIDTH, TIME_REGION} from "./constants.js";
+export {HOME_SNAKE_REGION, SCREEN_HEIGHT, SCREEN_WIDTH, TIME_REGION} from "./constants.js";
 export {renderCanvasFrame} from "./rendering/canvas-frame.js";
 export {renderDeviceCanvas} from "./rendering/device-canvas.js";
 export {computeDirtyRects} from "./rendering/dirty-rects.js";
@@ -24,6 +24,7 @@ interface RenderDeviceViewOptions {
   now?: Date;
   uiState?: DeviceUiState;
   animationProgress?: number;
+  homeAnimationStep?: number;
 }
 
 registerFonts();
@@ -35,6 +36,7 @@ export function renderDeviceView(options: RenderDeviceViewOptions): RenderedFram
     buttonCount: options.buttonCount,
     uiState: options.uiState,
     animationProgress: options.animationProgress,
+    homeAnimationStep: options.homeAnimationStep,
   });
   return renderCanvasFrame(image, {
     frameId: options.frameId ?? 1,

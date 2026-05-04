@@ -98,6 +98,31 @@ describe("device registry", () => {
     expect(Buffer.compare(rgba, fullSnapshot)).toBe(0);
   });
 
+  test("emits small autonomous snake frames between second ticks", async () => {
+    let now = 0;
+    const baseTime = new Date("2026-05-01T12:34:56.000+08:00").getTime();
+    const registry = new DeviceRegistry({
+      monotonic: () => now,
+      now: () => new Date(baseTime + now * 1000),
+      frameIntervalSeconds: 1,
+      animationFrameIntervalSeconds: 0.05,
+      clockFlipAnimationSeconds: 0.3,
+      homeSnakeFrameIntervalSeconds: 0.25,
+    });
+    const deviceId = "desk-snake-live";
+
+    const first = await registry.getFrame(deviceId, 0, 0);
+    const firstFrameId = first!.readUInt32LE(8);
+
+    now = 0.5;
+    const snakeFrame = await registry.getFrame(deviceId, firstFrameId, 0);
+    const decoded = decodeFrame(snakeFrame!);
+
+    expect(decoded.fullFrame).toBe(false);
+    expect(decoded.rects.length).toBeGreaterThan(0);
+    expect(decoded.rects.every((rect) => rect.y >= 152 && rect.y < 220)).toBe(true);
+  });
+
   test("emits a full final frame when a navigation animation expires between polls", async () => {
     let now = 0;
     const registry = new DeviceRegistry({monotonic: () => now, frameIntervalSeconds: 1});

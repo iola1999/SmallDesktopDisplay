@@ -9,6 +9,7 @@ import type {
   DeviceViewModel,
   SettingsRowViewModel,
 } from "../models/view-model.js";
+import {buildAutoSnakeViewModel} from "./auto-snake.js";
 import {buildClockFlipGlyphs} from "./clock-flip.js";
 import {nextFontLabel} from "./font-registry.js";
 import {buildHomeCopy} from "./home-copy.js";
@@ -19,6 +20,7 @@ export interface BuildDeviceViewModelInput {
   state: DeviceUiState;
   progress: number;
   clockFlipProgress?: number;
+  homeAnimationStep?: number;
 }
 
 export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceViewModel {
@@ -39,6 +41,7 @@ export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceVi
     fontKey,
     copy: buildHomeCopy(input.currentTime),
     clockGlyphs: buildClockFlipGlyphs(input.currentTime, {progress: input.clockFlipProgress}),
+    snake: buildAutoSnakeViewModel({seed: "home", step: input.homeAnimationStep ?? Math.floor(input.currentTime.getTime() / 250)}),
   };
 }
 

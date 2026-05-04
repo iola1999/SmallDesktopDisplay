@@ -6,6 +6,6 @@ import {buildDeviceViewModel, type BuildDeviceViewModelInput} from "../services/
 export function useDeviceViewModel(input: BuildDeviceViewModelInput): DeviceViewModel {
   return useMemo(
     () => buildDeviceViewModel(input),
-    [input.clockFlipProgress, input.currentTime, input.deviceId, input.progress, input.state],
+    [input.clockFlipProgress, input.currentTime, input.deviceId, input.homeAnimationStep, input.progress, input.state],
   );
 }
