@@ -1,7 +1,7 @@
 import path from "node:path";
 import {GlobalFonts} from "@napi-rs/canvas";
 
-import {FONT_MAPLE_MONO_NF_CN, FONT_NOTO_CJK, FONT_WENKAI_SCREEN} from "../ui-state.js";
+import {FONT_MAPLE_MONO_NF_CN, FONT_NOTO_CJK, FONT_WENKAI_SCREEN} from "../../ui-state.js";
 
 export function registerFonts(): void {
   const candidates: Array<[string, string]> = [

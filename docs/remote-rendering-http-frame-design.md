@@ -311,16 +311,33 @@ remote-render/
     state.ts
     ui-state.ts
     renderer/
+      components/
+        frame-background.tsx
+        primitives.tsx
       constants.ts
-      copy.ts
-      fonts.ts
+      hooks/
+        useDeviceViewModel.ts
+      host/
+        jsx.d.ts
+        reconciler.ts
       index.ts
+      models/
+        view-model.ts
       pages/
         home.tsx
         settings.tsx
         detail.tsx
-      primitives.tsx
-      reconciler.ts
+      rendering/
+        animation.ts
+        canvas-frame.ts
+        device-canvas.tsx
+        dirty-rects.ts
+        rasterizer.ts
+      services/
+        color.ts
+        font-registry.ts
+        home-copy.ts
+        view-model.ts
       types.ts
       view.tsx
     tools/
@@ -331,13 +348,23 @@ remote-render/
 Responsibilities:
 
 - `protocol.ts`: encode `SDD1` binary frames and validate rectangle payloads.
-- `renderer/reconciler.ts`: custom React renderer host using `react-reconciler`.
+- `renderer/index.ts`: public renderer facade. It wires canvas rendering to
+  RGB565 frame packaging and deliberately stays free of Yoga, Canvas, and React
+  reconciler details.
+- `renderer/host/*`: custom React host config and JSX intrinsic element types.
+- `renderer/rendering/*`: rendering pipeline internals, including React tree
+  rasterization through Yoga/Skia, page transition compositing, dirty-rectangle
+  detection, and RGB565 frame packaging.
+- `renderer/services/*`: pure renderer services for home copy, font registry,
+  color math, and UI-state-to-view-model mapping.
+- `renderer/hooks/*`: React hooks that bridge renderer services into TSX
+  components. `useDeviceViewModel` is the only page-level state derivation hook.
+- `renderer/models/*`: page view-model contracts consumed by TSX pages.
+- `renderer/components/*`: shared TSX primitives and reusable visual fragments.
 - `renderer/pages/*.tsx`: TSX page components for Home, Settings, and Detail.
-- `renderer/primitives.tsx`: typed Screen/Box/Text host primitives used by the
-  page components.
-- `renderer/view.tsx`: top-level view selection and font-key routing.
-- `renderer/index.ts`: renderer pipeline that computes Yoga layout, rasterizes
-  via Skia (`@napi-rs/canvas`), diffs frames, and produces RGB565 rects.
+  Pages consume view models and shared components; they do not import
+  `ui-state.ts` directly.
+- `renderer/view.tsx`: top-level TSX view selection over the derived view model.
 - `state.ts`: track device frame ids, button sequence, dirty frames, and full-frame
   resync snapshots. It also schedules animation frames after navigation input.
 - `ui-state.ts`: pure state machine for pages, selection, detail routing, and

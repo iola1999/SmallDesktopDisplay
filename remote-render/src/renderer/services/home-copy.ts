@@ -1,4 +1,4 @@
-import type {HomeCopy} from "./types.js";
+import type {HomeCopy} from "../types.js";
 
 export function buildHomeCopy(currentTime: Date): HomeCopy {
   const parts = getShanghaiParts(currentTime);

@@ -1,5 +1,5 @@
 import type {ReactNode} from "react";
-import type {Style} from "./types.js";
+import type {Style} from "../types.js";
 
 interface HostElementProps {
   style?: Style;
