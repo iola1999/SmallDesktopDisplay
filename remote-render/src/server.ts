@@ -59,7 +59,11 @@ async function handleRequest(registry: DeviceRegistry, request: IncomingMessage,
       response.end();
       return;
     }
-    response.writeHead(200, {"content-type": "application/octet-stream", ...headers});
+    response.writeHead(200, {
+      "content-type": "application/octet-stream",
+      "content-length": String(result.frame.length),
+      ...headers,
+    });
     response.end(result.frame);
     return;
   }
@@ -72,7 +76,7 @@ async function handleRequest(registry: DeviceRegistry, request: IncomingMessage,
       return;
     }
     registry.recordInput(decodeURIComponent(inputMatch[1]), payload.seq, payload.event as InputEventName, payload.uptime_ms);
-    response.writeHead(202);
+    response.writeHead(202, {"content-length": "0"});
     response.end();
     return;
   }
@@ -111,7 +115,7 @@ async function handleRequest(registry: DeviceRegistry, request: IncomingMessage,
       heapFragmentation,
       wifiRssi,
     });
-    response.writeHead(202);
+    response.writeHead(202, {"content-length": "0"});
     response.end();
     return;
   }
@@ -140,6 +144,10 @@ function isInt(value: unknown, min: number, max = Number.MAX_SAFE_INTEGER): valu
 }
 
 function sendJson(response: ServerResponse, status: number, value: unknown): void {
-  response.writeHead(status, {"content-type": "application/json"});
-  response.end(JSON.stringify(value));
+  const body = JSON.stringify(value);
+  response.writeHead(status, {
+    "content-type": "application/json",
+    "content-length": String(Buffer.byteLength(body)),
+  });
+  response.end(body);
 }

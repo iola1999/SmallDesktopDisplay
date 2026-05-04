@@ -28,8 +28,10 @@ describe("Node HTTP API", () => {
     const first = await fetch(`${baseUrl}/api/v1/devices/desk-01/frame?have=0`);
     expect(first.status).toBe(200);
     expect(first.headers.get("content-type")).toBe("application/octet-stream");
+    expect(first.headers.get("transfer-encoding")).toBeNull();
     expect(first.headers.get("x-sdd-server-wait-ms")).toMatch(/^\d+$/);
     const body = Buffer.from(await first.arrayBuffer());
+    expect(first.headers.get("content-length")).toBe(String(body.length));
     const frameId = body.readUInt32LE(8);
 
     const second = await fetch(`${baseUrl}/api/v1/devices/desk-01/frame?have=${frameId}&wait_ms=1`);
