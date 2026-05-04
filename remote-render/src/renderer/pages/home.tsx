@@ -44,7 +44,6 @@ function ClockGlyph({glyph}: {glyph: ClockFlipGlyphViewModel}) {
       <Text style={{...baseStyle, y: Math.round(travel * (1 - eased)), color: mixColor(muted, glyph.color, eased), opacity: 0.35 + eased * 0.65}}>
         {glyph.char}
       </Text>
-      <Box style={{x: 1, y: Math.round(glyph.height / 2), width: Math.max(1, glyph.width - 2), height: 1, backgroundColor: "#102326", opacity: 0.75}} />
     </Box>
   );
 }

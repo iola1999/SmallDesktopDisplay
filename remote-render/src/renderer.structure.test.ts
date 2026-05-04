@@ -50,4 +50,10 @@ describe("renderer source structure", () => {
     expect(source).not.toContain("yoga-layout");
     expect(source).not.toContain("react-reconciler");
   });
+
+  test("does not draw a decorative crease line in clock flip slots", () => {
+    const source = readFileSync(new URL("./renderer/pages/home.tsx", import.meta.url), "utf8");
+
+    expect(source).not.toContain('backgroundColor: "#102326"');
+  });
 });
