@@ -12,7 +12,7 @@ The default UI is now a remotely rendered Chinese desktop clock with a basic set
 - `src/main.cpp`: Device entry point for remote frame polling, button reporting, commands, and status sync.
 - `src/remote/`: Client code for remote frames, input events, device status, and remote commands.
 - `src/ui/`: Bridge layer that writes remote RGB565 rectangle frames to the TFT.
-- `remote-render/`: Dockerized FastAPI + Pillow render service that generates frames, maintains remote UI state, and receives device input and status.
+- `remote-render/`: Dockerized Node.js + React/Yoga/Skia render service that generates frames, maintains remote UI state, and receives device input and status.
 - `docs/`: Remote-rendering protocol notes, deployment details, and recent iteration records.
 
 ## Quick Start
@@ -40,7 +40,7 @@ pio device monitor -b 115200
 Common checks:
 
 ```bash
-remote-render/.venv/bin/pytest -q
+cd remote-render && npm test
 pio test -e host
 pio run -e esp12e
 ```
@@ -58,4 +58,4 @@ TFT pin mapping comes from the `TFT_eSPI` library's own `User_Setup.h` and is no
 - `docs/remote-rendering-http-frame-design.md`: Remote-rendering architecture, HTTP API, frame protocol, command/status sync, and deployment notes.
 - `docs/recent-iterations.md`: Recent iteration records and current development notes.
 - `docs/roadmap.md`: Future feature direction and iteration priorities.
-- `remote-render/tools/frame_preview.py`: Local frame preview tool that fetches remote frames and writes PNG output.
+- `remote-render/src/tools/frame-preview.ts`: Local frame preview tool that fetches remote frames and writes PNG output.

@@ -18,9 +18,10 @@ ESP-12E 模块桌面小屏显示器，基于 PlatformIO + Arduino framework。�
 
 远程渲染服务开发与验证：
 
-- 运行测试：`cd remote-render && .venv/bin/pytest`
+- 运行测试：`cd remote-render && npm test`
+- 类型检查 / 编译：`cd remote-render && npm run build`
 - 本机 Docker：`cd remote-render && REMOTE_RENDER_PORT=18080 docker compose up -d --build`
-- 帧预览：`cd remote-render && .venv/bin/python -m tools.frame_preview --base-url http://127.0.0.1:18080 --device-id desk-01 --frames 2 --output frame-previews/latest.png`
+- 帧预览：`cd remote-render && npm run preview -- --base-url http://127.0.0.1:18080 --device-id desk-01 --frames 2 --output frame-previews/latest.png`
 
 修改 `remote-render/` 里的渲染逻辑、API 或依赖后，除了跑测试，还要重新启动本机 Docker 实例（通常用上面的 `REMOTE_RENDER_PORT=18080 docker compose up -d --build`），否则设备和预览看到的还是旧容器里的画面。
 `remote-render/docker-compose.yml` 要保持 `restart: unless-stopped`，让 Docker 启动后自动恢复远程渲染服务；除非用户明确要求，不要用会移除该容器的清理方式替代正常重启。
@@ -37,8 +38,8 @@ ESP-12E 模块桌面小屏显示器，基于 PlatformIO + Arduino framework。�
 
 ## 目录说明
 
-- [remote-render](remote-render) — Dockerized FastAPI + Pillow 远程渲染服务
-- [remote-render/tools/frame_preview.py](remote-render/tools/frame_preview.py) — 本地 HTTP 帧预览客户端，生成 PNG 辅助排查显示问题
+- [remote-render](remote-render) — Dockerized Node.js + React/Yoga/Skia 远程渲染服务
+- [remote-render/src/tools/frame-preview.ts](remote-render/src/tools/frame-preview.ts) — 本地 HTTP 帧预览客户端，生成 PNG 辅助排查显示问题
 - [src/main.cpp](src/main.cpp) — 设备入口、远程帧轮询、按键上报
 - [src/remote](src/remote) — HTTP 帧协议、帧拉取、输入事件 POST
 - [src/ui/TftFrameSink.cpp](src/ui/TftFrameSink.cpp) — RGB565 矩形帧到 TFT 的输出桥接

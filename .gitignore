@@ -6,6 +6,8 @@
 .vscode/ipch
 .test/
 remote-render/.venv/
+remote-render/node_modules/
+remote-render/dist/
 remote-render/frame-previews/
 *.egg-info/
 

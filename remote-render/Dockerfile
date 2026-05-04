@@ -1,9 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
-FROM python:3.12-slim
-
+FROM node:22-bookworm-slim AS build
 WORKDIR /app
-ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
 ARG MAPLE_MONO_VERSION=v7.9
 ARG MAPLE_MONO_NF_CN_SHA256=af913b6322905348b3f50e4397fedc35b3a880db5effcce7969003051dcd3e94
@@ -25,18 +23,23 @@ RUN apt-get update \
     && rm -rf /tmp/maple-mono-nf-cn /tmp/maple-mono-nf-cn.zip \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml ./
+COPY package.json package-lock.json tsconfig.json ./
+COPY src ./src
 
-RUN --mount=type=cache,target=/root/.cache/pip \
-    mkdir -p app \
-    && touch app/__init__.py \
-    && pip install . \
-    && rm -rf app
+RUN --mount=type=cache,target=/root/.npm npm ci \
+    && npm run build \
+    && npm prune --omit=dev
 
-COPY app ./app
+FROM node:22-bookworm-slim
+WORKDIR /app
+ENV NODE_ENV=production
 
-RUN --mount=type=cache,target=/root/.cache/pip pip install --no-deps --force-reinstall .
+COPY --from=build /usr/share/fonts /usr/share/fonts
+COPY --from=build /usr/local/share/fonts /usr/local/share/fonts
+COPY --from=build /app/package.json /app/package-lock.json ./
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
 
 EXPOSE 8080
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--no-access-log"]
+CMD ["node", "dist/main.js"]

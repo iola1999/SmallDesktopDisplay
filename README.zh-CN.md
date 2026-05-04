@@ -12,7 +12,7 @@ SmallDesktopDisplay 是一个基于 ESP-12E / ESP8266 的桌面小屏项目。�
 - `src/main.cpp`：设备入口，负责远程帧轮询、按键上报、命令和状态同步。
 - `src/remote/`：远程帧、输入事件、设备状态、远端命令相关客户端代码。
 - `src/ui/`：把远端 RGB565 矩形帧输出到 TFT 的桥接层。
-- `remote-render/`：Dockerized FastAPI + Pillow 渲染服务，负责生成画面、维护远端 UI 状态、接收设备输入和状态。
+- `remote-render/`：Dockerized Node.js + React/Yoga/Skia 渲染服务，负责生成画面、维护远端 UI 状态、接收设备输入和状态。
 - `docs/`：远程渲染协议、部署说明和近期迭代记录。
 
 ## 快速开始
@@ -40,7 +40,7 @@ pio device monitor -b 115200
 常用检查：
 
 ```bash
-remote-render/.venv/bin/pytest -q
+cd remote-render && npm test
 pio test -e host
 pio run -e esp12e
 ```
@@ -58,4 +58,4 @@ TFT 引脚映射来自 `TFT_eSPI` 库自己的 `User_Setup.h`，不在本仓库�
 - `docs/remote-rendering-http-frame-design.md`：远程渲染架构、HTTP API、帧协议、命令/状态同步和部署说明。
 - `docs/recent-iterations.md`：近期迭代记录和当前开发注意事项。
 - `docs/roadmap.md`：后续功能方向和迭代优先级。
-- `remote-render/tools/frame_preview.py`：本地帧预览工具，可抓取远端帧并生成 PNG。
+- `remote-render/src/tools/frame-preview.ts`：本地帧预览工具，可抓取远端帧并生成 PNG。

@@ -13,6 +13,10 @@ project moved to the thin-client architecture.
   output.
 - The Dockerized `remote-render/` service owns page state, clock rendering,
   settings/detail rendering, animations, frame diffing, and device commands.
+- `remote-render/` now runs as a Node.js/TypeScript service. UI screens are
+  expressed as React elements, reconciled into a custom host tree, laid out with
+  Yoga, rasterized with Skia through `@napi-rs/canvas`, and then encoded into
+  the existing `SDD1` RGB565 frame protocol.
 - The active firmware entry point is `src/main.cpp`; the active remote protocol
   client code is under `src/remote/`; the active TFT bridge is
   `src/ui/TftFrameSink.cpp`.
@@ -27,16 +31,17 @@ project moved to the thin-client architecture.
   portal.
 - Added the device's own LAN IP to the local status/error screen so the setup
   page can be found without serial logs.
-- Installed DejaVu and Noto CJK fonts in the Docker image so Pillow renders both
-  Latin and Chinese text correctly in the container.
+- Installed DejaVu, Noto CJK, LXGW WenKai Screen, and Maple Mono NF CN fonts in
+  the Docker image so the Node/Skia renderer can draw both Latin and Chinese
+  text correctly in the container.
 - Made the remote renderer advance clock frames once per second and send dirty
   rectangles for normal time refreshes.
 - Preserved a latest full-frame snapshot per device and force full-frame resync
   for cold clients (`have=0`), server-restart frame-id mismatches, and clients
   that missed the base frame for a partial update.
 - Added the local HTTP frame preview tool under
-  `remote-render/tools/frame_preview.py`. It decodes `SDD1` frames, optionally
-  POSTs an input gesture, and writes PNG previews.
+  `remote-render/src/tools/frame-preview.ts`. It decodes `SDD1` frames and
+  writes PNG previews.
 - Added server-side Home, Settings, and Detail page state with single-button
   gesture routing:
   - Home: `long_press` enters Settings.
@@ -52,12 +57,11 @@ project moved to the thin-client architecture.
 - Settings currently contains `Brightness`, `Device`, `Renderer`, and `About`.
   Placeholder-only items stay hidden until real features back them.
 - Reworked Home into a Chinese desktop clock with Chinese date, weekday, large
-  `HH:MM`, compact seconds, a greeting, a short subtitle, and a small sync/RSSI
-  footer.
+  `HH:MM`, compact seconds, a greeting, and a short subtitle. Development-only
+  sync/RSSI text is intentionally kept off the first screen.
 - Added remote UI animations on the server side: page entry/back transitions,
   Settings selection pulse, Brightness value/bar/knob animation, detail panel
-  pulse, and Home footer glow. No firmware or protocol change is needed for
-  these animations.
+  pulse. No firmware or protocol change is needed for these animations.
 
 ## Frame Transport And Diagnostics
 
@@ -93,7 +97,8 @@ REMOTE_RENDER_PORT=18080 docker compose up -d --build
 
 ```bash
 cd remote-render
-.venv/bin/pytest
+npm test
+npm run build
 ```
 
 - Build and test firmware-side logic:
@@ -107,7 +112,7 @@ cd remote-render
 
 ```bash
 cd remote-render
-.venv/bin/python -m tools.frame_preview \
+npm run preview -- \
   --base-url http://127.0.0.1:18080 \
   --device-id preview-01 \
   --frames 2 \
@@ -118,7 +123,7 @@ cd remote-render
 
 ```bash
 cd remote-render
-.venv/bin/python -m tools.frame_preview \
+npm run preview -- \
   --base-url http://127.0.0.1:18080 \
   --device-id preview-settings-01 \
   --input-event long_press \
@@ -137,5 +142,5 @@ cd remote-render
   and ignored input events. Ignored lower sequences with forward-moving uptime
   usually mean another client is sharing the same `device_id`.
 - If the screen shows only a partial region after a restart, first confirm with
-  `tools.frame_preview` whether `have=0` or a future `have` is incorrectly
+  `npm run preview` whether `have=0` or a future `have` is incorrectly
   receiving a partial frame.

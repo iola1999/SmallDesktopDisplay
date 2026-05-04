@@ -13,7 +13,7 @@ weather, NTP, page routing, and complex screen drawing stay out of the firmware.
 - Transport: HTTP polling with short long-poll support.
 - Frame model: latest-state sync, not queued playback.
 - Image format: RGB565 rectangles, either raw or RLE-compressed.
-- Rendering service: Dockerized Python FastAPI service under `remote-render/`.
+- Rendering service: Dockerized Node.js/TypeScript service under `remote-render/`.
 - Device role: fetch binary frames, draw rectangles to TFT, POST button events,
   POST status, and execute local hardware commands.
 
@@ -81,9 +81,9 @@ Current Settings items:
 
 The Home page is a remote-rendered Chinese desktop clock rather than a debug
 screen. It shows Chinese date and weekday, large `HH:MM`, compact seconds, a
-time-of-day greeting, a short subtitle, and a small sync/RSSI footer. Device id,
-tap count, and other development-only labels are intentionally kept out of the
-first screen; detailed diagnostics live under Settings -> Device.
+time-of-day greeting, and a short subtitle. Device id, tap count, sync status,
+RSSI, and other development-only labels are intentionally kept out of the first
+screen; detailed diagnostics live under Settings -> Device.
 
 Brightness uses a separate command channel because it is a local hardware side
 effect, not pixels. The current command response is JSON:
@@ -291,54 +291,55 @@ That points the next optimization work toward smaller payloads first:
 remote-render/
   Dockerfile
   docker-compose.yml
-  pyproject.toml
-  app/
-    main.py
-    protocol.py
-    renderer.py
-    state.py
-    ui_state.py
-  tools/
-    frame_preview.py
-  tests/
-    test_api.py
-    test_frame_preview.py
-    test_protocol.py
-    test_renderer.py
+  package.json
+  package-lock.json
+  tsconfig.json
+  src/
+    main.ts
+    protocol.ts
+    server.ts
+    state.ts
+    ui-state.ts
+    renderer/
+      index.ts
+      reconciler.ts
+    tools/
+      frame-preview.ts
+    *.test.ts
 ```
 
 Responsibilities:
 
-- `protocol.py`: encode `SDD1` binary frames and validate rectangle payloads.
-- `renderer.py`: use Pillow to render a 240x240 UI and produce RGB565 rects.
-- `state.py`: track device frame ids, button sequence, dirty frames, and full-frame
+- `protocol.ts`: encode `SDD1` binary frames and validate rectangle payloads.
+- `renderer/reconciler.ts`: custom React renderer host using `react-reconciler`.
+- `renderer/index.ts`: build React UI trees, compute Yoga layout, rasterize via
+  Skia (`@napi-rs/canvas`), and produce RGB565 rects.
+- `state.ts`: track device frame ids, button sequence, dirty frames, and full-frame
   resync snapshots. It also schedules animation frames after navigation input.
-- `ui_state.py`: pure state machine for pages, selection, detail routing, and
+- `ui-state.ts`: pure state machine for pages, selection, detail routing, and
   animation progress.
-- `main.py`: expose FastAPI routes.
-- `tools/frame_preview.py`: local HTTP frame client that decodes `SDD1` frames and
+- `server.ts`: expose the Node HTTP routes.
+- `tools/frame-preview.ts`: local HTTP frame client that decodes `SDD1` frames and
   writes PNG previews for debugging without photographing the physical display.
-  It can optionally POST a gesture before capturing frames.
 
-Docker uses `python:3.12-slim` plus `fonts-dejavu-core` and `fonts-noto-cjk`.
-The font packages are intentional: without TrueType fonts, Pillow falls back to
-a tiny bitmap font, and without CJK fonts the Chinese clock text does not render
-correctly in the container.
+Docker uses `node:22-bookworm-slim` plus DejaVu, Noto CJK, LXGW WenKai Screen,
+and Maple Mono NF CN fonts. The font packages are intentional: without CJK
+fonts the Chinese clock text does not render correctly in the container.
 
 Local development commands:
 
 ```bash
 cd remote-render
-python3 -m venv .venv
-.venv/bin/pip install -e '.[test]'
-.venv/bin/pytest
+npm install
+npm test
+npm run build
 REMOTE_RENDER_PORT=18080 docker compose up -d --build
 ```
 
 Preview a live service:
 
 ```bash
-.venv/bin/python -m tools.frame_preview \
+npm run preview -- \
   --base-url http://127.0.0.1:18080 \
   --device-id preview-01 \
   --frames 2 \
@@ -348,7 +349,7 @@ Preview a live service:
 Preview Settings navigation:
 
 ```bash
-.venv/bin/python -m tools.frame_preview \
+npm run preview -- \
   --base-url http://127.0.0.1:18080 \
   --device-id preview-01 \
   --input-event long_press \
@@ -361,7 +362,7 @@ Preview Settings navigation:
 Preview the richer Settings entry animation:
 
 ```bash
-.venv/bin/python -m tools.frame_preview \
+npm run preview -- \
   --base-url http://127.0.0.1:18080 \
   --device-id preview-animation-01 \
   --input-event long_press \

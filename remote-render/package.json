@@ -1,0 +1,24 @@
+{
+  "name": "small-desktop-display-remote-render",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run src",
+    "start": "node dist/main.js",
+    "preview": "node dist/tools/frame-preview.js"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "0.1.100",
+    "react": "19.2.5",
+    "react-reconciler": "0.33.0",
+    "yoga-layout": "3.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.7",
+    "typescript": "5.9.3",
+    "vitest": "4.1.5"
+  }
+}
