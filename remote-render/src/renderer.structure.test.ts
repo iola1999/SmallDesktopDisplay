@@ -19,6 +19,7 @@ const expectedModules = [
   "rendering/dirty-rects.ts",
   "rendering/rasterizer.ts",
   "services/color.ts",
+  "services/clock-flip.ts",
   "services/font-registry.ts",
   "services/home-copy.ts",
   "services/view-model.ts",

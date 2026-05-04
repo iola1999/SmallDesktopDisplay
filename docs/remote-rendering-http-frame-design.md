@@ -62,6 +62,9 @@ Supported gesture events:
 Current remote UI gesture mapping:
 
 - Home: `long_press` enters Settings.
+- Home: `double_press` keeps the page unchanged but forces the next frame to be
+  a full-screen refresh. This is a manual resync path for display corruption or
+  missed partial updates.
 - Settings: `short_press` moves the selected item.
 - Settings: `long_press` enters the selected detail page.
 - Brightness detail: `short_press` applies the next brightness immediately and
@@ -88,6 +91,10 @@ screen. It shows Chinese date and weekday, large `HH:MM`, compact seconds, a
 time-of-day greeting, and a short subtitle. Device id, tap count, sync status,
 RSSI, and other development-only labels are intentionally kept out of the first
 screen; detailed diagnostics live under Settings -> Device.
+Hour, minute, and second digits use a server-side flip-style transition for the
+first 300ms after each second boundary. The registry schedules those Home clock
+frames at the same capped animation cadence as page transitions and limits the
+dirty region to the clock band.
 
 Brightness uses a separate command channel because it is a local hardware side
 effect, not pixels. The current command response is JSON:
@@ -355,8 +362,8 @@ Responsibilities:
 - `renderer/rendering/*`: rendering pipeline internals, including React tree
   rasterization through Yoga/Skia, page transition compositing, dirty-rectangle
   detection, and RGB565 frame packaging.
-- `renderer/services/*`: pure renderer services for home copy, font registry,
-  color math, and UI-state-to-view-model mapping.
+- `renderer/services/*`: pure renderer services for home copy, clock flip glyph
+  modeling, font registry, color math, and UI-state-to-view-model mapping.
 - `renderer/hooks/*`: React hooks that bridge renderer services into TSX
   components. `useDeviceViewModel` is the only page-level state derivation hook.
 - `renderer/models/*`: page view-model contracts consumed by TSX pages.
@@ -485,7 +492,9 @@ new page before the user lifts their finger.
 In scope:
 
 - Full-frame rendering from Docker.
-- Per-second dirty rectangle refresh for the clock region.
+- Per-second dirty rectangle refresh for the clock region, plus a short
+  server-side digit flip animation for hour, minute, and second changes.
+- Home-page `double_press` full-frame refresh for manual resync.
 - Server-side settings/detail navigation state.
 - Server-side brightness detail UI and a JSON command channel for local
   hardware side effects. Brightness changes apply immediately on `short_press`.

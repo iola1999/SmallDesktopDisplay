@@ -26,6 +26,23 @@ describe("device registry", () => {
     await expect(registry.getFrame("desk-02", frameId, 1)).resolves.toBeNull();
   });
 
+  test("double press on home forces a full refresh frame", async () => {
+    const registry = new DeviceRegistry();
+    const deviceId = "desk-home-refresh";
+
+    const first = await registry.getFrame(deviceId, 0, 0);
+    const frameId = first!.readUInt32LE(8);
+
+    expect(registry.recordInput(deviceId, 1, "double_press", 1000)).toBe(true);
+
+    const refresh = await registry.getFrame(deviceId, frameId, 1);
+    const decoded = decodeFrame(refresh!);
+
+    expect(decoded.fullFrame).toBe(true);
+    expect(decoded.rects).toHaveLength(1);
+    expect(decoded.rects[0]).toMatchObject({x: 0, y: 0, width: 240, height: 240});
+  });
+
   test("returns full frame to cold clients after a partial tick update", async () => {
     let now = 0;
     const registry = new DeviceRegistry({monotonic: () => now, frameIntervalSeconds: 1});

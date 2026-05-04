@@ -9,6 +9,7 @@ import type {
   DeviceViewModel,
   SettingsRowViewModel,
 } from "../models/view-model.js";
+import {buildClockFlipGlyphs} from "./clock-flip.js";
 import {nextFontLabel} from "./font-registry.js";
 import {buildHomeCopy} from "./home-copy.js";
 
@@ -36,6 +37,7 @@ export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceVi
     page: "home",
     fontKey,
     copy: buildHomeCopy(input.currentTime),
+    clockGlyphs: buildClockFlipGlyphs(input.currentTime),
   };
 }
 

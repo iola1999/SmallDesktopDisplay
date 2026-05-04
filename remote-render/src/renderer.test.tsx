@@ -4,6 +4,7 @@ import {DeviceUiState, FONT_MAPLE_MONO_NF_CN, FONT_WENKAI_SCREEN} from "./ui-sta
 import {
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
+  buildClockFlipGlyphs,
   buildHomeCopy,
   computeDirtyRects,
   renderDeviceCanvas,
@@ -20,6 +21,18 @@ describe("React remote renderer", () => {
     expect(copy.timeText).toBe("06:32");
     expect(copy.secondsText).toBe(":08");
     expect(copy.greeting).toBe("早上好");
+  });
+
+  test("clock flip model animates hour, minute, and second digit changes", () => {
+    const glyphs = buildClockFlipGlyphs(new Date("2026-05-01T13:00:00.100+08:00"), 300);
+
+    const flippingGlyphs = glyphs.filter((glyph) => glyph.previousChar !== glyph.char);
+
+    expect(flippingGlyphs.map((glyph) => glyph.group)).toEqual(expect.arrayContaining(["time", "seconds"]));
+    expect(flippingGlyphs.map((glyph) => glyph.previousChar).join("")).toContain("2");
+    expect(flippingGlyphs.map((glyph) => glyph.previousChar).join("")).toContain("5");
+    expect(flippingGlyphs.map((glyph) => glyph.previousChar).join("")).toContain("9");
+    expect(flippingGlyphs.every((glyph) => glyph.progress > 0 && glyph.progress < 1)).toBe(true);
   });
 
   test("renders a full-screen RGB565 frame from React host primitives", () => {

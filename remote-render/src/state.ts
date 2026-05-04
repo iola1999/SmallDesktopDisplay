@@ -42,6 +42,8 @@ export class DeviceState {
   lastInputUptimeMs = -1;
   lastRenderSecond = -1;
   lastAnimationFrameAt = -1;
+  lastClockAnimationSecond = -1;
+  lastClockAnimationFrameAt = -1;
   frame: Buffer<ArrayBufferLike> = Buffer.alloc(0);
   fullFrame: Buffer<ArrayBufferLike> = Buffer.alloc(0);
   latestBaseFrameId = 0;
@@ -67,6 +69,7 @@ interface DeviceRegistryOptions {
   monotonic?: () => number;
   frameIntervalSeconds?: number;
   animationFrameIntervalSeconds?: number;
+  clockFlipAnimationSeconds?: number;
   now?: () => Date;
 }
 
@@ -75,12 +78,14 @@ export class DeviceRegistry {
   private monotonic: () => number;
   private frameIntervalSeconds: number;
   private animationFrameIntervalSeconds: number;
+  private clockFlipAnimationSeconds: number;
   private now: () => Date;
 
   constructor(options: DeviceRegistryOptions = {}) {
     this.monotonic = options.monotonic ?? (() => performance.now() / 1000);
     this.frameIntervalSeconds = options.frameIntervalSeconds ?? 1;
     this.animationFrameIntervalSeconds = options.animationFrameIntervalSeconds ?? 1 / 20;
+    this.clockFlipAnimationSeconds = options.clockFlipAnimationSeconds ?? 0.3;
     this.now = options.now ?? (() => new Date());
   }
 
@@ -130,6 +135,10 @@ export class DeviceRegistry {
     const commands = applyInputEvent(state.ui, event, this.monotonic());
     for (const command of commands) {
       this.queueCommand(state, command);
+    }
+    if (previousPage === "home" && state.ui.page === "home" && event === "double_press") {
+      this.render(state, true);
+      return true;
     }
     if (previousPage === "home" && state.ui.page === "home" && !state.ui.animation) {
       return true;
@@ -182,9 +191,20 @@ export class DeviceRegistry {
       state.lastAnimationFrameAt = -1;
       return this.render(state, true);
     }
-    const currentSecond = Math.floor(this.monotonic() / this.frameIntervalSeconds);
+    const currentSecond = Math.floor(now / this.frameIntervalSeconds);
+    if (state.ui.page === "home" && currentSecond === state.lastClockAnimationSecond) {
+      const elapsed = now - currentSecond * this.frameIntervalSeconds;
+      if (elapsed < this.clockFlipAnimationSeconds && now - state.lastClockAnimationFrameAt >= this.animationFrameIntervalSeconds) {
+        state.lastClockAnimationFrameAt = now;
+        return this.render(state, false, [TIME_REGION]);
+      }
+    }
     if (currentSecond <= state.lastRenderSecond) {
       return 0;
+    }
+    if (state.ui.page === "home") {
+      state.lastClockAnimationSecond = currentSecond;
+      state.lastClockAnimationFrameAt = now;
     }
     return this.render(state, false, [TIME_REGION]);
   }

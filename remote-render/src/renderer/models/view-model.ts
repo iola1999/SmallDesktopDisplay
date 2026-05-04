@@ -9,6 +9,23 @@ export interface BaseViewModel {
 export interface HomeViewModel extends BaseViewModel {
   page: "home";
   copy: HomeCopy;
+  clockGlyphs: ClockFlipGlyphViewModel[];
+}
+
+export type ClockFlipGlyphGroup = "time" | "seconds";
+
+export interface ClockFlipGlyphViewModel {
+  key: string;
+  group: ClockFlipGlyphGroup;
+  char: string;
+  previousChar: string;
+  progress: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fontSize: number;
+  color: string;
 }
 
 export interface SettingsViewModel extends BaseViewModel {

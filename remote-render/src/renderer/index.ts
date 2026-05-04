@@ -9,6 +9,7 @@ export {SCREEN_HEIGHT, SCREEN_WIDTH, TIME_REGION} from "./constants.js";
 export {renderCanvasFrame} from "./rendering/canvas-frame.js";
 export {renderDeviceCanvas} from "./rendering/device-canvas.js";
 export {computeDirtyRects} from "./rendering/dirty-rects.js";
+export {buildClockFlipGlyphs} from "./services/clock-flip.js";
 export {buildHomeCopy} from "./services/home-copy.js";
 export type {RectTuple} from "./constants.js";
 export type {CanvasImage, RenderedFrame} from "./types.js";
