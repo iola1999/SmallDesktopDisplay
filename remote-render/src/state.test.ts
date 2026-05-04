@@ -44,6 +44,32 @@ describe("device registry", () => {
     expect(decoded.rects[0]).toMatchObject({width: 240, height: 240});
   });
 
+  test("emits a full final frame when a navigation animation expires between polls", async () => {
+    let now = 0;
+    const registry = new DeviceRegistry({monotonic: () => now, frameIntervalSeconds: 1});
+    const deviceId = "desk-animation-final";
+
+    const first = await registry.getFrame(deviceId, 0, 0);
+    let have = first!.readUInt32LE(8);
+
+    expect(registry.recordInput(deviceId, 1, "long_press", 100)).toBe(true);
+    const enteringSettings = await registry.getFrame(deviceId, have, 0);
+    have = enteringSettings!.readUInt32LE(8);
+
+    now = 0.1;
+    expect(registry.recordInput(deviceId, 2, "double_press", 200)).toBe(true);
+    const returningHome = await registry.getFrame(deviceId, have, 0);
+    have = returningHome!.readUInt32LE(8);
+
+    now = 1.1;
+    const settled = await registry.getFrame(deviceId, have, 0);
+    const decoded = decodeFrame(settled!);
+
+    expect(decoded.fullFrame).toBe(true);
+    expect(decoded.rects).toHaveLength(1);
+    expect(decoded.rects[0]).toMatchObject({x: 0, y: 0, width: 240, height: 240});
+  });
+
   test("queues brightness command from detail confirm", async () => {
     const registry = new DeviceRegistry();
     const deviceId = "desk-brightness-command";

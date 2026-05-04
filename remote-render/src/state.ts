@@ -179,6 +179,8 @@ export class DeviceRegistry {
     }
     if (state.ui.animation) {
       state.ui.animation = "";
+      state.lastAnimationFrameAt = -1;
+      return this.render(state, true);
     }
     const currentSecond = Math.floor(this.monotonic() / this.frameIntervalSeconds);
     if (currentSecond <= state.lastRenderSecond) {
