@@ -23,13 +23,16 @@ describe("home ambient game view model", () => {
     expect(snakeAgain.kind).toBe("snake");
   });
 
-  test("ten-minute timeout switches to the next game", () => {
+  test("twenty-minute timeout switches to the next game", () => {
     const runtime = createHomeGameRuntime("snake", 0, 0);
-    const advanced = advanceHomeGameRuntime(runtime, 600);
+    const beforeTimeout = advanceHomeGameRuntime(runtime, 1199);
+    const advanced = advanceHomeGameRuntime(runtime, 1200);
 
+    expect(beforeTimeout.status).toBe("playing");
+    expect(beforeTimeout.runtime.kind).toBe("snake");
     expect(advanced.status).toBe("timeout");
     expect(advanced.runtime.kind).toBe("life");
-    expect(advanced.runtime.startedAt).toBe(600);
+    expect(advanced.runtime.startedAt).toBe(1200);
   });
 
   test("normal ticks advance the current game without switching from wall-clock windows", () => {

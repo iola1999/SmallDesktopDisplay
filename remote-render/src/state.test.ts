@@ -163,7 +163,7 @@ describe("device registry", () => {
     let have = first!.readUInt32LE(8);
     const initialGame = registry.devices.get(deviceId)!.homeGame!.kind;
 
-    now = 600;
+    now = 1200;
     const switched = await registry.getFrame(deviceId, have, 0);
     const decoded = decodeFrame(switched!);
     rgba = applyFrameToRgba(rgba, 240, decoded);

@@ -137,19 +137,21 @@ export function autoBreakoutRuntimeToViewModel(state: AutoBreakoutRuntime): Auto
 }
 
 function createBricks(width: number): BreakoutBrickViewModel[] {
-  const columns = 19;
-  const rows = 5;
+  const columns = 24;
+  const rows = 6;
   const gap = 1;
-  const brickWidth = Math.floor((width - gap * (columns + 1)) / columns);
+  const contentWidth = width - gap * 2;
   const bricks: BreakoutBrickViewModel[] = [];
   for (let row = 0; row < rows; row += 1) {
     for (let column = 0; column < columns; column += 1) {
+      const x = gap + Math.round((column * contentWidth) / columns);
+      const nextX = gap + Math.round(((column + 1) * contentWidth) / columns);
       bricks.push({
-        x: gap + column * (brickWidth + gap),
-        y: 4 + row * 7,
-        width: brickWidth,
-        height: 5,
-        strength: row === 0 ? 2 : 1,
+        x,
+        y: 4 + row * 6,
+        width: Math.max(1, nextX - x - gap),
+        height: 4,
+        strength: row < 2 ? 2 : 1,
       });
     }
   }

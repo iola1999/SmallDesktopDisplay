@@ -22,7 +22,7 @@ export type HomeGameKind = "snake" | "life" | "breakout";
 export type HomeGameAdvanceStatus = "playing" | "failed" | "won" | "timeout";
 
 export const HOME_GAME_KINDS: HomeGameKind[] = ["snake", "life", "breakout"];
-export const HOME_GAME_ROUND_SECONDS = 10 * 60;
+export const HOME_GAME_ROUND_SECONDS = 20 * 60;
 
 export interface HomeGameRuntime {
   kind: HomeGameKind;
