@@ -10,6 +10,7 @@ const DEFAULT_WIDTH = 192;
 const DEFAULT_HEIGHT = 84;
 const PADDLE_WIDTH = 34;
 const PADDLE_HEIGHT = 5;
+const PADDLE_SPEED = 13;
 const BALL_RADIUS = 3;
 const BALL_SPEED = 5.2;
 const DROP_SPEED = 3.2;
@@ -168,7 +169,7 @@ function selectPaddleTarget(state: AutoBreakoutRuntime): number {
 
 function movePaddle(paddle: BreakoutPaddleViewModel, targetX: number, width: number): BreakoutPaddleViewModel {
   const center = paddle.x + paddle.width / 2;
-  const delta = clamp(targetX - center, -9, 9);
+  const delta = clamp(targetX - center, -PADDLE_SPEED, PADDLE_SPEED);
   return {...paddle, x: clamp(paddle.x + delta, 0, width - paddle.width)};
 }
 

@@ -40,6 +40,16 @@ describe("auto breakout runtime", () => {
     expect(advanced.drops[0].y).toBeGreaterThanOrEqual(13);
   });
 
+  test("lets the paddle chase distant targets faster", () => {
+    const runtime = createAutoBreakoutRuntime({seed: "desk"});
+    const paddleX = runtime.paddle.x;
+    runtime.drops = [{x: runtime.width - 12, y: runtime.height * 0.5, size: 4}];
+
+    const advanced = advanceAutoBreakoutRuntime(runtime).runtime;
+
+    expect(advanced.paddle.x - paddleX).toBeGreaterThanOrEqual(12);
+  });
+
   test("empty bricks win and empty balls fail", () => {
     const wonRuntime = createAutoBreakoutRuntime({seed: "desk"});
     wonRuntime.bricks = [];
