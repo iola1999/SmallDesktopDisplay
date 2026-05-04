@@ -136,9 +136,9 @@ export function autoBreakoutRuntimeToViewModel(state: AutoBreakoutRuntime): Auto
 }
 
 function createBricks(width: number): BreakoutBrickViewModel[] {
-  const columns = 16;
+  const columns = 19;
   const rows = 5;
-  const gap = 2;
+  const gap = 1;
   const brickWidth = Math.floor((width - gap * (columns + 1)) / columns);
   const bricks: BreakoutBrickViewModel[] = [];
   for (let row = 0; row < rows; row += 1) {

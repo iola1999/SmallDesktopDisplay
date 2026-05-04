@@ -11,6 +11,7 @@ describe("auto breakout runtime", () => {
     expect(model.bricks.length).toBeGreaterThanOrEqual(80);
     expect(Math.max(...model.bricks.map((brick) => brick.width))).toBeLessThanOrEqual(10);
     expect(Math.max(...model.bricks.map((brick) => brick.height))).toBeLessThanOrEqual(5);
+    expect(Math.max(...model.bricks.map((brick) => brick.x + brick.width))).toBeGreaterThanOrEqual(model.width - 3);
     expect(model.balls.length).toBe(1);
     expect(model.balls[0].x).toBeGreaterThanOrEqual(0);
     expect(model.balls[0].x).toBeLessThanOrEqual(model.width);
