@@ -122,9 +122,10 @@ function scoreDirection(state: AutoSnakeRuntime, direction: SnakeCellViewModel, 
   const foodDistance = shortestPathDistance(head, next.food, occupiedWithoutTail, next.columns, next.rows);
   const area = reachableArea(head, occupiedWithoutTail, next.columns, next.rows);
   const targetArea = Math.min(next.columns * next.rows, next.body.length + 4);
+  const tailRisk = tailDistance < 0 ? (area < targetArea ? 10_000 : 40) : tailDistance * 0.03;
 
   return (
-    (tailDistance < 0 ? 10_000 : tailDistance * 0.2) +
+    tailRisk +
     (foodDistance < 0 ? 2_000 + manhattan(head.x, head.y, next.food.x, next.food.y) : foodDistance) +
     Math.max(0, targetArea - area) * 80 +
     (eats && tailDistance >= 0 ? -120 : 0) +

@@ -132,6 +132,36 @@ describe("auto snake view model", () => {
     expect(advanced.runtime.body.length).toBe(runtime.body.length + 1);
   });
 
+  test("turns toward reachable food instead of looping along the long corridor", () => {
+    const runtime: AutoSnakeRuntime = {
+      columns: 24,
+      rows: 10,
+      cellSize: 8,
+      body: [
+        {x: 5, y: 0},
+        {x: 5, y: 1},
+        {x: 5, y: 2},
+        {x: 5, y: 3},
+        {x: 5, y: 4},
+        {x: 5, y: 5},
+        ...range(6, 23).map((x) => ({x, y: 5})),
+        {x: 23, y: 4},
+        {x: 23, y: 3},
+        {x: 23, y: 2},
+        {x: 23, y: 1},
+        ...range(22, 6).map((x) => ({x, y: 1})),
+      ],
+      food: {x: 0, y: 0},
+      direction: {x: 0, y: -1},
+      foodIndex: 10,
+    };
+
+    const advanced = advanceAutoSnakeRuntime(runtime, "corridor-loop");
+
+    expect(advanced.status).toBe("playing");
+    expect(advanced.runtime.body[0]).toEqual({x: 4, y: 0});
+  });
+
   test("survives long autonomous runs while continuing to eat", () => {
     for (const seed of ["home-snake:0", "home-snake:1", "home-snake:2"]) {
       let runtime = createTestSnakeRuntime();
@@ -165,4 +195,13 @@ function createTestSnakeRuntime(): AutoSnakeRuntime {
     direction: {x: 1, y: 0},
     foodIndex: 0,
   };
+}
+
+function range(start: number, end: number): number[] {
+  const step = start <= end ? 1 : -1;
+  const result: number[] = [];
+  for (let value = start; value !== end + step; value += step) {
+    result.push(value);
+  }
+  return result;
 }
