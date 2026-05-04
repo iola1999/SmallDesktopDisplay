@@ -11,6 +11,7 @@ interface HomeAmbientGameInput {
 
 export function buildHomeAmbientGameViewModel(input: HomeAmbientGameInput): HomeAmbientGameViewModel {
   const slot = Math.floor(input.currentTime.getTime() / SWITCH_INTERVAL_MS);
+  const slotElapsedSeconds = Math.floor((input.currentTime.getTime() - slot * SWITCH_INTERVAL_MS) / 1000);
   if (slot % 2 === 0) {
     return {
       kind: "snake",
@@ -19,6 +20,6 @@ export function buildHomeAmbientGameViewModel(input: HomeAmbientGameInput): Home
   }
   return {
     kind: "life",
-    life: buildConwayLifeViewModel({seed: `home-life:${slot}`, generation: input.step}),
+    life: buildConwayLifeViewModel({seed: `home-life:${slot}`, generation: slotElapsedSeconds}),
   };
 }

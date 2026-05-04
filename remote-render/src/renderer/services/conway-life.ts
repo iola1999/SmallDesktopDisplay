@@ -3,8 +3,8 @@ import type {ConwayLifeViewModel, SnakeCellViewModel} from "../models/view-model
 const DEFAULT_COLUMNS = 32;
 const DEFAULT_ROWS = 13;
 const DEFAULT_CELL_SIZE = 6;
-const MAX_GENERATIONS = 96;
-const SEED_DENSITY = 0.34;
+const SEED_DENSITY = 0.22;
+const MIN_ACTIVE_DENSITY = 0.06;
 
 interface ConwayLifeInput {
   seed: string;
@@ -19,13 +19,20 @@ export function buildConwayLifeViewModel(input: ConwayLifeInput): ConwayLifeView
   const rows = input.rows ?? DEFAULT_ROWS;
   const cellSize = input.cellSize ?? DEFAULT_CELL_SIZE;
   let alive = seededCells(input.seed, columns, rows);
-  const generation = positiveModulo(Math.floor(input.generation), MAX_GENERATIONS);
+  const generation = Math.max(0, Math.floor(input.generation));
+  const seen = new Set<string>([cellSignature(alive)]);
 
   for (let index = 0; index < generation; index += 1) {
-    alive = evolveConwayCells(alive, columns, rows);
-    if (alive.length === 0) {
-      alive = seededCells(`${input.seed}:restart:${index}`, columns, rows);
+    const next = evolveConwayCells(alive, columns, rows);
+    const signature = cellSignature(next);
+    if (next.length < minimumActiveCells(columns, rows) || seen.has(signature)) {
+      alive = seededCells(`${input.seed}:refresh:${index}`, columns, rows);
+      seen.clear();
+      seen.add(cellSignature(alive));
+      continue;
     }
+    alive = next;
+    seen.add(signature);
   }
 
   return {columns, rows, cellSize, alive};
@@ -53,14 +60,27 @@ export function evolveConwayCells(alive: SnakeCellViewModel[], columns: number, 
 }
 
 function seededCells(seed: string, columns: number, rows: number): SnakeCellViewModel[] {
+  const targetCount = Math.max(minimumActiveCells(columns, rows), Math.round(columns * rows * SEED_DENSITY));
   const cells: SnakeCellViewModel[] = [];
-  for (let y = 0; y < rows; y += 1) {
-    for (let x = 0; x < columns; x += 1) {
-      const value = (hash(`${seed}:${x}:${y}`) % 10_000) / 10_000;
-      if (value < SEED_DENSITY) cells.push({x, y});
-    }
+  const used = new Set<string>();
+  const random = mulberry32(hash(seed));
+  while (cells.length < targetCount) {
+    const cell = {x: Math.floor(random() * columns), y: Math.floor(random() * rows)};
+    const key = cellKey(cell);
+    if (used.has(key)) continue;
+    used.add(key);
+    cells.push(cell);
   }
-  return cells;
+  return cells
+    .sort((left, right) => left.y - right.y || left.x - right.x);
+}
+
+function minimumActiveCells(columns: number, rows: number): number {
+  return Math.max(6, Math.round(columns * rows * MIN_ACTIVE_DENSITY));
+}
+
+function cellSignature(cells: SnakeCellViewModel[]): string {
+  return cells.map(cellKey).join(";");
 }
 
 function parseCellKey(key: string): SnakeCellViewModel {
@@ -72,10 +92,6 @@ function cellKey(cell: SnakeCellViewModel): string {
   return `${cell.x},${cell.y}`;
 }
 
-function positiveModulo(value: number, modulo: number): number {
-  return ((value % modulo) + modulo) % modulo;
-}
-
 function hash(value: string): number {
   let result = 2166136261;
   for (const char of value) {
@@ -83,4 +99,14 @@ function hash(value: string): number {
     result = Math.imul(result, 16777619);
   }
   return result >>> 0;
+}
+
+function mulberry32(seed: number): () => number {
+  return () => {
+    seed = (seed + 0x6d2b79f5) >>> 0;
+    let value = seed;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
 }

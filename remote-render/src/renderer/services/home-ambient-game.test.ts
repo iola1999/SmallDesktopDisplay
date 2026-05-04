@@ -23,4 +23,15 @@ describe("home ambient game view model", () => {
       expect(second.life.alive).not.toEqual(first.life.alive);
     }
   });
+
+  test("advances Conway life inside the same five-minute window from wall clock time", () => {
+    const start = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:05:00.000+08:00"), step: 0});
+    const later = buildHomeAmbientGameViewModel({currentTime: new Date("2026-05-01T12:06:00.000+08:00"), step: 0});
+
+    expect(start.kind).toBe("life");
+    expect(later.kind).toBe("life");
+    if (start.kind === "life" && later.kind === "life") {
+      expect(later.life.alive).not.toEqual(start.life.alive);
+    }
+  });
 });
