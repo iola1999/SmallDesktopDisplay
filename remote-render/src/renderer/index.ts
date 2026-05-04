@@ -1,51 +1,20 @@
-import path from "node:path";
-import React from "react";
-import {createCanvas, GlobalFonts, type SKRSContext2D} from "@napi-rs/canvas";
+import {createCanvas, type SKRSContext2D} from "@napi-rs/canvas";
 import Yoga, {Align, Direction, FlexDirection, Justify, PositionType} from "yoga-layout";
 import type {Node as YogaNode} from "yoga-layout";
 
 import {FrameRect, compressRectIfSmaller, rgbaToRgb565} from "../protocol.js";
-import {
-  DeviceUiState,
-  FONT_LABELS,
-  FONT_MAPLE_MONO_NF_CN,
-  FONT_NOTO_CJK,
-  FONT_WENKAI_SCREEN,
-  SETTINGS_ITEMS,
-  easeOutCubic,
-} from "../ui-state.js";
+import {DeviceUiState, easeOutCubic} from "../ui-state.js";
+import {DIRTY_TILE_HEIGHT, DIRTY_TILE_WIDTH, SCREEN_HEIGHT, SCREEN_WIDTH, TIME_REGION, type RectTuple} from "./constants.js";
+import {buildHomeCopy} from "./copy.js";
+import {fontFamily, registerFonts} from "./fonts.js";
 import {HostNode, HostText, renderReactElement} from "./reconciler.js";
+import type {CanvasImage, RenderedFrame, Style} from "./types.js";
+import {DeviceView, fontKeyForView} from "./view.js";
 
-export const SCREEN_WIDTH = 240;
-export const SCREEN_HEIGHT = 240;
-export const TIME_REGION: RectTuple = [0, 42, SCREEN_WIDTH, 142];
-export const DIRTY_TILE_WIDTH = 24;
-export const DIRTY_TILE_HEIGHT = 8;
-export const SUPERSAMPLE_SCALE = 1;
-
-export type RectTuple = [number, number, number, number];
-
-export interface CanvasImage {
-  width: number;
-  height: number;
-  rgba: Buffer;
-}
-
-export interface RenderedFrame {
-  frameId: number;
-  baseFrameId: number;
-  fullFrame: boolean;
-  rects: FrameRect[];
-}
-
-export interface HomeCopy {
-  dateText: string;
-  weekdayText: string;
-  timeText: string;
-  secondsText: string;
-  greeting: string;
-  subtitle: string;
-}
+export {SCREEN_HEIGHT, SCREEN_WIDTH, TIME_REGION} from "./constants.js";
+export {buildHomeCopy} from "./copy.js";
+export type {RectTuple} from "./constants.js";
+export type {CanvasImage, RenderedFrame} from "./types.js";
 
 interface RenderDeviceCanvasOptions {
   currentTime: Date;
@@ -65,25 +34,6 @@ interface RenderDeviceViewOptions {
   now?: Date;
   uiState?: DeviceUiState;
   animationProgress?: number;
-}
-
-interface Style {
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
-  padding?: number;
-  flexDirection?: "row" | "column";
-  alignItems?: "center" | "flex-start" | "flex-end";
-  justifyContent?: "center" | "flex-start" | "flex-end" | "space-between";
-  backgroundColor?: string;
-  color?: string;
-  borderColor?: string;
-  borderWidth?: number;
-  borderRadius?: number;
-  fontSize?: number;
-  fontFamily?: string;
-  opacity?: number;
 }
 
 interface LayoutNode {
@@ -133,10 +83,7 @@ export function renderCanvasFrame(
 
 export function renderDeviceCanvas(options: RenderDeviceCanvasOptions): CanvasImage {
   const state = options.uiState ?? new DeviceUiState();
-  let fontKey = state.fontKey;
-  if (state.page === "detail" && SETTINGS_ITEMS[state.detailIndex % SETTINGS_ITEMS.length] === "Font") {
-    fontKey = state.pendingFontKey;
-  }
+  const fontKey = fontKeyForView(state);
 
   const page = renderPageCanvas(options.currentTime, options.deviceId, state, fontKey, options.animationProgress ?? 1);
   if (!["enter_settings", "enter_detail", "back_home", "back_to_settings"].includes(state.animation) || (options.animationProgress ?? 1) >= 1) {
@@ -157,142 +104,10 @@ export function computeDirtyRects(previous: CanvasImage, current: CanvasImage, r
   return rects;
 }
 
-export function buildHomeCopy(currentTime: Date): HomeCopy {
-  const parts = getShanghaiParts(currentTime);
-  return {
-    dateText: `${chineseMonth(parts.month)}月${chineseDay(parts.day)}日`,
-    weekdayText: chineseWeekday(parts.weekday),
-    timeText: `${pad2(parts.hour)}:${pad2(parts.minute)}`,
-    secondsText: `:${pad2(parts.second)}`,
-    greeting: greetingForHour(parts.hour),
-    subtitle: subtitleForHour(parts.hour),
-  };
-}
-
 function renderPageCanvas(currentTime: Date, deviceId: string, state: DeviceUiState, fontKey: string, progress: number): CanvasImage {
-  const element =
-    state.page === "settings"
-      ? settingsElement(state, fontKey, progress)
-      : state.page === "detail"
-        ? detailElement(state, deviceId, fontKey, progress)
-        : homeElement(currentTime, fontKey);
+  const element = DeviceView({currentTime, deviceId, state, fontKey, progress});
   const root = renderReactElement(element);
   return rasterHostTree(root.children.filter((child): child is HostNode => child instanceof HostNode), fontKey);
-}
-
-function homeElement(currentTime: Date, fontKey: string): React.ReactElement {
-  const copy = buildHomeCopy(currentTime);
-  return React.createElement(
-    "screen",
-    {style: {width: SCREEN_WIDTH, height: SCREEN_HEIGHT, backgroundColor: "#05080a", fontFamily: fontFamily(fontKey)}},
-    frameBackground(),
-    text(`${copy.dateText}  ${copy.weekdayText}`, {x: 0, y: 25, width: 240, height: 25, fontSize: 20, color: "#acc8c2", alignItems: "center"}),
-    text(copy.timeText, {x: 22, y: 68, width: 154, height: 62, fontSize: 52, color: "#f0f8ee"}),
-    text(copy.secondsText, {x: 174, y: 92, width: 48, height: 24, fontSize: 18, color: "#80dac6"}),
-    text(copy.greeting, {x: 0, y: 140, width: 240, height: 24, fontSize: 18, color: "#cee8de", alignItems: "center"}),
-    text(copy.subtitle, {x: 0, y: 166, width: 240, height: 20, fontSize: 16, color: "#7c9c9e", alignItems: "center"}),
-  );
-}
-
-function settingsElement(state: DeviceUiState, fontKey: string, progress: number): React.ReactElement {
-  const pulse = state.animation === "settings_select" ? Math.sin(Math.min(1, progress) * Math.PI) : 0;
-  const children: React.ReactNode[] = [
-    React.createElement("box", {key: "frame", style: {x: 8, y: 8, width: 224, height: 224, borderRadius: 14, borderColor: "#2e3a46", borderWidth: 2}}),
-    text("Settings", {x: 20, y: 18, width: 120, height: 30, fontSize: 24, color: "#ebf2e8"}, "title"),
-    text("remote", {x: 166, y: 25, width: 58, height: 18, fontSize: 13, color: "#60a0ae"}, "remote"),
-  ];
-  SETTINGS_ITEMS.forEach((item, index) => {
-    const y = 58 + index * 33;
-    const selected = index === state.selectedIndex;
-    children.push(
-      React.createElement("box", {
-        key: `row-${item}`,
-        style: {
-          x: 16,
-          y: y - 2,
-          width: 208,
-          height: 32,
-          borderRadius: 10,
-          backgroundColor: selected ? mixColor("#1b6265", "#248b85", pulse * 0.6) : "#11181e",
-        },
-      }),
-      text(String(index + 1), {x: 20, y: y + 6, width: 22, height: 18, fontSize: 13, color: selected ? "#0a2a2c" : "#587078", alignItems: "center"}, `idx-${item}`),
-      text(item, {x: 54, y: y + 4, width: 116, height: 22, fontSize: 17, color: selected ? "#f4fcf4" : "#a5b7be"}, `label-${item}`),
-    );
-    if (item === "Brightness") children.push(text(`${state.brightness}%`, {x: 186, y: y + 6, width: 42, height: 18, fontSize: 13, color: "#a5b7be"}, "brightness"));
-    if (item === "Font") children.push(text(FONT_LABELS[state.fontKey] ?? "Font", {x: 174, y: y + 6, width: 50, height: 18, fontSize: 13, color: "#a5b7be"}, "font"));
-  });
-  return React.createElement("screen", {style: screenStyle(fontKey, "#06090d")}, children);
-}
-
-function detailElement(state: DeviceUiState, deviceId: string, fontKey: string, progress: number): React.ReactElement {
-  const item = SETTINGS_ITEMS[state.detailIndex % SETTINGS_ITEMS.length];
-  if (item === "Brightness") return brightnessElement(state, fontKey, progress);
-  if (item === "Device") return rowsDetailElement("Device", "client diagnostics", [
-    ["Heap", state.diagnostics.heapFree ? formatKb(state.diagnostics.heapFree) : "waiting"],
-    ["Block", state.diagnostics.heapMaxBlock ? formatKb(state.diagnostics.heapMaxBlock) : "waiting"],
-    ["Frag", state.diagnostics.heapFragmentation ? `${state.diagnostics.heapFragmentation}%` : "waiting"],
-    ["RSSI", state.diagnostics.wifiRssi ? `${state.diagnostics.wifiRssi} dBm` : "waiting"],
-  ], fontKey);
-  if (item === "Renderer") return rowsDetailElement("Renderer", "remote frame link", [["Mode", "HTTP keep-alive"], ["Poll", "50 ms"], ["Wait", "10 ms"], ["Frames", "SDD1 diff"]], fontKey);
-  if (item === "About") return rowsDetailElement("About", "SmallDesktopDisplay", [["Device", deviceId.slice(0, 14)], ["UI", "react-render"], ["Build", "node"], ["Protocol", "SDD1"]], fontKey);
-  if (item === "Font") return rowsDetailElement("Font", "short apply", [["Current", FONT_LABELS[state.fontKey] ?? "Font"], ["Next", FONT_LABELS[nextFontLabel(state.fontKey)] ?? "Font"], ["Engine", "React"], ["Layout", "Yoga"]], fontKey);
-  return rowsDetailElement(item, "Setting detail", [["Preview", "only"], ["More", "controls next"]], fontKey);
-}
-
-function brightnessElement(state: DeviceUiState, fontKey: string, progress: number): React.ReactElement {
-  const value = Math.max(0, Math.min(100, state.pendingBrightness));
-  const pulse = ["brightness_adjust", "brightness_applied"].includes(state.animation) ? Math.sin(Math.min(1, progress) * Math.PI) : 0;
-  const fillWidth = Math.round(170 * (value / 100));
-  return React.createElement(
-    "screen",
-    {style: screenStyle(fontKey, "#05080a")},
-    React.createElement("box", {style: {x: 8, y: 8, width: 224, height: 224, borderRadius: 14, borderColor: "#323e48", borderWidth: 2}}),
-    text("Brightness", {x: 20, y: 18, width: 160, height: 28, fontSize: 22, color: "#eef6ec"}),
-    text("short apply", {x: 20, y: 49, width: 180, height: 18, fontSize: 13, color: "#649baa"}),
-    text(`${value}%`, {x: 0, y: 82 - Math.round(pulse * 3), width: 240, height: 52, fontSize: 42, color: mixColor("#f0f8ee", "#b2ffe2", pulse * 0.45), alignItems: "center"}),
-    React.createElement("box", {style: {x: 34, y: 146, width: 172, height: 18, borderRadius: 9, backgroundColor: "#111b20"}}),
-    React.createElement("box", {style: {x: 35, y: 147, width: fillWidth, height: 16, borderRadius: 8, backgroundColor: "#70e0c4"}}),
-    text(state.brightness === state.pendingBrightness ? "applied" : `saved ${state.brightness}%`, {x: 34, y: 184, width: 160, height: 22, fontSize: 16, color: "#8eb2b4"}),
-    text("double tap back", {x: 0, y: 210, width: 240, height: 18, fontSize: 13, color: "#a0bec2", alignItems: "center"}),
-  );
-}
-
-function rowsDetailElement(title: string, subtitle: string, rows: Array<[string, string]>, fontKey: string): React.ReactElement {
-  return React.createElement(
-    "screen",
-    {style: screenStyle(fontKey, "#05080a")},
-    React.createElement("box", {style: {x: 8, y: 8, width: 224, height: 224, borderRadius: 14, borderColor: "#323e48", borderWidth: 2}}),
-    text(title, {x: 20, y: 18, width: 190, height: 28, fontSize: 22, color: "#eef6ec"}),
-    text(subtitle, {x: 20, y: 49, width: 190, height: 18, fontSize: 13, color: "#649baa"}),
-    rows.map(([label, value], index) =>
-      React.createElement(
-        React.Fragment,
-        {key: label},
-        React.createElement("box", {style: {x: 18, y: 80 + index * 28, width: 204, height: 24, borderRadius: 8, backgroundColor: "#11181e"}}),
-        text(label, {x: 28, y: 84 + index * 28, width: 60, height: 18, fontSize: 13, color: "#70969e"}),
-        text(value, {x: 92, y: 82 + index * 28, width: 128, height: 20, fontSize: 16, color: "#e0f0e8"}),
-      ),
-    ),
-    text("double tap back", {x: 0, y: 210, width: 240, height: 18, fontSize: 13, color: "#a0bec2", alignItems: "center"}),
-  );
-}
-
-function frameBackground(): React.ReactElement[] {
-  return [
-    React.createElement("box", {key: "outer", style: {x: 8, y: 8, width: 224, height: 224, borderRadius: 14, backgroundColor: "#060a0d", borderColor: "#2a3a3e", borderWidth: 2}}),
-    React.createElement("box", {key: "inner", style: {x: 16, y: 16, width: 208, height: 208, borderRadius: 11, borderColor: "#101f22", borderWidth: 1}}),
-    React.createElement("box", {key: "line1", style: {x: 32, y: 55, width: 176, height: 1, backgroundColor: "#142627"}}),
-    React.createElement("box", {key: "line2", style: {x: 42, y: 132, width: 156, height: 1, backgroundColor: "#122224"}}),
-  ];
-}
-
-function text(value: string, style: Style, key?: string): React.ReactElement {
-  return React.createElement("text", {key, style, text: value});
-}
-
-function screenStyle(fontKey: string, backgroundColor: string): Style {
-  return {width: SCREEN_WIDTH, height: SCREEN_HEIGHT, backgroundColor, fontFamily: fontFamily(fontKey)};
 }
 
 function rasterHostTree(children: HostNode[], fontKey: string): CanvasImage {
@@ -363,7 +178,7 @@ function paintLayout(ctx: SKRSContext2D, node: LayoutNode, parentX: number, pare
   if (node.style.borderColor && node.style.borderWidth) {
     strokeRoundedRect(ctx, x, y, node.width, node.height, node.style.borderRadius ?? 0, node.style.borderColor, node.style.borderWidth);
   }
-  if (node.host.type === "text") {
+  if (node.host.type === "sdd-text") {
     const textValue = collectText(node.host);
     const fontSize = node.style.fontSize ?? 16;
     ctx.font = `${fontSize}px ${currentFontFamily}`;
@@ -385,8 +200,8 @@ function collectText(node: HostNode): string {
 }
 
 function applyYogaStyle(node: YogaNode, style: Style, type: string): void {
-  node.setWidth(style.width ?? (type === "screen" ? SCREEN_WIDTH : 0));
-  node.setHeight(style.height ?? (type === "screen" ? SCREEN_HEIGHT : 0));
+  node.setWidth(style.width ?? (type === "sdd-screen" ? SCREEN_WIDTH : 0));
+  node.setHeight(style.height ?? (type === "sdd-screen" ? SCREEN_HEIGHT : 0));
   if (style.x !== undefined || style.y !== undefined) {
     node.setPositionType(PositionType.Absolute);
     node.setPosition(Yoga.EDGE_LEFT, style.x ?? 0);
@@ -513,116 +328,4 @@ function solidCanvas(width: number, height: number, color: [number, number, numb
     rgba[index + 3] = color[3];
   }
   return {width, height, rgba};
-}
-
-function registerFonts(): void {
-  const candidates: Array<[string, string]> = [
-    ["/usr/local/share/fonts/lxgw-wenkai-screen/LXGWWenKaiScreen.ttf", "LXGW WenKai Screen"],
-    [path.join(process.env.HOME ?? "", "Library/Fonts/LXGWWenKaiScreen.ttf"), "LXGW WenKai Screen"],
-    ["/usr/local/share/fonts/maple-mono-nf-cn/MapleMono-NF-CN-Regular.ttf", "Maple Mono NF CN"],
-    [path.join(process.env.HOME ?? "", "Library/Fonts/MapleMono-NF-CN-Regular.ttf"), "Maple Mono NF CN"],
-    ["/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "Noto Sans CJK"],
-    ["/System/Library/Fonts/PingFang.ttc", "PingFang SC"],
-    ["/System/Library/Fonts/STHeiti Light.ttc", "STHeiti"],
-  ];
-  for (const [fontPath, name] of candidates) {
-    try {
-      GlobalFonts.registerFromPath(fontPath, name);
-    } catch {
-      // Missing optional font paths are expected across host and container environments.
-    }
-  }
-}
-
-function fontFamily(fontKey: string): string {
-  if (fontKey === FONT_MAPLE_MONO_NF_CN) return '"Maple Mono NF CN", "Noto Sans CJK", "PingFang SC", "STHeiti", sans-serif';
-  if (fontKey === FONT_NOTO_CJK) return '"Noto Sans CJK", "PingFang SC", "STHeiti", sans-serif';
-  return '"LXGW WenKai Screen", "Noto Sans CJK", "PingFang SC", "STHeiti", sans-serif';
-}
-
-function nextFontLabel(fontKey: string): string {
-  if (fontKey === FONT_WENKAI_SCREEN) return FONT_MAPLE_MONO_NF_CN;
-  if (fontKey === FONT_MAPLE_MONO_NF_CN) return FONT_NOTO_CJK;
-  return FONT_WENKAI_SCREEN;
-}
-
-function getShanghaiParts(date: Date): {month: number; day: number; weekday: number; hour: number; minute: number; second: number} {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(date);
-  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? 0);
-  const weekdayMap: Record<string, number> = {Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6};
-  return {
-    month: value("month"),
-    day: value("day"),
-    weekday: weekdayMap[parts.find((part) => part.type === "weekday")?.value ?? "Mon"] ?? 0,
-    hour: value("hour"),
-    minute: value("minute"),
-    second: value("second"),
-  };
-}
-
-function chineseMonth(month: number): string {
-  return ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"][Math.max(1, Math.min(12, month)) - 1];
-}
-
-function chineseDay(day: number): string {
-  return chineseNumber(Math.max(1, Math.min(31, day)));
-}
-
-function chineseNumber(value: number): string {
-  const digits = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
-  if (value <= 10) return value === 10 ? "十" : digits[value];
-  if (value < 20) return `十${digits[value - 10]}`;
-  const tens = Math.floor(value / 10);
-  const ones = value % 10;
-  return ones === 0 ? `${digits[tens]}十` : `${digits[tens]}十${digits[ones]}`;
-}
-
-function chineseWeekday(weekday: number): string {
-  return ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][Math.max(0, Math.min(6, weekday))];
-}
-
-function greetingForHour(hour: number): string {
-  if (hour >= 5 && hour < 11) return "早上好";
-  if (hour >= 11 && hour < 14) return "中午好";
-  if (hour >= 14 && hour < 18) return "下午好";
-  if (hour >= 18 && hour < 23) return "晚上好";
-  return "夜深了";
-}
-
-function subtitleForHour(hour: number): string {
-  if (hour >= 5 && hour < 11) return "今天也慢慢开始";
-  if (hour >= 11 && hour < 14) return "记得好好吃饭";
-  if (hour >= 14 && hour < 18) return "保持清醒，慢慢来";
-  if (hour >= 18 && hour < 23) return "收一收，缓一缓";
-  return "早点休息也很好";
-}
-
-function pad2(value: number): string {
-  return String(value).padStart(2, "0");
-}
-
-function formatKb(value: number): string {
-  return `${Math.round(value / 1024)} KB`;
-}
-
-function mixColor(from: string, to: string, amount: number): string {
-  const a = parseHex(from);
-  const b = parseHex(to);
-  const t = Math.max(0, Math.min(1, amount));
-  return `rgb(${Math.round(a[0] + (b[0] - a[0]) * t)}, ${Math.round(a[1] + (b[1] - a[1]) * t)}, ${Math.round(a[2] + (b[2] - a[2]) * t)})`;
-}
-
-function parseHex(value: string): [number, number, number] {
-  const hex = value.replace("#", "");
-  return [Number.parseInt(hex.slice(0, 2), 16), Number.parseInt(hex.slice(2, 4), 16), Number.parseInt(hex.slice(4, 6), 16)];
 }

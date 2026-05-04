@@ -2,7 +2,7 @@ import React from "react";
 import Reconciler from "react-reconciler";
 import {DefaultEventPriority} from "react-reconciler/constants.js";
 
-export type HostType = "screen" | "box" | "text";
+export type HostType = "sdd-screen" | "sdd-box" | "sdd-text";
 
 export interface HostProps {
   style?: Record<string, unknown>;

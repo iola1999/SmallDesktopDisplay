@@ -311,8 +311,18 @@ remote-render/
     state.ts
     ui-state.ts
     renderer/
+      constants.ts
+      copy.ts
+      fonts.ts
       index.ts
+      pages/
+        home.tsx
+        settings.tsx
+        detail.tsx
+      primitives.tsx
       reconciler.ts
+      types.ts
+      view.tsx
     tools/
       frame-preview.ts
     *.test.ts
@@ -322,8 +332,12 @@ Responsibilities:
 
 - `protocol.ts`: encode `SDD1` binary frames and validate rectangle payloads.
 - `renderer/reconciler.ts`: custom React renderer host using `react-reconciler`.
-- `renderer/index.ts`: build React UI trees, compute Yoga layout, rasterize via
-  Skia (`@napi-rs/canvas`), and produce RGB565 rects.
+- `renderer/pages/*.tsx`: TSX page components for Home, Settings, and Detail.
+- `renderer/primitives.tsx`: typed Screen/Box/Text host primitives used by the
+  page components.
+- `renderer/view.tsx`: top-level view selection and font-key routing.
+- `renderer/index.ts`: renderer pipeline that computes Yoga layout, rasterizes
+  via Skia (`@napi-rs/canvas`), diffs frames, and produces RGB565 rects.
 - `state.ts`: track device frame ids, button sequence, dirty frames, and full-frame
   resync snapshots. It also schedules animation frames after navigation input.
 - `ui-state.ts`: pure state machine for pages, selection, detail routing, and
