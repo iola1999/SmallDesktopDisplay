@@ -214,8 +214,16 @@ export class DeviceRegistry {
       if (state.ui.page === "home") {
         const gameStep = this.currentHomeGameStep(now);
         if (gameStep > state.lastHomeGameStep) {
+          const gameSlotChanged = this.currentHomeGameSlot(this.now()) !== state.lastHomeGameSlot;
           state.lastHomeGameStep = gameStep;
-          return this.render(state, false, [HOME_GAME_REGION], 1, gameStep);
+          return this.render(
+            state,
+            false,
+            gameSlotChanged ? [] : [HOME_GAME_REGION],
+            1,
+            gameStep,
+            gameSlotChanged ? [HOME_GAME_REGION] : undefined,
+          );
         }
       }
       return 0;
@@ -224,8 +232,15 @@ export class DeviceRegistry {
       const gameSlot = this.currentHomeGameSlot(this.now());
       state.lastClockAnimationSecond = currentSecond;
       state.lastClockAnimationFrameAt = now;
-      const regions = gameSlot !== state.lastHomeGameSlot ? [TIME_REGION, HOME_GAME_REGION] : [TIME_REGION];
-      return this.render(state, false, regions, 0, state.lastHomeGameStep);
+      const gameSlotChanged = gameSlot !== state.lastHomeGameSlot;
+      return this.render(
+        state,
+        false,
+        [TIME_REGION],
+        0,
+        state.lastHomeGameStep,
+        gameSlotChanged ? [HOME_GAME_REGION] : undefined,
+      );
     }
     return this.render(state, false, [TIME_REGION]);
   }
@@ -249,7 +264,14 @@ export class DeviceRegistry {
     return uptimeMs < state.lastInputUptimeMs;
   }
 
-  private render(state: DeviceState, fullFrame: boolean, regions?: RectTuple[], clockFlipProgress?: number, homeGameStep?: number): number {
+  private render(
+    state: DeviceState,
+    fullFrame: boolean,
+    regions?: RectTuple[],
+    clockFlipProgress?: number,
+    homeGameStep?: number,
+    forcedRegions?: RectTuple[],
+  ): number {
     const started = this.monotonic();
     const now = this.monotonic();
     const gameStep = state.ui.page === "home" ? (homeGameStep ?? this.resolveHomeGameStep(state, now, fullFrame)) : undefined;
@@ -276,11 +298,19 @@ export class DeviceRegistry {
     if (fullFrame || state.canvas === null) {
       rendered = renderCanvasFrame(currentCanvas, {frameId: state.frameId, baseFrameId: 0, fullFrame: true});
     } else {
+      const forcedRects = forcedRegions?.length
+        ? renderCanvasFrame(currentCanvas, {
+            frameId: state.frameId,
+            baseFrameId,
+            fullFrame: false,
+            regions: forcedRegions,
+          }).rects
+        : [];
       rendered = {
         frameId: state.frameId,
         baseFrameId,
         fullFrame: false,
-        rects: computeDirtyRects(state.canvas, currentCanvas, regions),
+        rects: [...computeDirtyRects(state.canvas, currentCanvas, regions), ...forcedRects],
       };
     }
     state.frame = encodeRenderedFrame(rendered);

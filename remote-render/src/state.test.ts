@@ -2,6 +2,7 @@ import {describe, expect, test} from "vitest";
 
 import {applyFrameToRgba, decodeFrame} from "./tools/frame-preview.js";
 import {DeviceRegistry} from "./state.js";
+import {HOME_GAME_REGION} from "./renderer/index.js";
 
 describe("device registry", () => {
   test("returns latest frame then no content for same frame id", async () => {
@@ -132,6 +133,41 @@ describe("device registry", () => {
     expect(decoded.fullFrame).toBe(false);
     expect(decoded.rects.length).toBeGreaterThan(0);
     expect(decoded.rects.every((rect) => rect.y >= 136 && rect.y < 226)).toBe(true);
+  });
+
+  test("sends the full game region when the home game switches", async () => {
+    let now = 0;
+    const baseTime = new Date("2026-05-01T12:09:59.000+08:00").getTime();
+    const registry = new DeviceRegistry({
+      monotonic: () => now,
+      now: () => new Date(baseTime + now * 1000),
+      frameIntervalSeconds: 1,
+      animationFrameIntervalSeconds: 0.05,
+      clockFlipAnimationSeconds: 0.3,
+      homeGameFrameIntervalSeconds: 1,
+    });
+    const deviceId = "desk-game-switch-clear";
+
+    const first = await registry.getFrame(deviceId, 0, 0);
+    let rgba = applyFrameToRgba(Buffer.alloc(0), 240, decodeFrame(first!));
+    let have = first!.readUInt32LE(8);
+
+    now = 1;
+    const switched = await registry.getFrame(deviceId, have, 0);
+    const decoded = decodeFrame(switched!);
+    rgba = applyFrameToRgba(rgba, 240, decoded);
+    have = switched!.readUInt32LE(8);
+    const fullSnapshot = applyFrameToRgba(Buffer.alloc(0), 240, decodeFrame(registry.devices.get(deviceId)!.fullFrame));
+    const [left, top, right, bottom] = HOME_GAME_REGION;
+
+    expect(decoded.fullFrame).toBe(false);
+    expect(decoded.rects).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({x: left, y: top, width: right - left, height: bottom - top}),
+      ]),
+    );
+    expect(Buffer.compare(rgba, fullSnapshot)).toBe(0);
+    expect(registry.devices.get(deviceId)!.latestBaseFrameId).toBe(have - 1);
   });
 
   test("emits a full final frame when a navigation animation expires between polls", async () => {
