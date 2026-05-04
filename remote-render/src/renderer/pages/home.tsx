@@ -2,7 +2,7 @@ import {FrameBackground} from "../components/frame-background.js";
 import {Box, Screen, Text} from "../components/primitives.js";
 import type {ClockFlipGlyphViewModel, HomeViewModel} from "../models/view-model.js";
 import {mixColor} from "../services/color.js";
-import {AutoSnake} from "../widgets/auto-snake.js";
+import {HomeAmbientGame} from "../widgets/home-ambient-game.js";
 
 export function HomePage({model}: {model: HomeViewModel}) {
   return (
@@ -14,7 +14,7 @@ export function HomePage({model}: {model: HomeViewModel}) {
       {model.clockGlyphs.map((glyph) => (
         <ClockGlyph key={glyph.key} glyph={glyph} />
       ))}
-      <AutoSnake model={model.snake} x={36} y={164} />
+      <HomeAmbientGame model={model.game} />
     </Screen>
   );
 }

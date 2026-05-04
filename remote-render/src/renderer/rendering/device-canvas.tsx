@@ -12,7 +12,7 @@ export interface RenderDeviceCanvasOptions {
   uiState?: DeviceUiState;
   animationProgress?: number;
   clockFlipProgress?: number;
-  homeAnimationStep?: number;
+  homeGameStep?: number;
 }
 
 export function renderDeviceCanvas(options: RenderDeviceCanvasOptions): CanvasImage {
@@ -26,7 +26,7 @@ export function renderDeviceCanvas(options: RenderDeviceCanvasOptions): CanvasIm
       state={state}
       progress={progress}
       clockFlipProgress={options.clockFlipProgress}
-      homeAnimationStep={options.homeAnimationStep}
+      homeGameStep={options.homeGameStep}
     />,
     fontKey,
   );

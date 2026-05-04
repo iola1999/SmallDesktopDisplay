@@ -1,11 +1,11 @@
 import {Box} from "../components/primitives.js";
 import type {AutoSnakeViewModel, SnakeCellViewModel} from "../models/view-model.js";
 
-export function AutoSnake({model, x, y}: {model: AutoSnakeViewModel; x: number; y: number}) {
+export function AutoSnake({model}: {model: AutoSnakeViewModel}) {
   const width = model.columns * model.cellSize;
   const height = model.rows * model.cellSize;
   return (
-    <Box style={{x, y, width, height, borderColor: "#12312d", borderWidth: 1, borderRadius: 4, backgroundColor: "#06100f"}}>
+    <Box style={{width, height, borderColor: "#12312d", borderWidth: 1, borderRadius: 4, backgroundColor: "#06100f"}}>
       {model.body.map((cell, index) => (
         <SnakeCell
           key={`snake-${index}`}

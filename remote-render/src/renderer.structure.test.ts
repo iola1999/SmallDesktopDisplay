@@ -21,11 +21,15 @@ const expectedModules = [
   "services/color.ts",
   "services/auto-snake.ts",
   "services/clock-flip.ts",
+  "services/conway-life.ts",
   "services/font-registry.ts",
+  "services/home-ambient-game.ts",
   "services/home-copy.ts",
   "services/view-model.ts",
   "types.ts",
   "widgets/auto-snake.tsx",
+  "widgets/conway-life.tsx",
+  "widgets/home-ambient-game.tsx",
 ] as const;
 
 describe("renderer source structure", () => {

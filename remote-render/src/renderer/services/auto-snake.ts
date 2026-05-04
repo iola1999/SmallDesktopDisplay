@@ -1,8 +1,8 @@
 import type {AutoSnakeViewModel, SnakeCellViewModel} from "../models/view-model.js";
 
 const DEFAULT_COLUMNS = 24;
-const DEFAULT_ROWS = 6;
-const DEFAULT_CELL_SIZE = 7;
+const DEFAULT_ROWS = 10;
+const DEFAULT_CELL_SIZE = 8;
 const CYCLE_STEPS = 180;
 
 interface AutoSnakeInput {

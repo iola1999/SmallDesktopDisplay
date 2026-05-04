@@ -98,7 +98,7 @@ describe("device registry", () => {
     expect(Buffer.compare(rgba, fullSnapshot)).toBe(0);
   });
 
-  test("emits small autonomous snake frames between second ticks", async () => {
+  test("emits slower home game frames after clock cleanup", async () => {
     let now = 0;
     const baseTime = new Date("2026-05-01T12:34:56.000+08:00").getTime();
     const registry = new DeviceRegistry({
@@ -107,7 +107,7 @@ describe("device registry", () => {
       frameIntervalSeconds: 1,
       animationFrameIntervalSeconds: 0.05,
       clockFlipAnimationSeconds: 0.3,
-      homeSnakeFrameIntervalSeconds: 0.25,
+      homeGameFrameIntervalSeconds: 1,
     });
     const deviceId = "desk-snake-live";
 
@@ -115,12 +115,23 @@ describe("device registry", () => {
     const firstFrameId = first!.readUInt32LE(8);
 
     now = 0.5;
-    const snakeFrame = await registry.getFrame(deviceId, firstFrameId, 0);
-    const decoded = decodeFrame(snakeFrame!);
+    await expect(registry.getFrame(deviceId, firstFrameId, 0)).resolves.toBeNull();
+
+    now = 1;
+    const timeFrame = await registry.getFrame(deviceId, firstFrameId, 0);
+    let have = timeFrame!.readUInt32LE(8);
+
+    now = 1.31;
+    const cleanupFrame = await registry.getFrame(deviceId, have, 0);
+    have = cleanupFrame!.readUInt32LE(8);
+
+    now = 1.5;
+    const gameFrame = await registry.getFrame(deviceId, have, 0);
+    const decoded = decodeFrame(gameFrame!);
 
     expect(decoded.fullFrame).toBe(false);
     expect(decoded.rects.length).toBeGreaterThan(0);
-    expect(decoded.rects.every((rect) => rect.y >= 152 && rect.y < 220)).toBe(true);
+    expect(decoded.rects.every((rect) => rect.y >= 136 && rect.y < 226)).toBe(true);
   });
 
   test("emits a full final frame when a navigation animation expires between polls", async () => {

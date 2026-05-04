@@ -63,21 +63,42 @@ describe("React remote renderer", () => {
       currentTime: new Date("2026-05-01T12:34:56.000+08:00"),
       deviceId: "desk-01",
       buttonCount: 0,
-      homeAnimationStep: 100,
+      homeGameStep: 100,
     });
     const next = renderDeviceCanvas({
       currentTime: new Date("2026-05-01T12:34:56.000+08:00"),
       deviceId: "desk-01",
       buttonCount: 0,
-      homeAnimationStep: 101,
+      homeGameStep: 101,
     });
 
-    const rects = computeDirtyRects(first, next, [[18, 154, 222, 218]]);
+    const rects = computeDirtyRects(first, next, [[18, 136, 222, 226]]);
     const payloadLength = rects.reduce((sum, rect) => sum + rect.payload.length, 0);
 
     expect(rects.length).toBeGreaterThan(0);
     expect(payloadLength).toBeGreaterThan(0);
     expect(payloadLength).toBeLessThan(8_000);
+  });
+
+  test("home view switches the lower game at five-minute boundaries", () => {
+    const snake = renderDeviceCanvas({
+      currentTime: new Date("2026-05-01T12:00:10.000+08:00"),
+      deviceId: "desk-01",
+      buttonCount: 0,
+      homeGameStep: 12,
+    });
+    const life = renderDeviceCanvas({
+      currentTime: new Date("2026-05-01T12:05:10.000+08:00"),
+      deviceId: "desk-01",
+      buttonCount: 0,
+      homeGameStep: 12,
+    });
+
+    const rects = computeDirtyRects(snake, life, [[18, 136, 222, 226]]);
+    const payloadLength = rects.reduce((sum, rect) => sum + rect.payload.length, 0);
+
+    expect(rects.length).toBeGreaterThan(0);
+    expect(payloadLength).toBeGreaterThan(0);
   });
 
   test("renders a full-screen RGB565 frame from React host primitives", () => {

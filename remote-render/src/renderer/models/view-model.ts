@@ -10,7 +10,7 @@ export interface HomeViewModel extends BaseViewModel {
   page: "home";
   copy: HomeCopy;
   clockGlyphs: ClockFlipGlyphViewModel[];
-  snake: AutoSnakeViewModel;
+  game: HomeAmbientGameViewModel;
 }
 
 export type ClockFlipGlyphGroup = "time" | "seconds";
@@ -40,6 +40,23 @@ export interface AutoSnakeViewModel {
 export interface SnakeCellViewModel {
   x: number;
   y: number;
+}
+
+export type HomeAmbientGameViewModel =
+  | {
+      kind: "snake";
+      snake: AutoSnakeViewModel;
+    }
+  | {
+      kind: "life";
+      life: ConwayLifeViewModel;
+    };
+
+export interface ConwayLifeViewModel {
+  columns: number;
+  rows: number;
+  cellSize: number;
+  alive: SnakeCellViewModel[];
 }
 
 export interface SettingsViewModel extends BaseViewModel {
