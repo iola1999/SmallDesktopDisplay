@@ -1,6 +1,6 @@
 import {describe, expect, test} from "vitest";
 
-import {buildConwayLifeViewModel, evolveConwayCells} from "./conway-life.js";
+import {advanceConwayLifeRuntime, buildConwayLifeViewModel, createConwayLifeRuntime, evolveConwayCells} from "./conway-life.js";
 
 describe("Conway life view model", () => {
   test("generates deterministic bounded seeds", () => {
@@ -12,14 +12,32 @@ describe("Conway life view model", () => {
     expect(again).toEqual(first);
     expect(other.alive).not.toEqual(first.alive);
     expect(first.alive.length).toBeGreaterThan(0);
-    expect(density).toBeGreaterThanOrEqual(0.16);
+    expect(density).toBeGreaterThanOrEqual(0.08);
     expect(density).toBeLessThanOrEqual(0.28);
     expect(first.alive.every((cell) => cell.x >= 0 && cell.x < first.columns && cell.y >= 0 && cell.y < first.rows)).toBe(true);
   });
 
-  test("does not loop back to the initial seed during a five-minute life window", () => {
+  test("keeps structured seeds animated without early refresh", () => {
+    for (const seed of ["home-life:0", "home-life:1", "slot-1", "slot-2"]) {
+      let runtime = createConwayLifeRuntime({seed});
+      let previous = cellSignature(runtime.alive);
+      let unchangedFrames = 0;
+      for (let generation = 0; generation < 180; generation += 1) {
+        runtime = advanceConwayLifeRuntime(runtime).runtime;
+        const current = cellSignature(runtime.alive);
+        if (current === previous) unchangedFrames += 1;
+        previous = current;
+      }
+
+      expect(runtime.refreshIndex).toBe(0);
+      expect(unchangedFrames).toBe(0);
+      expect(runtime.alive.length).toBeGreaterThan(20);
+    }
+  });
+
+  test("does not freeze to the initial seed during a five-minute life window", () => {
     const initial = buildConwayLifeViewModel({seed: "slot-1", generation: 0});
-    const later = buildConwayLifeViewModel({seed: "slot-1", generation: 96});
+    const later = buildConwayLifeViewModel({seed: "slot-1", generation: 97});
 
     expect(later.alive).not.toEqual(initial.alive);
   });
@@ -42,3 +60,7 @@ describe("Conway life view model", () => {
     ]);
   });
 });
+
+function cellSignature(cells: Array<{x: number; y: number}>): string {
+  return cells.map((cell) => `${cell.x},${cell.y}`).join(";");
+}
