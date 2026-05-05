@@ -3,7 +3,10 @@ import type {ConwayLifeViewModel, SnakeCellViewModel} from "../models/view-model
 const DEFAULT_COLUMNS = 32;
 const DEFAULT_ROWS = 13;
 const DEFAULT_CELL_SIZE = 6;
-const MIN_ACTIVE_DENSITY = 0.025;
+const CANDIDATE_COUNT = 160;
+const CANDIDATE_EVALUATION_GENERATIONS = 160;
+const SHORT_CYCLE_REFRESH_WINDOW = 8;
+const MIN_ACTIVE_DENSITY = 0.04;
 const STATIC_REFRESH_GENERATIONS = 4;
 
 type LifePattern = SnakeCellViewModel[];
@@ -46,12 +49,6 @@ const R_PENTOMINO: LifePattern = [
   {x: 1, y: 2},
 ];
 
-const BLINKER: LifePattern = [
-  {x: 0, y: 1},
-  {x: 1, y: 1},
-  {x: 2, y: 1},
-];
-
 const TOAD: LifePattern = [
   {x: 1, y: 0},
   {x: 2, y: 0},
@@ -69,6 +66,13 @@ const BEACON: LifePattern = [
   {x: 2, y: 3},
   {x: 3, y: 3},
 ];
+
+interface CandidateScore {
+  cells: SnakeCellViewModel[];
+  score: number;
+  repeated: boolean;
+  minAlive: number;
+}
 
 interface ConwayLifeInput {
   seed: string;
@@ -112,7 +116,9 @@ export function advanceConwayLifeRuntime(state: ConwayLifeRuntime): {runtime: Co
   const next = evolveConwayCells(state.alive, state.columns, state.rows);
   const signature = cellSignature(next);
   const stagnantGenerations = signature === state.seen[state.seen.length - 1] ? state.stagnantGenerations + 1 : 0;
-  if (next.length < minimumActiveCells(state.columns, state.rows) || stagnantGenerations >= STATIC_REFRESH_GENERATIONS) {
+  const previousIndex = state.seen.lastIndexOf(signature);
+  const shortCycle = previousIndex >= 0 && state.seen.length - previousIndex <= SHORT_CYCLE_REFRESH_WINDOW;
+  if (next.length < minimumActiveCells(state.columns, state.rows) || stagnantGenerations >= STATIC_REFRESH_GENERATIONS || shortCycle) {
     const refreshIndex = state.refreshIndex + 1;
     const alive = seededCells(`${state.seed}:refresh:${refreshIndex}`, state.columns, state.rows);
     return {
@@ -163,13 +169,27 @@ export function evolveConwayCells(alive: SnakeCellViewModel[], columns: number, 
 }
 
 function seededCells(seed: string, columns: number, rows: number): SnakeCellViewModel[] {
+  let best: CandidateScore | null = null;
+  for (let index = 0; index < CANDIDATE_COUNT; index += 1) {
+    const cells = candidateCells(`${seed}:candidate:${index}`, columns, rows);
+    const score = scoreCandidate(cells, columns, rows);
+    if (!best || compareCandidate(score, best) > 0) {
+      best = score;
+      if (!score.repeated && score.minAlive >= minimumActiveCells(columns, rows) && score.score > CANDIDATE_EVALUATION_GENERATIONS * 2) {
+        return score.cells;
+      }
+    }
+  }
+  return best?.cells ?? candidateCells(`${seed}:fallback`, columns, rows);
+}
+
+function candidateCells(seed: string, columns: number, rows: number): SnakeCellViewModel[] {
   const cells: SnakeCellViewModel[] = [];
   const used = new Set<string>();
   const random = mulberry32(hash(seed));
-  const targetCount = Math.max(minimumActiveCells(columns, rows) + 8, Math.round(columns * rows * 0.08));
-  const maxSeedCells = Math.round(columns * rows * 0.18);
+  const targetCount = Math.max(minimumActiveCells(columns, rows) + 12, Math.round(columns * rows * (0.16 + random() * 0.04)));
+  const maxSeedCells = Math.round(columns * rows * 0.24);
 
-  placeOscillatorBank(cells, used, columns, rows, random);
   for (const pattern of shuffledPatterns(random)) {
     if (cells.length >= targetCount) break;
     if (cells.length + pattern.length > maxSeedCells) continue;
@@ -189,27 +209,8 @@ function seededCells(seed: string, columns: number, rows: number): SnakeCellView
     .sort((left, right) => left.y - right.y || left.x - right.x);
 }
 
-function placeOscillatorBank(cells: SnakeCellViewModel[], used: Set<string>, columns: number, rows: number, random: () => number): void {
-  if (rows < 5 || columns < 5) return;
-  const patterns = [TOAD, BEACON, BLINKER];
-  const slotWidth = 8;
-  const slotHeight = 6;
-  const columnsPerRow = Math.max(1, Math.floor(columns / slotWidth));
-  const rowsPerGrid = Math.max(1, Math.floor(rows / slotHeight));
-  for (let slotY = 0; slotY < rowsPerGrid; slotY += 1) {
-    for (let slotX = 0; slotX < columnsPerRow; slotX += 1) {
-      const pattern = patterns[Math.floor(random() * patterns.length)];
-      const patternWidth = Math.max(...pattern.map((cell) => cell.x)) + 1;
-      const patternHeight = Math.max(...pattern.map((cell) => cell.y)) + 1;
-      const x = Math.min(columns - patternWidth - 1, slotX * slotWidth + 2);
-      const y = Math.min(rows - patternHeight - 1, slotY * slotHeight + 1);
-      addPatternAt(pattern, Math.max(1, x), Math.max(1, y), cells, used, columns, rows);
-    }
-  }
-}
-
 function shuffledPatterns(random: () => number): LifePattern[] {
-  const movablePatterns = [ACORN, LWSS, GLIDER, TOAD, BEACON, R_PENTOMINO];
+  const movablePatterns = [ACORN, LWSS, GLIDER, R_PENTOMINO, TOAD, BEACON];
   for (let index = movablePatterns.length - 1; index > 0; index -= 1) {
     const swapIndex = Math.floor(random() * (index + 1));
     [movablePatterns[index], movablePatterns[swapIndex]] = [movablePatterns[swapIndex], movablePatterns[index]];
@@ -244,23 +245,46 @@ function placePattern(
   return false;
 }
 
-function addPatternAt(
-  pattern: LifePattern,
-  x: number,
-  y: number,
-  cells: SnakeCellViewModel[],
-  used: Set<string>,
-  columns: number,
-  rows: number,
-): void {
-  for (const patternCell of pattern) {
-    const cell = {x: x + patternCell.x, y: y + patternCell.y};
-    if (cell.x < 0 || cell.x >= columns || cell.y < 0 || cell.y >= rows) continue;
-    const key = cellKey(cell);
-    if (used.has(key)) continue;
-    used.add(key);
-    cells.push(cell);
+function scoreCandidate(cells: SnakeCellViewModel[], columns: number, rows: number): CandidateScore {
+  let current = cells;
+  let minAlive = current.length;
+  let score = 0;
+  const seen = new Map<string, number>();
+  const minimum = minimumActiveCells(columns, rows);
+  for (let generation = 0; generation < CANDIDATE_EVALUATION_GENERATIONS; generation += 1) {
+    const signature = cellSignature(current);
+    if (seen.has(signature)) {
+      return {cells, score: score - (CANDIDATE_EVALUATION_GENERATIONS - generation) * 8, repeated: true, minAlive};
+    }
+    seen.set(signature, generation);
+    const next = evolveConwayCells(current, columns, rows);
+    minAlive = Math.min(minAlive, next.length);
+    if (next.length < minimum) {
+      return {cells, score: score - (CANDIDATE_EVALUATION_GENERATIONS - generation) * 6, repeated: false, minAlive};
+    }
+    score += changedCells(current, next) + Math.min(next.length, Math.round(columns * rows * 0.18));
+    current = next;
   }
+  return {cells, score, repeated: false, minAlive};
+}
+
+function compareCandidate(left: CandidateScore, right: CandidateScore): number {
+  if (left.repeated !== right.repeated) return left.repeated ? -1 : 1;
+  if (left.minAlive !== right.minAlive) return left.minAlive - right.minAlive;
+  return left.score - right.score;
+}
+
+function changedCells(left: SnakeCellViewModel[], right: SnakeCellViewModel[]): number {
+  const leftSet = new Set(left.map(cellKey));
+  const rightSet = new Set(right.map(cellKey));
+  let changed = 0;
+  for (const key of leftSet) {
+    if (!rightSet.has(key)) changed += 1;
+  }
+  for (const key of rightSet) {
+    if (!leftSet.has(key)) changed += 1;
+  }
+  return changed;
 }
 
 function minimumActiveCells(columns: number, rows: number): number {

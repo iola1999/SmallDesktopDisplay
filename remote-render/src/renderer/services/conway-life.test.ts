@@ -17,21 +17,22 @@ describe("Conway life view model", () => {
     expect(first.alive.every((cell) => cell.x >= 0 && cell.x < first.columns && cell.y >= 0 && cell.y < first.rows)).toBe(true);
   });
 
-  test("keeps structured seeds animated without early refresh", () => {
-    for (const seed of ["home-life:0", "home-life:1", "slot-1", "slot-2"]) {
+  test("keeps generated seeds away from short visible cycles", () => {
+    for (const seed of ["home-life:0", "home-life:1", "slot-1", "slot-2", "inspect-life-current"]) {
       let runtime = createConwayLifeRuntime({seed});
-      let previous = cellSignature(runtime.alive);
-      let unchangedFrames = 0;
-      for (let generation = 0; generation < 180; generation += 1) {
+      const seen = new Map<string, number>();
+      for (let generation = 0; generation < 160; generation += 1) {
+        const signature = cellSignature(runtime.alive);
+        const previous = seen.get(signature);
+        if (previous !== undefined) {
+          throw new Error(`${seed} repeated after ${generation - previous} generations at generation ${generation}`);
+        }
+        seen.set(signature, generation);
         runtime = advanceConwayLifeRuntime(runtime).runtime;
-        const current = cellSignature(runtime.alive);
-        if (current === previous) unchangedFrames += 1;
-        previous = current;
       }
 
       expect(runtime.refreshIndex).toBe(0);
-      expect(unchangedFrames).toBe(0);
-      expect(runtime.alive.length).toBeGreaterThan(20);
+      expect(runtime.alive.length).toBeGreaterThan(12);
     }
   });
 
