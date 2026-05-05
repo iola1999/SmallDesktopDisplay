@@ -1,10 +1,22 @@
 import type {HomeAmbientGameViewModel} from "../models/view-model.js";
 import {
+  type AntColonyRuntime,
+  advanceAntColonyRuntime,
+  antColonyRuntimeToViewModel,
+  createAntColonyRuntime,
+} from "./ant-colony.js";
+import {
   type AutoBreakoutRuntime,
   advanceAutoBreakoutRuntime,
   autoBreakoutRuntimeToViewModel,
   createAutoBreakoutRuntime,
 } from "./auto-breakout.js";
+import {
+  type AutoPacmanRuntime,
+  advanceAutoPacmanRuntime,
+  autoPacmanRuntimeToViewModel,
+  createAutoPacmanRuntime,
+} from "./auto-pacman.js";
 import {
   type AutoSnakeRuntime,
   advanceAutoSnakeRuntime,
@@ -18,10 +30,10 @@ import {
   createConwayLifeRuntime,
 } from "./conway-life.js";
 
-export type HomeGameKind = "snake" | "life" | "breakout";
+export type HomeGameKind = "snake" | "life" | "breakout" | "ants" | "pacman";
 export type HomeGameAdvanceStatus = "playing" | "failed" | "won" | "timeout";
 
-export const HOME_GAME_KINDS: HomeGameKind[] = ["snake", "life", "breakout"];
+export const HOME_GAME_KINDS: HomeGameKind[] = ["snake", "life", "breakout", "ants", "pacman"];
 export const HOME_GAME_ROUND_SECONDS = 20 * 60;
 
 export interface HomeGameRuntime {
@@ -32,6 +44,8 @@ export interface HomeGameRuntime {
   snake?: AutoSnakeRuntime;
   life?: ConwayLifeRuntime;
   breakout?: AutoBreakoutRuntime;
+  ants?: AntColonyRuntime;
+  pacman?: AutoPacmanRuntime;
 }
 
 export function createHomeGameRuntime(kind: HomeGameKind = "snake", round = 0, startedAt = 0): HomeGameRuntime {
@@ -42,7 +56,13 @@ export function createHomeGameRuntime(kind: HomeGameKind = "snake", round = 0, s
   if (kind === "life") {
     return {kind, round, startedAt, seed, life: createConwayLifeRuntime({seed})};
   }
-  return {kind, round, startedAt, seed, breakout: createAutoBreakoutRuntime({seed})};
+  if (kind === "breakout") {
+    return {kind, round, startedAt, seed, breakout: createAutoBreakoutRuntime({seed})};
+  }
+  if (kind === "ants") {
+    return {kind, round, startedAt, seed, ants: createAntColonyRuntime({seed})};
+  }
+  return {kind, round, startedAt, seed, pacman: createAutoPacmanRuntime({seed})};
 }
 
 export function advanceHomeGameRuntime(runtime: HomeGameRuntime, now: number): {runtime: HomeGameRuntime; status: HomeGameAdvanceStatus} {
@@ -67,6 +87,17 @@ export function advanceHomeGameRuntime(runtime: HomeGameRuntime, now: number): {
     }
     return {runtime: {...runtime, breakout: advanced.runtime}, status: "playing"};
   }
+  if (runtime.kind === "ants" && runtime.ants) {
+    const advanced = advanceAntColonyRuntime(runtime.ants);
+    return {runtime: {...runtime, ants: advanced.runtime}, status: advanced.status};
+  }
+  if (runtime.kind === "pacman" && runtime.pacman) {
+    const advanced = advanceAutoPacmanRuntime(runtime.pacman);
+    if (advanced.status !== "playing") {
+      return {runtime: createHomeGameRuntime(runtime.kind, runtime.round + 1, now), status: advanced.status};
+    }
+    return {runtime: {...runtime, pacman: advanced.runtime}, status: "playing"};
+  }
   return {runtime: createHomeGameRuntime(runtime.kind, runtime.round + 1, now), status: "failed"};
 }
 
@@ -83,6 +114,12 @@ export function homeGameRuntimeToViewModel(runtime: HomeGameRuntime): HomeAmbien
   }
   if (runtime.kind === "breakout" && runtime.breakout) {
     return {kind: "breakout", breakout: autoBreakoutRuntimeToViewModel(runtime.breakout)};
+  }
+  if (runtime.kind === "ants" && runtime.ants) {
+    return {kind: "ants", ants: antColonyRuntimeToViewModel(runtime.ants)};
+  }
+  if (runtime.kind === "pacman" && runtime.pacman) {
+    return {kind: "pacman", pacman: autoPacmanRuntimeToViewModel(runtime.pacman)};
   }
   return {kind: "snake", snake: autoSnakeRuntimeToViewModel(createAutoSnakeRuntime())};
 }

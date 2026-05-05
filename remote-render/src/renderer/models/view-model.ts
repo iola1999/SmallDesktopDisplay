@@ -54,6 +54,14 @@ export type HomeAmbientGameViewModel =
   | {
       kind: "breakout";
       breakout: AutoBreakoutViewModel;
+    }
+  | {
+      kind: "ants";
+      ants: AntColonyViewModel;
+    }
+  | {
+      kind: "pacman";
+      pacman: AutoPacmanViewModel;
     };
 
 export interface ConwayLifeViewModel {
@@ -70,6 +78,44 @@ export interface AutoBreakoutViewModel {
   balls: BreakoutBallViewModel[];
   drops: BreakoutDropViewModel[];
   paddle: BreakoutPaddleViewModel;
+}
+
+export interface AntColonyViewModel {
+  columns: number;
+  rows: number;
+  cellSize: number;
+  nest: SnakeCellViewModel;
+  ants: AntViewModel[];
+  food: SnakeCellViewModel[];
+  pheromones: AntPheromoneViewModel[];
+  delivered: number;
+}
+
+export interface AntViewModel extends SnakeCellViewModel {
+  carrying: boolean;
+}
+
+export interface AntPheromoneViewModel extends SnakeCellViewModel {
+  level: number;
+}
+
+export interface AutoPacmanViewModel {
+  columns: number;
+  rows: number;
+  cellSize: number;
+  pacman: PacmanViewModel;
+  ghosts: GhostViewModel[];
+  walls: SnakeCellViewModel[];
+  pellets: SnakeCellViewModel[];
+}
+
+export interface PacmanViewModel extends SnakeCellViewModel {
+  direction: SnakeCellViewModel;
+  mouthOpen: boolean;
+}
+
+export interface GhostViewModel extends SnakeCellViewModel {
+  color: string;
 }
 
 export interface BreakoutBrickViewModel {

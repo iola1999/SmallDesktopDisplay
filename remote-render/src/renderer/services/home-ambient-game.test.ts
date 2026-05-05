@@ -12,14 +12,18 @@ describe("home ambient game view model", () => {
     expect(again).toEqual(first);
   });
 
-  test("manual switch cycles snake, life, and breakout", () => {
+  test("manual switch cycles through all ambient games", () => {
     const snake = createHomeGameRuntime("snake", 0, 0);
     const life = switchHomeGameRuntime(snake, 3);
     const breakout = switchHomeGameRuntime(life, 6);
-    const snakeAgain = switchHomeGameRuntime(breakout, 9);
+    const ants = switchHomeGameRuntime(breakout, 9);
+    const pacman = switchHomeGameRuntime(ants, 12);
+    const snakeAgain = switchHomeGameRuntime(pacman, 15);
 
     expect(life.kind).toBe("life");
     expect(breakout.kind).toBe("breakout");
+    expect(ants.kind).toBe("ants");
+    expect(pacman.kind).toBe("pacman");
     expect(snakeAgain.kind).toBe("snake");
   });
 
