@@ -57,4 +57,18 @@ describe("home ambient game view model", () => {
     expect(advanced.runtime.kind).toBe("breakout");
     expect(advanced.runtime.round).toBe(5);
   });
+
+  test("finished rounds keep the original game slot timeout", () => {
+    const runtime = createHomeGameRuntime("pacman", 0, 0);
+    runtime.pacman!.pellets = [];
+    const restarted = advanceHomeGameRuntime(runtime, 100);
+    const timedOut = advanceHomeGameRuntime(restarted.runtime, 1200);
+
+    expect(restarted.status).toBe("won");
+    expect(restarted.runtime.kind).toBe("pacman");
+    expect(restarted.runtime.startedAt).toBe(0);
+    expect(timedOut.status).toBe("timeout");
+    expect(timedOut.runtime.kind).toBe("snake");
+    expect(timedOut.runtime.startedAt).toBe(1200);
+  });
 });

@@ -72,7 +72,7 @@ export function advanceHomeGameRuntime(runtime: HomeGameRuntime, now: number): {
   if (runtime.kind === "snake" && runtime.snake) {
     const advanced = advanceAutoSnakeRuntime(runtime.snake, runtime.seed);
     if (advanced.status !== "playing") {
-      return {runtime: createHomeGameRuntime(runtime.kind, runtime.round + 1, now), status: advanced.status};
+      return {runtime: restartHomeGameRuntime(runtime), status: advanced.status};
     }
     return {runtime: {...runtime, snake: advanced.runtime}, status: "playing"};
   }
@@ -83,7 +83,7 @@ export function advanceHomeGameRuntime(runtime: HomeGameRuntime, now: number): {
   if (runtime.kind === "breakout" && runtime.breakout) {
     const advanced = advanceAutoBreakoutRuntime(runtime.breakout);
     if (advanced.status !== "playing") {
-      return {runtime: createHomeGameRuntime(runtime.kind, runtime.round + 1, now), status: advanced.status};
+      return {runtime: restartHomeGameRuntime(runtime), status: advanced.status};
     }
     return {runtime: {...runtime, breakout: advanced.runtime}, status: "playing"};
   }
@@ -94,11 +94,11 @@ export function advanceHomeGameRuntime(runtime: HomeGameRuntime, now: number): {
   if (runtime.kind === "pacman" && runtime.pacman) {
     const advanced = advanceAutoPacmanRuntime(runtime.pacman);
     if (advanced.status !== "playing") {
-      return {runtime: createHomeGameRuntime(runtime.kind, runtime.round + 1, now), status: advanced.status};
+      return {runtime: restartHomeGameRuntime(runtime), status: advanced.status};
     }
     return {runtime: {...runtime, pacman: advanced.runtime}, status: "playing"};
   }
-  return {runtime: createHomeGameRuntime(runtime.kind, runtime.round + 1, now), status: "failed"};
+  return {runtime: restartHomeGameRuntime(runtime), status: "failed"};
 }
 
 export function switchHomeGameRuntime(runtime: HomeGameRuntime, now: number): HomeGameRuntime {
@@ -126,4 +126,8 @@ export function homeGameRuntimeToViewModel(runtime: HomeGameRuntime): HomeAmbien
 
 function nextHomeGameKind(kind: HomeGameKind): HomeGameKind {
   return HOME_GAME_KINDS[(HOME_GAME_KINDS.indexOf(kind) + 1) % HOME_GAME_KINDS.length];
+}
+
+function restartHomeGameRuntime(runtime: HomeGameRuntime): HomeGameRuntime {
+  return createHomeGameRuntime(runtime.kind, runtime.round + 1, runtime.startedAt);
 }
