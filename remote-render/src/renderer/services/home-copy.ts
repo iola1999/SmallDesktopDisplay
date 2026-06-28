@@ -5,7 +5,7 @@ export function buildHomeCopy(currentTime: Date): HomeCopy {
   const parts = getShanghaiParts(currentTime);
   const lunar = describeLunarDate(parts.year, parts.month, parts.day);
   return {
-    dateText: `${chineseMonth(parts.month)}月${chineseDay(parts.day)}日`,
+    dateText: `${parts.month}月${parts.day}日`,
     weekdayText: chineseWeekday(parts.weekday),
     timeText: `${pad2(parts.hour)}:${pad2(parts.minute)}`,
     secondsText: `:${pad2(parts.second)}`,
@@ -38,23 +38,6 @@ function getShanghaiParts(date: Date): {year: number; month: number; day: number
     minute: value("minute"),
     second: value("second"),
   };
-}
-
-function chineseMonth(month: number): string {
-  return ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"][Math.max(1, Math.min(12, month)) - 1];
-}
-
-function chineseDay(day: number): string {
-  return chineseNumber(Math.max(1, Math.min(31, day)));
-}
-
-function chineseNumber(value: number): string {
-  const digits = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
-  if (value <= 10) return value === 10 ? "十" : digits[value];
-  if (value < 20) return `十${digits[value - 10]}`;
-  const tens = Math.floor(value / 10);
-  const ones = value % 10;
-  return ones === 0 ? `${digits[tens]}十` : `${digits[tens]}十${digits[ones]}`;
 }
 
 function chineseWeekday(weekday: number): string {

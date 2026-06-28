@@ -17,11 +17,12 @@ describe("React remote renderer", () => {
   test("uses Chinese date, weekday, time, and greeting copy", () => {
     const copy = buildHomeCopy(new Date("2026-05-01T06:32:08.000+08:00"));
 
-    expect(copy.dateText).toBe("五月一日");
+    expect(copy.dateText).toBe("5月1日");
     expect(copy.weekdayText).toBe("星期五");
     expect(copy.timeText).toBe("06:32");
     expect(copy.secondsText).toBe(":08");
     expect(copy.greeting).toBe("早上好");
+    expect(copy.lunarText).toBe("三月十五 · 劳动节"); // 农历汉字数字 + 公历节日
   });
 
   test("clock flip model uses explicit scheduler progress for hour, minute, and second digit changes", () => {
