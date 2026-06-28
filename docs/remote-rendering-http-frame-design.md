@@ -85,10 +85,16 @@ Current Settings items:
   uptime.
 - `Renderer`: read-only transport/protocol summary for the remote frame link.
 - `About`: device id and remote display protocol summary.
+- `Weather`: read-only next-12-hour forecast for Hangzhou Xiaoshan, fetched
+  server-side from Open-Meteo and cached. Failures are silent and never block the
+  clock. No firmware command is needed.
+- `Theme`: server-side clock palette selection (Midnight / Sakura / Amber /
+  Mono), applied to the home clock, date, lunar line, and card background.
+  `short_press` cycles and applies immediately, like `Font`.
 
 The Home page is a remote-rendered Chinese desktop clock rather than a debug
-screen. It shows Chinese date and weekday, large `HH:MM`, compact seconds, a
-time-of-day greeting, and a short subtitle. Device id, tap count, sync status,
+screen. It shows Chinese date and weekday, a lunar/solar-term/festival subtitle,
+large `HH:MM`, compact seconds, and a rotating ambient game. Device id, tap count, sync status,
 RSSI, and other development-only labels are intentionally kept out of the first
 screen; detailed diagnostics live under Settings -> Device.
 Hour, minute, and second digits use a server-side flip-style transition for the
