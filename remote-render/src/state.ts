@@ -45,6 +45,8 @@ export interface FrameResult {
 
 export class DeviceState {
   frameId = 0;
+  // 最近一次被访问的单调时刻（秒），用于淘汰长时间不活跃的设备条目。
+  lastTouchedAt = 0;
   buttonCount = 0;
   lastInputSeq = 0;
   lastInputUptimeMs = -1;
@@ -56,7 +58,11 @@ export class DeviceState {
   lastHomeGameFrameAt = -1;
   homeGame: HomeGameRuntime | null = null;
   frame: Buffer<ArrayBufferLike> = Buffer.alloc(0);
-  fullFrame: Buffer<ArrayBufferLike> = Buffer.alloc(0);
+  // 全屏帧只有冷启动 / 重同步客户端才会用到。不再在每个 partial 帧里重新编码
+  // 整屏，改为惰性计算：partial 渲染时把缓存置空，真正有客户端要全屏帧时再从
+  // 当前 canvas 编码一次（同一 frameId 复用），其余帧省下整屏
+  // RGBA->RGB565->RLE->CRC 的开销。
+  fullFrameCache: Buffer<ArrayBufferLike> | null = null;
   latestBaseFrameId = 0;
   latestFullFrame = true;
   canvas: CanvasImage | null = null;
@@ -65,6 +71,18 @@ export class DeviceState {
   latestCommand: QueuedCommand | null = null;
 
   constructor(public deviceId: string) {}
+
+  get fullFrame(): Buffer {
+    if (this.fullFrameCache === null) {
+      this.fullFrameCache =
+        this.canvas === null
+          ? Buffer.alloc(0)
+          : encodeRenderedFrame(
+              renderCanvasFrame(this.canvas, {frameId: this.frameId, baseFrameId: 0, fullFrame: true}),
+            );
+    }
+    return this.fullFrameCache;
+  }
 }
 
 export interface RecordStatusInput {
@@ -83,6 +101,8 @@ interface DeviceRegistryOptions {
   clockFlipAnimationSeconds?: number;
   homeGameFrameIntervalSeconds?: number;
   now?: () => Date;
+  deviceIdleTtlSeconds?: number;
+  evictionSweepIntervalSeconds?: number;
 }
 
 export class DeviceRegistry {
@@ -93,6 +113,9 @@ export class DeviceRegistry {
   private clockFlipAnimationSeconds: number;
   private homeGameFrameIntervalSeconds: number;
   private now: () => Date;
+  private deviceIdleTtlSeconds: number;
+  private evictionSweepIntervalSeconds: number;
+  private lastEvictionSweepAt = -Infinity;
 
   constructor(options: DeviceRegistryOptions = {}) {
     this.monotonic = options.monotonic ?? (() => performance.now() / 1000);
@@ -101,6 +124,10 @@ export class DeviceRegistry {
     this.clockFlipAnimationSeconds = options.clockFlipAnimationSeconds ?? 0.3;
     this.homeGameFrameIntervalSeconds = options.homeGameFrameIntervalSeconds ?? 1;
     this.now = options.now ?? (() => new Date());
+    // 默认 1 小时不活跃即淘汰，最多每 60s 扫描一次，避免任意 / 预览 device id
+    // 让 devices Map 无限增长。回来的真实设备会因 have>frameId 自动收到全屏帧重同步。
+    this.deviceIdleTtlSeconds = options.deviceIdleTtlSeconds ?? 3600;
+    this.evictionSweepIntervalSeconds = options.evictionSweepIntervalSeconds ?? 60;
   }
 
   async getFrame(deviceId: string, have: number, waitMs: number): Promise<Buffer | null> {
@@ -189,13 +216,30 @@ export class DeviceRegistry {
   }
 
   private ensureDevice(deviceId: string): DeviceState {
+    const now = this.monotonic();
     let state = this.devices.get(deviceId);
     if (!state) {
       state = new DeviceState(deviceId);
       this.render(state, true);
       this.devices.set(deviceId, state);
     }
+    state.lastTouchedAt = now;
+    this.evictIdleDevices(now);
     return state;
+  }
+
+  // 节流扫描：每 evictionSweepIntervalSeconds 最多一次，删除超过 TTL 未访问的设备。
+  // 当前正在访问的设备刚刷新过 lastTouchedAt，不会被误删。
+  private evictIdleDevices(now: number): void {
+    if (now - this.lastEvictionSweepAt < this.evictionSweepIntervalSeconds) {
+      return;
+    }
+    this.lastEvictionSweepAt = now;
+    for (const [deviceId, state] of this.devices) {
+      if (now - state.lastTouchedAt > this.deviceIdleTtlSeconds) {
+        this.devices.delete(deviceId);
+      }
+    }
   }
 
   private renderIfDue(state: DeviceState): number {
@@ -321,9 +365,9 @@ export class DeviceRegistry {
     state.latestBaseFrameId = rendered.baseFrameId;
     state.latestFullFrame = rendered.fullFrame;
     state.canvas = currentCanvas;
-    state.fullFrame = fullFrame
-      ? state.frame
-      : encodeRenderedFrame(renderCanvasFrame(currentCanvas, {frameId: state.frameId, baseFrameId: 0, fullFrame: true}));
+    // 全屏渲染时 state.frame 本身就是整屏帧，直接缓存；partial 渲染则置空，
+    // 等真正有冷启动 / 重同步客户端请求时再由 get fullFrame 惰性编码。
+    state.fullFrameCache = fullFrame ? state.frame : null;
     return Math.max(0, this.monotonic() - started);
   }
 

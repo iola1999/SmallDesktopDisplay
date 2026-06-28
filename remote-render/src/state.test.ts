@@ -247,4 +247,27 @@ describe("device registry", () => {
       uptimeMs: 4321,
     });
   });
+
+  test("evicts idle devices past the TTL while keeping active ones", async () => {
+    let now = 0;
+    const registry = new DeviceRegistry({
+      monotonic: () => now,
+      deviceIdleTtlSeconds: 100,
+      evictionSweepIntervalSeconds: 10,
+    });
+
+    await registry.getFrame("idle-1", 0, 0);
+    await registry.getFrame("idle-2", 0, 0);
+    expect(registry.devices.size).toBe(2);
+
+    now = 50;
+    await registry.getFrame("active", 0, 0);
+    expect(registry.devices.has("idle-1")).toBe(true);
+
+    now = 200;
+    await registry.getFrame("active", 0, 0);
+    expect(registry.devices.has("idle-1")).toBe(false);
+    expect(registry.devices.has("idle-2")).toBe(false);
+    expect(registry.devices.has("active")).toBe(true);
+  });
 });
