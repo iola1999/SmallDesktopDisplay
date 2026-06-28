@@ -61,14 +61,10 @@ bool portalUsesAccessPoint()
   return s_portalMode == ConfigPortalMode::AccessPoint;
 }
 
+// 仅在 WiFi 已连接后调用，把加载进度条补满到底。每步 drawLoading(1, 1) 自带
+// delay(1) 喂狗，约 194ms 动画。
 void loadingUntilConnected()
 {
-  uint8_t step = 1;
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    display::drawLoading(30, step);
-    step = 1;
-  }
   for (int index = 0; index < 194; ++index)
   {
     display::drawLoading(1, 1);

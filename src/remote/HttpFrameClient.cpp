@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 
 #include "AppConfig.h"
@@ -13,16 +15,6 @@ namespace remote
 
 namespace
 {
-
-String joinUrl(const String &baseUrl, const String &path)
-{
-  String normalized = baseUrl;
-  while (normalized.endsWith("/"))
-  {
-    normalized.remove(normalized.length() - 1);
-  }
-  return normalized + path;
-}
 
 bool rectFitsFrame(const FrameHeader &frame, const RectHeader &rect)
 {
@@ -42,7 +34,8 @@ uint32_t parseHeaderMs(const String &value)
   {
     return 0;
   }
-  return parsed > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(parsed);
+  // 仅用于诊断日志。strtoul 溢出时已返回 ULONG_MAX，在 ESP8266 上即 UINT32_MAX。
+  return static_cast<uint32_t>(parsed);
 }
 
 } // namespace
@@ -65,8 +58,18 @@ FrameFetchResult HttpFrameClient::fetchLatest(const String &baseUrl, const Strin
 
   app::FrameDiagnostics diagnostics;
   const uint32_t requestStartedMs = millis();
-  const String url = joinUrl(baseUrl, "/api/v1/devices/" + deviceId + "/frame?have=" + String(haveFrameId) +
-                                          "&wait_ms=" + String(waitMs));
+  // 去掉 baseUrl 末尾多余的 '/' 后用定长缓冲拼出请求 URL，避免每次轮询（最快 20Hz）
+  // 都产生多个 Arduino String 临时对象，缓解 ~40-50KB 堆的碎片化。
+  char baseTrimmed[100];
+  snprintf(baseTrimmed, sizeof(baseTrimmed), "%s", baseUrl.c_str());
+  size_t baseLen = strlen(baseTrimmed);
+  while (baseLen > 0 && baseTrimmed[baseLen - 1] == '/')
+  {
+    baseTrimmed[--baseLen] = '\0';
+  }
+  char url[200];
+  snprintf(url, sizeof(url), "%s/api/v1/devices/%s/frame?have=%lu&wait_ms=%lu", baseTrimmed, deviceId.c_str(),
+           static_cast<unsigned long>(haveFrameId), static_cast<unsigned long>(waitMs));
   const uint32_t beginStartedMs = millis();
   if (!http_.begin(client_, url))
   {
@@ -85,9 +88,8 @@ FrameFetchResult HttpFrameClient::fetchLatest(const String &baseUrl, const Strin
   const uint32_t getStartedMs = millis();
   const int statusCode = http_.GET();
   diagnostics.getMs = millis() - getStartedMs;
-  diagnostics.serverWaitMs = parseHeaderMs(http_.header("X-SDD-Server-Wait-Ms"));
-  diagnostics.serverRenderMs = parseHeaderMs(http_.header("X-SDD-Server-Render-Ms"));
-  diagnostics.serverTotalMs = parseHeaderMs(http_.header("X-SDD-Server-Total-Ms"));
+  // 计时响应头只在确实要打印诊断时才读取/解析，避免每次轮询多产生 3 个
+  // Arduino String 返回值；详见下方 shouldLogFrameDiagnostics 块。
   if (statusCode == HTTP_CODE_NO_CONTENT)
   {
     keepAlivePolicy_.rememberSuccessfulRequest(baseUrl.c_str());
@@ -132,6 +134,9 @@ FrameFetchResult HttpFrameClient::fetchLatest(const String &baseUrl, const Strin
   diagnostics.totalMs = millis() - requestStartedMs;
   if (app::shouldLogFrameDiagnostics(header.fullFrame, header.payloadLength, header.rectCount))
   {
+    diagnostics.serverWaitMs = parseHeaderMs(http_.header("X-SDD-Server-Wait-Ms"));
+    diagnostics.serverRenderMs = parseHeaderMs(http_.header("X-SDD-Server-Render-Ms"));
+    diagnostics.serverTotalMs = parseHeaderMs(http_.header("X-SDD-Server-Total-Ms"));
     Serial.printf(
         "[RemoteFrame] frame=%lu %s rects=%u payload=%lu begin_ms=%lu get_ms=%lu header_ms=%lu "
         "srv_wait_ms=%lu srv_render_ms=%lu srv_total_ms=%lu client_overhead_ms=%lu read_ms=%lu "
