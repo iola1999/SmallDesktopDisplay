@@ -1,7 +1,7 @@
 import path from "node:path";
 import {GlobalFonts} from "@napi-rs/canvas";
 
-import {FONT_MAPLE_MONO_NF_CN, FONT_NOTO_CJK, FONT_WENKAI_SCREEN} from "../../ui-state.js";
+import {FONT_MAPLE_MONO_NF_CN, FONT_NOTO_CJK} from "../../ui-state.js";
 
 export function registerFonts(): void {
   const candidates: Array<[string, string]> = [
@@ -26,10 +26,4 @@ export function fontFamily(fontKey: string): string {
   if (fontKey === FONT_MAPLE_MONO_NF_CN) return '"Maple Mono NF CN", "Noto Sans CJK", "PingFang SC", "STHeiti", sans-serif';
   if (fontKey === FONT_NOTO_CJK) return '"Noto Sans CJK", "PingFang SC", "STHeiti", sans-serif';
   return '"LXGW WenKai Screen", "Noto Sans CJK", "PingFang SC", "STHeiti", sans-serif';
-}
-
-export function nextFontLabel(fontKey: string): string {
-  if (fontKey === FONT_WENKAI_SCREEN) return FONT_MAPLE_MONO_NF_CN;
-  if (fontKey === FONT_MAPLE_MONO_NF_CN) return FONT_NOTO_CJK;
-  return FONT_WENKAI_SCREEN;
 }

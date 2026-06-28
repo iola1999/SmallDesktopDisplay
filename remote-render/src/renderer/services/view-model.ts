@@ -1,6 +1,9 @@
 import {
   FONT_LABELS,
   SETTINGS_ITEMS,
+  THEME_LABELS,
+  nextFontKey,
+  nextThemeKey,
   type DeviceUiState,
 } from "../../ui-state.js";
 import type {
@@ -11,9 +14,10 @@ import type {
   SettingsRowViewModel,
 } from "../models/view-model.js";
 import {buildClockFlipGlyphs} from "./clock-flip.js";
-import {nextFontLabel} from "./font-registry.js";
+import {resolveClockTheme} from "./clock-theme.js";
 import {buildHomeAmbientGameViewModel} from "./home-ambient-game.js";
 import {buildHomeCopy} from "./home-copy.js";
+import {buildWeatherView, getWeatherSnapshot} from "./weather.js";
 
 export interface BuildDeviceViewModelInput {
   currentTime: Date;
@@ -37,12 +41,18 @@ export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceVi
   if (input.state.page === "detail") {
     return buildDetailViewModel(input, fontKey);
   }
+  const theme = resolveClockTheme(resolveThemeKeyForView(input.state));
   return {
     page: "home",
     fontKey,
     copy: buildHomeCopy(input.currentTime),
-    clockGlyphs: buildClockFlipGlyphs(input.currentTime, {progress: input.clockFlipProgress}),
+    clockGlyphs: buildClockFlipGlyphs(input.currentTime, {
+      progress: input.clockFlipProgress,
+      timeColor: theme.time,
+      secondsColor: theme.seconds,
+    }),
     game: input.homeGame ?? buildHomeAmbientGameViewModel({kind: "snake"}),
+    theme,
   };
 }
 
@@ -51,6 +61,13 @@ export function resolveFontKeyForView(state: DeviceUiState): string {
     return state.pendingFontKey;
   }
   return state.fontKey;
+}
+
+export function resolveThemeKeyForView(state: DeviceUiState): string {
+  if (state.page === "detail" && SETTINGS_ITEMS[state.detailIndex % SETTINGS_ITEMS.length] === "Theme") {
+    return state.pendingThemeKey;
+  }
+  return state.themeKey;
 }
 
 function buildSettingsRows(state: DeviceUiState): SettingsRowViewModel[] {
@@ -83,9 +100,21 @@ function buildDetailViewModel(input: BuildDeviceViewModelInput, fontKey: string)
       title: "Brightness",
       subtitle: "short apply",
       valueLabel: `${value}%`,
-      appliedLabel: input.state.brightness === input.state.pendingBrightness ? "applied" : `saved ${input.state.brightness}%`,
+      // short_press / long_press 都会让 brightness 与 pendingBrightness 同步，
+      // 且亮度详情页期间不接受状态同步覆盖，因此此处恒为 applied。
+      appliedLabel: "applied",
       fillWidth: Math.round(170 * (value / 100)),
       pulse: isAnimating ? pulse(input.progress) : 0,
+    };
+  }
+  if (item === "Weather") {
+    return {
+      page: "detail",
+      kind: "weather",
+      fontKey,
+      title: "天气",
+      subtitle: "萧山 · 未来 12 小时",
+      weather: buildWeatherView(getWeatherSnapshot()) ?? undefined,
     };
   }
   return {
@@ -129,9 +158,21 @@ function buildRowsDetail(item: string, input: BuildDeviceViewModelInput): {title
       subtitle: "short apply",
       rows: toRows([
         ["Current", FONT_LABELS[input.state.fontKey] ?? "Font"],
-        ["Next", FONT_LABELS[nextFontLabel(input.state.fontKey)] ?? "Font"],
+        ["Next", FONT_LABELS[nextFontKey(input.state.fontKey)] ?? "Font"],
         ["Engine", "React"],
         ["Layout", "Yoga"],
+      ]),
+    };
+  }
+  if (item === "Theme") {
+    return {
+      title: "Theme",
+      subtitle: "short apply",
+      rows: toRows([
+        ["Current", THEME_LABELS[input.state.themeKey] ?? "Theme"],
+        ["Next", THEME_LABELS[nextThemeKey(input.state.themeKey)] ?? "Theme"],
+        ["Scope", "clock palette"],
+        ["Apply", "long press"],
       ]),
     };
   }

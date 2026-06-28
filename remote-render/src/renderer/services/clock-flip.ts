@@ -18,6 +18,8 @@ const SECONDS_LAYOUT = [
 export interface BuildClockFlipGlyphsOptions {
   durationMs?: number;
   progress?: number;
+  timeColor?: string;
+  secondsColor?: string;
 }
 
 export function buildClockFlipGlyphs(currentTime: Date, options: BuildClockFlipGlyphsOptions = {}): ClockFlipGlyphViewModel[] {
@@ -32,7 +34,7 @@ export function buildClockFlipGlyphs(currentTime: Date, options: BuildClockFlipG
       y: 68,
       height: 62,
       fontSize: 52,
-      color: "#f0f8ee",
+      color: options.timeColor ?? "#f0f8ee",
       layout: BIG_TIME_LAYOUT,
     }),
     ...buildGlyphs({
@@ -43,7 +45,7 @@ export function buildClockFlipGlyphs(currentTime: Date, options: BuildClockFlipG
       y: 92,
       height: 24,
       fontSize: 18,
-      color: "#80dac6",
+      color: options.secondsColor ?? "#80dac6",
       layout: SECONDS_LAYOUT,
     }),
   ];

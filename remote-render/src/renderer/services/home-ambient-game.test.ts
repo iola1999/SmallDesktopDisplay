@@ -18,12 +18,14 @@ describe("home ambient game view model", () => {
     const breakout = switchHomeGameRuntime(life, 6);
     const ants = switchHomeGameRuntime(breakout, 9);
     const pacman = switchHomeGameRuntime(ants, 12);
-    const snakeAgain = switchHomeGameRuntime(pacman, 15);
+    const rain = switchHomeGameRuntime(pacman, 15);
+    const snakeAgain = switchHomeGameRuntime(rain, 18);
 
     expect(life.kind).toBe("life");
     expect(breakout.kind).toBe("breakout");
     expect(ants.kind).toBe("ants");
     expect(pacman.kind).toBe("pacman");
+    expect(rain.kind).toBe("rain");
     expect(snakeAgain.kind).toBe("snake");
   });
 
@@ -68,7 +70,7 @@ describe("home ambient game view model", () => {
     expect(restarted.runtime.kind).toBe("pacman");
     expect(restarted.runtime.startedAt).toBe(0);
     expect(timedOut.status).toBe("timeout");
-    expect(timedOut.runtime.kind).toBe("snake");
+    expect(timedOut.runtime.kind).toBe("rain");
     expect(timedOut.runtime.startedAt).toBe(1200);
   });
 });

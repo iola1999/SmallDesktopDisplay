@@ -20,6 +20,8 @@ export interface HomeCopy {
   secondsText: string;
   greeting: string;
   subtitle: string;
+  // 农历日期 + 节日/节气，例如 "五月十五" 或 "八月十五 · 中秋节"
+  lunarText: string;
 }
 
 export interface Style {

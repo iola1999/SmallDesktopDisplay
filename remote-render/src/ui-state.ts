@@ -10,8 +10,20 @@ export const FONT_LABELS: Record<string, string> = {
   [FONT_MAPLE_MONO_NF_CN]: "Maple",
   [FONT_NOTO_CJK]: "Noto",
 };
-export const SETTINGS_ITEMS = ["Brightness", "Font", "Device", "Renderer", "About"] as const;
+export const SETTINGS_ITEMS = ["Brightness", "Font", "Device", "Renderer", "About", "Weather", "Theme"] as const;
 export const BRIGHTNESS_OPTIONS = [20, 40, 50, 60, 80, 100] as const;
+
+export const THEME_MIDNIGHT = "midnight";
+export const THEME_SAKURA = "sakura";
+export const THEME_AMBER = "amber";
+export const THEME_MONO = "mono";
+export const THEME_OPTIONS = [THEME_MIDNIGHT, THEME_SAKURA, THEME_AMBER, THEME_MONO] as const;
+export const THEME_LABELS: Record<string, string> = {
+  [THEME_MIDNIGHT]: "Midnight",
+  [THEME_SAKURA]: "Sakura",
+  [THEME_AMBER]: "Amber",
+  [THEME_MONO]: "Mono",
+};
 
 export class DeviceCommand {
   constructor(
@@ -37,6 +49,8 @@ export interface DeviceUiStateInit {
   pendingBrightness?: number;
   fontKey?: string;
   pendingFontKey?: string;
+  themeKey?: string;
+  pendingThemeKey?: string;
   animation?: string;
   animationStartedAt?: number;
   animationDuration?: number;
@@ -50,6 +64,8 @@ export class DeviceUiState {
   pendingBrightness = 50;
   fontKey = FONT_WENKAI_SCREEN;
   pendingFontKey = FONT_WENKAI_SCREEN;
+  themeKey = THEME_MIDNIGHT;
+  pendingThemeKey = THEME_MIDNIGHT;
   diagnostics = new DeviceDiagnostics();
   animation = "";
   animationStartedAt = 0;
@@ -81,6 +97,8 @@ export function applyInputEvent(state: DeviceUiState, event: InputEventName, now
         state.pendingBrightness = state.brightness;
       } else if (isFontDetail(state)) {
         state.pendingFontKey = state.fontKey;
+      } else if (isThemeDetail(state)) {
+        state.pendingThemeKey = state.themeKey;
       }
       startAnimation(state, "enter_detail", now);
     } else if (event === "double_press") {
@@ -118,6 +136,22 @@ export function applyInputEvent(state: DeviceUiState, event: InputEventName, now
       startAnimation(state, "font_applied", now);
     } else if (event === "double_press") {
       state.pendingFontKey = state.fontKey;
+      state.page = "settings";
+      startAnimation(state, "back_to_settings", now);
+    }
+    return [];
+  }
+
+  if (isThemeDetail(state)) {
+    if (event === "short_press") {
+      state.pendingThemeKey = nextThemeKey(state.pendingThemeKey);
+      state.themeKey = state.pendingThemeKey;
+      startAnimation(state, "theme_select", now);
+    } else if (event === "long_press") {
+      state.themeKey = state.pendingThemeKey;
+      startAnimation(state, "theme_applied", now);
+    } else if (event === "double_press") {
+      state.pendingThemeKey = state.themeKey;
       state.page = "settings";
       startAnimation(state, "back_to_settings", now);
     }
@@ -166,6 +200,10 @@ function isFontDetail(state: DeviceUiState): boolean {
   return SETTINGS_ITEMS[state.detailIndex % SETTINGS_ITEMS.length] === "Font";
 }
 
+function isThemeDetail(state: DeviceUiState): boolean {
+  return SETTINGS_ITEMS[state.detailIndex % SETTINGS_ITEMS.length] === "Theme";
+}
+
 function nextBrightnessValue(value: number): number {
   for (const option of BRIGHTNESS_OPTIONS) {
     if (option > value) return option;
@@ -173,8 +211,14 @@ function nextBrightnessValue(value: number): number {
   return BRIGHTNESS_OPTIONS[0];
 }
 
-function nextFontKey(value: string): string {
+export function nextFontKey(value: string): string {
   const index = FONT_OPTIONS.findIndex((option) => option === value);
   if (index < 0) return FONT_OPTIONS[0];
   return FONT_OPTIONS[(index + 1) % FONT_OPTIONS.length];
+}
+
+export function nextThemeKey(value: string): string {
+  const index = THEME_OPTIONS.findIndex((option) => option === value);
+  if (index < 0) return THEME_OPTIONS[0];
+  return THEME_OPTIONS[(index + 1) % THEME_OPTIONS.length];
 }

@@ -18,6 +18,12 @@ import {
   createAutoPacmanRuntime,
 } from "./auto-pacman.js";
 import {
+  type AutoRainRuntime,
+  advanceAutoRainRuntime,
+  autoRainRuntimeToViewModel,
+  createAutoRainRuntime,
+} from "./auto-rain.js";
+import {
   type AutoSnakeRuntime,
   advanceAutoSnakeRuntime,
   autoSnakeRuntimeToViewModel,
@@ -30,10 +36,10 @@ import {
   createConwayLifeRuntime,
 } from "./conway-life.js";
 
-export type HomeGameKind = "snake" | "life" | "breakout" | "ants" | "pacman";
+export type HomeGameKind = "snake" | "life" | "breakout" | "ants" | "pacman" | "rain";
 export type HomeGameAdvanceStatus = "playing" | "failed" | "won" | "timeout";
 
-export const HOME_GAME_KINDS: HomeGameKind[] = ["snake", "life", "breakout", "ants", "pacman"];
+export const HOME_GAME_KINDS: HomeGameKind[] = ["snake", "life", "breakout", "ants", "pacman", "rain"];
 export const HOME_GAME_ROUND_SECONDS = 20 * 60;
 
 export interface HomeGameRuntime {
@@ -46,6 +52,7 @@ export interface HomeGameRuntime {
   breakout?: AutoBreakoutRuntime;
   ants?: AntColonyRuntime;
   pacman?: AutoPacmanRuntime;
+  rain?: AutoRainRuntime;
 }
 
 export function createHomeGameRuntime(kind: HomeGameKind = "snake", round = 0, startedAt = 0): HomeGameRuntime {
@@ -61,6 +68,9 @@ export function createHomeGameRuntime(kind: HomeGameKind = "snake", round = 0, s
   }
   if (kind === "ants") {
     return {kind, round, startedAt, seed, ants: createAntColonyRuntime({seed})};
+  }
+  if (kind === "rain") {
+    return {kind, round, startedAt, seed, rain: createAutoRainRuntime({seed})};
   }
   return {kind, round, startedAt, seed, pacman: createAutoPacmanRuntime({seed})};
 }
@@ -98,6 +108,10 @@ export function advanceHomeGameRuntime(runtime: HomeGameRuntime, now: number): {
     }
     return {runtime: {...runtime, pacman: advanced.runtime}, status: "playing"};
   }
+  if (runtime.kind === "rain" && runtime.rain) {
+    const advanced = advanceAutoRainRuntime(runtime.rain);
+    return {runtime: {...runtime, rain: advanced.runtime}, status: advanced.status};
+  }
   return {runtime: restartHomeGameRuntime(runtime), status: "failed"};
 }
 
@@ -120,6 +134,9 @@ export function homeGameRuntimeToViewModel(runtime: HomeGameRuntime): HomeAmbien
   }
   if (runtime.kind === "pacman" && runtime.pacman) {
     return {kind: "pacman", pacman: autoPacmanRuntimeToViewModel(runtime.pacman)};
+  }
+  if (runtime.kind === "rain" && runtime.rain) {
+    return {kind: "rain", rain: autoRainRuntimeToViewModel(runtime.rain)};
   }
   return {kind: "snake", snake: autoSnakeRuntimeToViewModel(createAutoSnakeRuntime())};
 }

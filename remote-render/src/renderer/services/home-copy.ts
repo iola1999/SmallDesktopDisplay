@@ -1,7 +1,9 @@
 import type {HomeCopy} from "../types.js";
+import {describeLunarDate} from "./lunar.js";
 
 export function buildHomeCopy(currentTime: Date): HomeCopy {
   const parts = getShanghaiParts(currentTime);
+  const lunar = describeLunarDate(parts.year, parts.month, parts.day);
   return {
     dateText: `${chineseMonth(parts.month)}月${chineseDay(parts.day)}日`,
     weekdayText: chineseWeekday(parts.weekday),
@@ -9,10 +11,11 @@ export function buildHomeCopy(currentTime: Date): HomeCopy {
     secondsText: `:${pad2(parts.second)}`,
     greeting: greetingForHour(parts.hour),
     subtitle: subtitleForHour(parts.hour),
+    lunarText: lunar.label ? `${lunar.lunarDate} · ${lunar.label}` : lunar.lunarDate,
   };
 }
 
-function getShanghaiParts(date: Date): {month: number; day: number; weekday: number; hour: number; minute: number; second: number} {
+function getShanghaiParts(date: Date): {year: number; month: number; day: number; weekday: number; hour: number; minute: number; second: number} {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Shanghai",
     year: "numeric",
@@ -27,6 +30,7 @@ function getShanghaiParts(date: Date): {month: number; day: number; weekday: num
   const value = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? 0);
   const weekdayMap: Record<string, number> = {Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6};
   return {
+    year: value("year"),
     month: value("month"),
     day: value("day"),
     weekday: weekdayMap[parts.find((part) => part.type === "weekday")?.value ?? "Mon"] ?? 0,

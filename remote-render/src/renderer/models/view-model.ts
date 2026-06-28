@@ -1,4 +1,6 @@
 import type {HomeCopy} from "../types.js";
+import type {ClockTheme} from "../services/clock-theme.js";
+import type {WeatherView} from "../services/weather.js";
 
 export type DeviceViewModel = HomeViewModel | SettingsViewModel | DetailViewModel;
 
@@ -11,6 +13,7 @@ export interface HomeViewModel extends BaseViewModel {
   copy: HomeCopy;
   clockGlyphs: ClockFlipGlyphViewModel[];
   game: HomeAmbientGameViewModel;
+  theme: ClockTheme;
 }
 
 export type ClockFlipGlyphGroup = "time" | "seconds";
@@ -62,7 +65,24 @@ export type HomeAmbientGameViewModel =
   | {
       kind: "pacman";
       pacman: AutoPacmanViewModel;
+    }
+  | {
+      kind: "rain";
+      rain: AutoRainViewModel;
     };
+
+export interface AutoRainViewModel {
+  columns: number;
+  rows: number;
+  cellSize: number;
+  cells: RainCellViewModel[];
+}
+
+export interface RainCellViewModel {
+  x: number;
+  y: number;
+  level: number;
+}
 
 export interface ConwayLifeViewModel {
   columns: number;
@@ -161,7 +181,15 @@ export interface SettingsRowViewModel {
   valueX?: number;
 }
 
-export type DetailViewModel = BrightnessDetailViewModel | RowsDetailViewModel;
+export type DetailViewModel = BrightnessDetailViewModel | RowsDetailViewModel | WeatherDetailViewModel;
+
+export interface WeatherDetailViewModel extends BaseViewModel {
+  page: "detail";
+  kind: "weather";
+  title: string;
+  subtitle: string;
+  weather?: WeatherView;
+}
 
 export interface BrightnessDetailViewModel extends BaseViewModel {
   page: "detail";
