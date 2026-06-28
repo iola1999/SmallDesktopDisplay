@@ -317,8 +317,8 @@ export class DeviceRegistry {
     clockFlipProgress?: number,
     forcedRegions?: RectTuple[],
   ): number {
-    const started = this.monotonic();
     const now = this.monotonic();
+    const started = now;
     const homeGame = state.ui.page === "home" ? this.ensureHomeGame(state, now) : undefined;
     if (state.ui.page !== "home") {
       state.homeGame = null;

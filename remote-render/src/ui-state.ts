@@ -127,13 +127,13 @@ export function applyInputEvent(state: DeviceUiState, event: InputEventName, now
   }
 
   if (isFontDetail(state)) {
+    // 字体切换本身会改变页面文字（一次性可见），但没有任何动画消费 font_select /
+    // font_applied，故不再启动空动画，避免 0.32s 内 20fps 的无效重渲染。
     if (event === "short_press") {
       state.pendingFontKey = nextFontKey(state.pendingFontKey);
       state.fontKey = state.pendingFontKey;
-      startAnimation(state, "font_select", now);
     } else if (event === "long_press") {
       state.fontKey = state.pendingFontKey;
-      startAnimation(state, "font_applied", now);
     } else if (event === "double_press") {
       state.pendingFontKey = state.fontKey;
       state.page = "settings";
@@ -146,10 +146,8 @@ export function applyInputEvent(state: DeviceUiState, event: InputEventName, now
     if (event === "short_press") {
       state.pendingThemeKey = nextThemeKey(state.pendingThemeKey);
       state.themeKey = state.pendingThemeKey;
-      startAnimation(state, "theme_select", now);
     } else if (event === "long_press") {
       state.themeKey = state.pendingThemeKey;
-      startAnimation(state, "theme_applied", now);
     } else if (event === "double_press") {
       state.pendingThemeKey = state.themeKey;
       state.page = "settings";
@@ -158,9 +156,9 @@ export function applyInputEvent(state: DeviceUiState, event: InputEventName, now
     return [];
   }
 
-  if (event === "short_press") {
-    startAnimation(state, "detail_pulse", now);
-  } else {
+  // 只读详情页（Device/Renderer/About/Weather）：short_press 无可见效果，不再触发
+  // detail_pulse 空动画；long_press / double_press 返回设置页。
+  if (event !== "short_press") {
     state.page = "settings";
     startAnimation(state, "back_to_settings", now);
   }

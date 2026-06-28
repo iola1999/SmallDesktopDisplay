@@ -43,17 +43,12 @@ function tileDirtyRects(previous: CanvasImage, current: CanvasImage, region: Rec
 
 function tileChanged(previous: CanvasImage, current: CanvasImage, region: RectTuple): boolean {
   const [left, top, right, bottom] = region;
+  const rowBytes = (right - left) * 4;
+  // 每行是连续内存，用原生 Buffer.compare 比对（memcmp）而非逐像素 JS 循环。
   for (let y = top; y < bottom; y += 1) {
-    for (let x = left; x < right; x += 1) {
-      const offset = (y * current.width + x) * 4;
-      if (
-        previous.rgba[offset] !== current.rgba[offset] ||
-        previous.rgba[offset + 1] !== current.rgba[offset + 1] ||
-        previous.rgba[offset + 2] !== current.rgba[offset + 2] ||
-        previous.rgba[offset + 3] !== current.rgba[offset + 3]
-      ) {
-        return true;
-      }
+    const offset = (y * current.width + left) * 4;
+    if (previous.rgba.compare(current.rgba, offset, offset + rowBytes, offset, offset + rowBytes) !== 0) {
+      return true;
     }
   }
   return false;
