@@ -10,7 +10,7 @@ export const FONT_LABELS: Record<string, string> = {
   [FONT_MAPLE_MONO_NF_CN]: "Maple",
   [FONT_NOTO_CJK]: "Noto",
 };
-export const SETTINGS_ITEMS = ["Brightness", "Font", "Device", "Renderer", "About", "Weather", "Theme"] as const;
+export const SETTINGS_ITEMS = ["Brightness", "Font", "Device", "Renderer", "About", "Theme"] as const;
 export const BRIGHTNESS_OPTIONS = [20, 40, 50, 60, 80, 100] as const;
 
 export const THEME_MIDNIGHT = "midnight";

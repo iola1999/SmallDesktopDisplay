@@ -114,10 +114,15 @@ New features (server-only, no firmware reflash):
   plus solar terms (二十四节气) and major festivals as a subtitle line under the
   Gregorian date.
 - Optional weather: `renderer/services/weather.ts` polls Open-Meteo (free, no API
-  key) for Hangzhou Xiaoshan and caches the next 12 hours. A new
-  Settings -> Weather detail page shows an hourly precip strip + temperature row.
-  Failures are silent and never block the clock; weather polling starts in
-  `main.ts`.
+  key) for Hangzhou Xiaoshan and caches the next 12 hours. Failures are silent and
+  never block the clock; weather polling starts in `main.ts`.
+  - Follow-up (same day): weather was first added as a Settings -> Weather detail
+    page, which buried glanceable info two levels deep. It was promoted onto the
+    Home screen instead: a current temperature+condition chip on the date row plus
+    a thin 12-hour precipitation trend strip between the clock and the ambient
+    game. Settings now holds only config + diagnostics (no Weather item). The home
+    header and forecast regions were added to the per-second dirty-render set so
+    the chip/strip refresh within ~1s of a cache update.
 - Clock themes: a Settings -> Theme detail cycles Midnight / Sakura / Amber /
   Mono palettes applied to the home clock, date, lunar line, and card background
   (`renderer/services/clock-theme.ts`). Settings row spacing is now adaptive so

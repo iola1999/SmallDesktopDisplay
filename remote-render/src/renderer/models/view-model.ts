@@ -14,6 +14,7 @@ export interface HomeViewModel extends BaseViewModel {
   clockGlyphs: ClockFlipGlyphViewModel[];
   game: HomeAmbientGameViewModel;
   theme: ClockTheme;
+  weather?: WeatherView;
 }
 
 export type ClockFlipGlyphGroup = "time" | "seconds";
@@ -181,15 +182,7 @@ export interface SettingsRowViewModel {
   valueX?: number;
 }
 
-export type DetailViewModel = BrightnessDetailViewModel | RowsDetailViewModel | WeatherDetailViewModel;
-
-export interface WeatherDetailViewModel extends BaseViewModel {
-  page: "detail";
-  kind: "weather";
-  title: string;
-  subtitle: string;
-  weather?: WeatherView;
-}
+export type DetailViewModel = BrightnessDetailViewModel | RowsDetailViewModel;
 
 export interface BrightnessDetailViewModel extends BaseViewModel {
   page: "detail";

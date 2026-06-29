@@ -53,6 +53,7 @@ export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceVi
     }),
     game: input.homeGame ?? buildHomeAmbientGameViewModel({kind: "snake"}),
     theme,
+    weather: buildWeatherView(getWeatherSnapshot()) ?? undefined,
   };
 }
 
@@ -105,16 +106,6 @@ function buildDetailViewModel(input: BuildDeviceViewModelInput, fontKey: string)
       appliedLabel: "applied",
       fillWidth: Math.round(170 * (value / 100)),
       pulse: isAnimating ? pulse(input.progress) : 0,
-    };
-  }
-  if (item === "Weather") {
-    return {
-      page: "detail",
-      kind: "weather",
-      fontKey,
-      title: "天气",
-      subtitle: "萧山 · 未来 12 小时",
-      weather: buildWeatherView(getWeatherSnapshot()) ?? undefined,
     };
   }
   return {

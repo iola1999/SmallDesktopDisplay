@@ -6,7 +6,7 @@ import {renderDeviceCanvas} from "./rendering/device-canvas.js";
 import {registerFonts} from "./services/font-registry.js";
 import type {RenderedFrame} from "./types.js";
 
-export {HOME_GAME_REGION, SCREEN_HEIGHT, SCREEN_WIDTH, TIME_REGION} from "./constants.js";
+export {FORECAST_REGION, HEADER_REGION, HOME_GAME_REGION, SCREEN_HEIGHT, SCREEN_WIDTH, TIME_REGION} from "./constants.js";
 export {renderCanvasFrame} from "./rendering/canvas-frame.js";
 export {renderDeviceCanvas} from "./rendering/device-canvas.js";
 export {computeDirtyRects} from "./rendering/dirty-rects.js";

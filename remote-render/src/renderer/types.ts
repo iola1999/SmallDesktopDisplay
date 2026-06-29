@@ -16,6 +16,7 @@ export interface RenderedFrame {
 export interface HomeCopy {
   dateText: string;
   weekdayText: string;
+  weekdayShort: string;
   timeText: string;
   secondsText: string;
   greeting: string;

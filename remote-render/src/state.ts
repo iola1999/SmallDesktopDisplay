@@ -2,6 +2,8 @@ import {encodeFrame} from "./protocol.js";
 import {
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
+  FORECAST_REGION,
+  HEADER_REGION,
   HOME_GAME_REGION,
   TIME_REGION,
   type CanvasImage,
@@ -280,10 +282,13 @@ export class DeviceRegistry {
       state.lastClockAnimationSecond = currentSecond;
       state.lastClockAnimationFrameAt = now;
       const advanced = this.advanceHomeGameIfDue(state, now);
+      // 每个新秒都额外比对顶部（日期+天气）与 12h 预报条，让天气缓存更新后 1s 内上屏。
       return this.render(
         state,
         false,
-        advanced ? [TIME_REGION, HOME_GAME_REGION] : [TIME_REGION],
+        advanced
+          ? [HEADER_REGION, TIME_REGION, FORECAST_REGION, HOME_GAME_REGION]
+          : [HEADER_REGION, TIME_REGION, FORECAST_REGION],
         0,
         advanced && advanced.status !== "playing" ? [HOME_GAME_REGION] : undefined,
       );

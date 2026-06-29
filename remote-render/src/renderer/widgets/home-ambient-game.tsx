@@ -9,7 +9,7 @@ import {ConwayLife} from "./conway-life.js";
 
 export function HomeAmbientGame({model}: {model: HomeAmbientGameViewModel}) {
   return (
-    <Box style={{x: 24, y: 138, width: 192, height: 86}}>
+    <Box style={{x: 24, y: 148, width: 192, height: 84}}>
       {model.kind === "snake" && <AutoSnake model={model.snake} />}
       {model.kind === "life" && <ConwayLife model={model.life} />}
       {model.kind === "breakout" && <AutoBreakout model={model.breakout} />}

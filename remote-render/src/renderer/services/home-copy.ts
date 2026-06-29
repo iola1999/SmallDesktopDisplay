@@ -7,6 +7,7 @@ export function buildHomeCopy(currentTime: Date): HomeCopy {
   return {
     dateText: `${parts.month}月${parts.day}日`,
     weekdayText: chineseWeekday(parts.weekday),
+    weekdayShort: chineseWeekdayShort(parts.weekday),
     timeText: `${pad2(parts.hour)}:${pad2(parts.minute)}`,
     secondsText: `:${pad2(parts.second)}`,
     greeting: greetingForHour(parts.hour),
@@ -42,6 +43,10 @@ function getShanghaiParts(date: Date): {year: number; month: number; day: number
 
 function chineseWeekday(weekday: number): string {
   return ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][Math.max(0, Math.min(6, weekday))];
+}
+
+function chineseWeekdayShort(weekday: number): string {
+  return ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][Math.max(0, Math.min(6, weekday))];
 }
 
 function greetingForHour(hour: number): string {
