@@ -35,71 +35,54 @@ export function HomePage({model}: {model: HomeViewModel}) {
   );
 }
 
-// 逐时（每 2 小时取一列，共 6 列，覆盖未来 12 小时）：小时 / 图标 / 降水% / 彩色温度。
+// 接下来几小时（逐小时，6 列）：小时 / 图标 / 彩色温度。保持紧凑，不放每小时降水%。
 function HourlyForecast({weather}: {weather: WeatherView}) {
-  const columns = weather.hours.filter((_, index) => index % 2 === 0).slice(0, 6);
+  const columns = weather.hours.slice(0, 6);
   return (
     <>
       {columns.map((hour, index) => (
-        <HourColumn key={index} hour={hour} cx={16 + index * 36} />
+        <HourColumn key={index} label={index === 0 ? "现在" : hour.hourLabel} hour={hour} cx={16 + index * 36} />
       ))}
     </>
   );
 }
 
-function HourColumn({hour, cx}: {hour: WeatherView["hours"][number]; cx: number}) {
+function HourColumn({label, hour, cx}: {label: string; hour: WeatherView["hours"][number]; cx: number}) {
   return (
     <>
-      <Text style={{x: cx - 4, y: 134, width: 28, height: 12, fontSize: 11, color: "#8a97a0", alignItems: "center"}}>
-        {hour.hourLabel}
+      <Text style={{x: cx - 6, y: 140, width: 32, height: 12, fontSize: 11, color: "#8a97a0", alignItems: "center"}}>
+        {label}
       </Text>
-      <WeatherIcon kind={hour.icon} x={cx} y={147} />
-      {hour.precip >= 20 ? (
-        <Text style={{x: cx - 4, y: 168, width: 28, height: 10, fontSize: 9, color: "#5ac8fa", alignItems: "center"}}>
-          {`${hour.precip}%`}
-        </Text>
-      ) : null}
-      <Text style={{x: cx - 4, y: 178, width: 28, height: 14, fontSize: 13, color: tempColor(hour.temp), alignItems: "center"}}>
+      <WeatherIcon kind={hour.icon} x={cx} y={154} />
+      <Text style={{x: cx - 4, y: 176, width: 28, height: 14, fontSize: 14, color: tempColor(hour.temp), alignItems: "center"}}>
         {`${hour.temp}°`}
       </Text>
     </>
   );
 }
 
-// 明天 / 后天概览（Apple 风格行）：日 / 图标 / 降水% / 低温 — 温区色条 — 高温。
+// 今天最高/最低 + 明天 + 后天（三列，紧凑）：日 / 图标 / 高温·低温。不看两天之后。
 function DailyOutlook({weather}: {weather: WeatherView}) {
-  const days = weather.days.slice(1, 3);
-  const gmin = Math.min(...days.map((day) => day.tempMin));
-  const gmax = Math.max(...days.map((day) => day.tempMax));
+  const days = weather.days.slice(0, 3);
   return (
     <>
       {days.map((day, index) => (
-        <DailyRow key={index} day={day} y={197 + index * 19} gmin={gmin} gmax={gmax} />
+        <DailyColumn key={index} day={day} cx={12 + index * 76} />
       ))}
     </>
   );
 }
 
-function DailyRow({day, y, gmin, gmax}: {day: WeatherDayView; y: number; gmin: number; gmax: number}) {
-  const span = Math.max(1, gmax - gmin);
-  const trackX = 134;
-  const trackW = 60;
-  const fillX = trackX + Math.round(((day.tempMin - gmin) / span) * trackW);
-  const fillW = Math.max(4, Math.round(((day.tempMax - day.tempMin) / span) * trackW));
+function DailyColumn({day, cx}: {day: WeatherDayView; cx: number}) {
   return (
     <>
-      <Text style={{x: 16, y: y + 1, width: 36, height: 16, fontSize: 14, color: "#c2ccd4"}}>{day.label}</Text>
-      <WeatherIcon kind={day.icon} x={54} y={y - 1} />
-      {day.precip >= 20 ? (
-        <Text style={{x: 78, y: y + 4, width: 28, height: 11, fontSize: 10, color: "#5ac8fa"}}>{`${day.precip}%`}</Text>
-      ) : null}
-      <Text style={{x: 108, y: y + 1, width: 24, height: 16, fontSize: 13, color: tempColor(day.tempMin), alignItems: "center"}}>
-        {`${day.tempMin}°`}
-      </Text>
-      <Box style={{x: trackX, y: y + 7, width: trackW, height: 4, borderRadius: 2, backgroundColor: "#2c333b"}} />
-      <Box style={{x: fillX, y: y + 7, width: fillW, height: 4, borderRadius: 2, backgroundColor: tempColor(day.tempMax)}} />
-      <Text style={{x: 200, y: y + 1, width: 26, height: 16, fontSize: 13, color: tempColor(day.tempMax), alignItems: "center"}}>
+      <Text style={{x: cx + 2, y: 200, width: 36, height: 14, fontSize: 13, color: "#c2ccd4"}}>{day.label}</Text>
+      <WeatherIcon kind={day.icon} x={cx + 40} y={198} />
+      <Text style={{x: cx + 2, y: 218, width: 30, height: 14, fontSize: 13, color: tempColor(day.tempMax), alignItems: "center"}}>
         {`${day.tempMax}°`}
+      </Text>
+      <Text style={{x: cx + 34, y: 219, width: 28, height: 13, fontSize: 12, color: tempColor(day.tempMin), alignItems: "center"}}>
+        {`${day.tempMin}°`}
       </Text>
     </>
   );
