@@ -103,9 +103,10 @@ Settings holds only configuration and read-only diagnostics. Glanceable content
 The Home page is a calm single-screen clock + weather dashboard. It shows the
 Gregorian date (Arabic numerals) and short weekday, the current weather
 (temperature + condition, top-right), a lunar/solar-term/festival subtitle, large
-`HH:MM`, compact seconds, and a next-12-hour forecast (per-hour temperatures and
-a precipitation bar strip) in the lower area. It runs no game animation, so it
-stays quiet by default. Weather is fetched server-side from Open-Meteo for
+`HH:MM`, compact seconds, and an Apple-Weather-style next-12-hour forecast in the
+lower area: one column per hour (every 2h) with a condition icon, precipitation %
+(shown only when meaningful), and temperature, so each column reads as a single
+hour. It runs no game animation, so it stays quiet by default. Weather is fetched server-side from Open-Meteo for
 Hangzhou Xiaoshan and cached; failures are silent and never block the clock, and
 the weather elements simply do not render until the first forecast arrives.
 
