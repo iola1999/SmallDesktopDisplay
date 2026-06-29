@@ -23,16 +23,19 @@ export interface WeatherSnapshot {
   hours: WeatherHour[];
 }
 
+export type WeatherIconKind = "sun" | "cloud" | "overcast" | "fog" | "rain" | "snow" | "thunder";
+
 export interface WeatherHourView {
   hourLabel: string; // "09"
   temp: number;
   precip: number;
   label: string;
+  icon: WeatherIconKind;
 }
 
 export interface WeatherView {
   location: string;
-  current: {temp: number; label: string; code: number};
+  current: {temp: number; label: string; code: number; icon: WeatherIconKind};
   maxPrecip: number;
   tempLow: number;
   tempHigh: number;
@@ -133,7 +136,7 @@ export function buildWeatherView(input: WeatherSnapshot | null): WeatherView | n
   const current = hours[0];
   return {
     location: WEATHER_LOCATION_LABEL,
-    current: {temp: current.temp, label: wmoLabel(current.code), code: current.code},
+    current: {temp: current.temp, label: wmoLabel(current.code), code: current.code, icon: weatherIconKind(current.code)},
     maxPrecip: Math.max(...hours.map((hour) => hour.precip)),
     tempLow: Math.min(...temps),
     tempHigh: Math.max(...temps),
@@ -142,8 +145,22 @@ export function buildWeatherView(input: WeatherSnapshot | null): WeatherView | n
       temp: hour.temp,
       precip: hour.precip,
       label: wmoLabel(hour.code),
+      icon: weatherIconKind(hour.code),
     })),
   };
+}
+
+// WMO weather code -> 图标类别
+export function weatherIconKind(code: number): WeatherIconKind {
+  if (code === 0 || code === 1) return "sun";
+  if (code === 2) return "cloud";
+  if (code === 3) return "overcast";
+  if (code === 45 || code === 48) return "fog";
+  if (code >= 71 && code <= 77) return "snow";
+  if (code === 85 || code === 86) return "snow";
+  if (code >= 95) return "thunder";
+  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return "rain";
+  return "cloud";
 }
 
 function hourLabel(iso: string): string {

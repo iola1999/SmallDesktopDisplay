@@ -42,6 +42,7 @@ const expectedModules = [
   "widgets/auto-rain.tsx",
   "widgets/auto-snake.tsx",
   "widgets/conway-life.tsx",
+  "widgets/weather-icon.tsx",
 ] as const;
 
 describe("renderer source structure", () => {

@@ -3,6 +3,7 @@ import {Box, Screen, Text} from "../components/primitives.js";
 import type {ClockFlipGlyphViewModel, HomeViewModel} from "../models/view-model.js";
 import {mixColor} from "../services/color.js";
 import type {WeatherView} from "../services/weather.js";
+import {WeatherIcon} from "../widgets/weather-icon.js";
 
 export function HomePage({model}: {model: HomeViewModel}) {
   const theme = model.theme;
@@ -15,8 +16,9 @@ export function HomePage({model}: {model: HomeViewModel}) {
           <Text style={{x: 12, y: 23, width: 150, height: 22, fontSize: 18, color: theme.date, alignItems: "center"}}>
             {`${model.copy.dateText} ${model.copy.weekdayShort}`}
           </Text>
-          <Text style={{x: 150, y: 25, width: 80, height: 18, fontSize: 15, color: theme.seconds, alignItems: "center"}}>
-            {`${weather.current.temp}° ${weather.current.label}`}
+          <WeatherIcon kind={weather.current.icon} x={138} y={22} />
+          <Text style={{x: 160, y: 25, width: 70, height: 18, fontSize: 16, color: "#eef2f6", alignItems: "center"}}>
+            {`${weather.current.temp}°`}
           </Text>
         </>
       ) : (
@@ -35,49 +37,33 @@ export function HomePage({model}: {model: HomeViewModel}) {
   );
 }
 
-// 首页下方的 12 小时预报：每 2 小时标温度，逐时降水柱 + 整点刻度。游戏移到轮播页后，
-// 这块空间用来把天气展示得更完整。
+// 首页下方的逐时天气（Apple 风格）：取未来 12 小时里每隔 2 小时的 6 个时刻，
+// 每列从上到下是「小时 / 图标 / 降水概率 / 温度」，同一列同属一个小时，一眼对得上。
 function HomeForecast({weather}: {weather: WeatherView}) {
-  const baseline = 210;
-  const maxBar = 32;
+  const columns = weather.hours.filter((_, index) => index % 2 === 0).slice(0, 6);
   return (
     <>
-      <Text style={{x: 16, y: 148, width: 88, height: 14, fontSize: 12, color: "#5f8088"}}>未来 12 小时</Text>
-      <Text style={{x: 118, y: 148, width: 106, height: 14, fontSize: 12, color: "#5f8088", alignItems: "center"}}>
-        {`${weather.tempLow}~${weather.tempHigh}°  雨 ${weather.maxPrecip}%`}
-      </Text>
-      {weather.hours.map((hour, index) => (
-        <ForecastColumn key={index} x={18 + index * 17} hour={hour} baseline={baseline} maxBar={maxBar} showTemp={index % 2 === 0} />
+      {columns.map((hour, index) => (
+        <ForecastColumn key={index} hour={hour} cx={16 + index * 36} />
       ))}
     </>
   );
 }
 
-function ForecastColumn({
-  x,
-  hour,
-  baseline,
-  maxBar,
-  showTemp,
-}: {
-  x: number;
-  hour: WeatherView["hours"][number];
-  baseline: number;
-  maxBar: number;
-  showTemp: boolean;
-}) {
-  const barHeight = Math.max(2, Math.round((hour.precip / 100) * maxBar));
+function ForecastColumn({hour, cx}: {hour: WeatherView["hours"][number]; cx: number}) {
   return (
     <>
-      {showTemp ? (
-        <Text style={{x: x - 8, y: baseline - maxBar - 14, width: 34, height: 12, fontSize: 11, color: "#cfe0d8", alignItems: "center"}}>
-          {`${hour.temp}°`}
+      <Text style={{x: cx - 4, y: 150, width: 28, height: 12, fontSize: 11, color: "#8a97a0", alignItems: "center"}}>
+        {hour.hourLabel}
+      </Text>
+      <WeatherIcon kind={hour.icon} x={cx} y={164} />
+      {hour.precip >= 20 ? (
+        <Text style={{x: cx - 4, y: 188, width: 28, height: 11, fontSize: 10, color: "#5ac8fa", alignItems: "center"}}>
+          {`${hour.precip}%`}
         </Text>
       ) : null}
-      <Box style={{x, y: baseline - maxBar, width: 13, height: maxBar, borderRadius: 3, backgroundColor: "#0e1a20"}} />
-      <Box style={{x, y: baseline - barHeight, width: 13, height: barHeight, borderRadius: 3, backgroundColor: mixColor("#1d4a5e", "#6ec8ff", hour.precip / 100)}} />
-      <Text style={{x: x - 2, y: baseline + 4, width: 17, height: 12, fontSize: 10, color: "#7d949b", alignItems: "center"}}>
-        {hour.hourLabel}
+      <Text style={{x: cx - 4, y: 201, width: 28, height: 16, fontSize: 14, color: "#eef2f6", alignItems: "center"}}>
+        {`${hour.temp}°`}
       </Text>
     </>
   );

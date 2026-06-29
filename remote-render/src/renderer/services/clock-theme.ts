@@ -10,7 +10,8 @@ export interface ClockTheme {
 }
 
 const THEMES: Record<string, ClockTheme> = {
-  [THEME_MIDNIGHT]: {background: "#05080a", time: "#f0f8ee", seconds: "#80dac6", date: "#acc8c2", lunar: "#7f9b96"},
+  // 中性深色（参考 Apple 深色天气）：干净的白与冷灰，去掉之前偏绿的色调。
+  [THEME_MIDNIGHT]: {background: "#080b0f", time: "#f3f6fa", seconds: "#8fa0ad", date: "#cad3dc", lunar: "#8b96a1"},
   [THEME_SAKURA]: {background: "#0b0609", time: "#ffe6ef", seconds: "#ff9ec6", date: "#e6b6cc", lunar: "#b9889e"},
   [THEME_AMBER]: {background: "#0a0805", time: "#ffe7b8", seconds: "#ffb84d", date: "#d8c298", lunar: "#a89169"},
   [THEME_MONO]: {background: "#070708", time: "#f3f3f3", seconds: "#9aa2a2", date: "#bdbdbd", lunar: "#888c8c"},
