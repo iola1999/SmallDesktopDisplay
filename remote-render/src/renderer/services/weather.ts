@@ -18,9 +18,18 @@ export interface WeatherHour {
   precip: number; // 降水概率 %
 }
 
+export interface WeatherDay {
+  date: string; // "2026-06-30"
+  code: number;
+  tempMax: number;
+  tempMin: number;
+  precip: number; // 当日最大降水概率 %
+}
+
 export interface WeatherSnapshot {
   fetchedAtMs: number;
   hours: WeatherHour[];
+  days: WeatherDay[];
 }
 
 export type WeatherIconKind = "sun" | "cloud" | "overcast" | "fog" | "rain" | "snow" | "thunder";
@@ -33,6 +42,14 @@ export interface WeatherHourView {
   icon: WeatherIconKind;
 }
 
+export interface WeatherDayView {
+  label: string; // "明天" / "后天"
+  icon: WeatherIconKind;
+  tempMax: number;
+  tempMin: number;
+  precip: number;
+}
+
 export interface WeatherView {
   location: string;
   current: {temp: number; label: string; code: number; icon: WeatherIconKind};
@@ -40,11 +57,15 @@ export interface WeatherView {
   tempLow: number;
   tempHigh: number;
   hours: WeatherHourView[];
+  days: WeatherDayView[]; // [今天, 明天, 后天]
 }
 
+const FORECAST_DAYS = 3;
 const OPEN_METEO_URL =
   `https://api.open-meteo.com/v1/forecast?latitude=${XIAOSHAN_LATITUDE}&longitude=${XIAOSHAN_LONGITUDE}` +
-  `&hourly=temperature_2m,weather_code,precipitation_probability&forecast_hours=${FORECAST_HOURS}&timezone=Asia%2FShanghai`;
+  `&hourly=temperature_2m,weather_code,precipitation_probability&forecast_hours=${FORECAST_HOURS}` +
+  `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=${FORECAST_DAYS}` +
+  `&timezone=Asia%2FShanghai`;
 
 let snapshot: WeatherSnapshot | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -77,9 +98,10 @@ export async function refreshWeather(options: RefreshWeatherOptions = {}): Promi
     if (!response.ok) {
       return snapshot;
     }
-    const hours = parseOpenMeteo(await response.json());
+    const payload = await response.json();
+    const hours = parseOpenMeteo(payload);
     if (hours.length > 0) {
-      snapshot = {fetchedAtMs: options.nowMs ?? Date.now(), hours};
+      snapshot = {fetchedAtMs: options.nowMs ?? Date.now(), hours, days: parseOpenMeteoDays(payload)};
     }
     return snapshot;
   } catch (error) {
@@ -129,6 +151,31 @@ export function parseOpenMeteo(payload: unknown): WeatherHour[] {
   return hours;
 }
 
+export function parseOpenMeteoDays(payload: unknown): WeatherDay[] {
+  const daily = (payload as {daily?: Record<string, unknown>} | null)?.daily;
+  if (!daily) return [];
+  const time = daily.time as string[] | undefined;
+  const code = daily.weather_code as number[] | undefined;
+  const tempMax = daily.temperature_2m_max as number[] | undefined;
+  const tempMin = daily.temperature_2m_min as number[] | undefined;
+  const precip = daily.precipitation_probability_max as number[] | undefined;
+  if (!Array.isArray(time) || !Array.isArray(tempMax) || !Array.isArray(tempMin)) return [];
+  const count = Math.min(time.length, tempMax.length, tempMin.length, FORECAST_DAYS);
+  const days: WeatherDay[] = [];
+  for (let index = 0; index < count; index += 1) {
+    days.push({
+      date: time[index],
+      code: Math.round(code?.[index] ?? 0),
+      tempMax: Math.round(tempMax[index]),
+      tempMin: Math.round(tempMin[index]),
+      precip: Math.round(precip?.[index] ?? 0),
+    });
+  }
+  return days;
+}
+
+const DAY_LABELS = ["今天", "明天", "后天"];
+
 export function buildWeatherView(input: WeatherSnapshot | null): WeatherView | null {
   if (!input || input.hours.length === 0) return null;
   const hours = input.hours;
@@ -147,7 +194,25 @@ export function buildWeatherView(input: WeatherSnapshot | null): WeatherView | n
       label: wmoLabel(hour.code),
       icon: weatherIconKind(hour.code),
     })),
+    days: (input.days ?? []).map((day, index) => ({
+      label: DAY_LABELS[index] ?? day.date.slice(5),
+      icon: weatherIconKind(day.code),
+      tempMax: day.tempMax,
+      tempMin: day.tempMin,
+      precip: day.precip,
+    })),
   };
+}
+
+// 温度 -> 颜色（冷蓝→暖红），让温度数字带上直观的色彩。
+export function tempColor(temp: number): string {
+  if (temp <= 0) return "#7cc4ff";
+  if (temp <= 8) return "#69d6e0";
+  if (temp <= 15) return "#7fe0a6";
+  if (temp <= 21) return "#ffd95a";
+  if (temp <= 27) return "#ffae4d";
+  if (temp <= 32) return "#ff8a52";
+  return "#ff6a5a";
 }
 
 // WMO weather code -> 图标类别
