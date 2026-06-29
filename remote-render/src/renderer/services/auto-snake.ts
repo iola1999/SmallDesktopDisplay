@@ -264,7 +264,21 @@ function reachableArea(start: SnakeCellViewModel, occupied: Set<string>, columns
   return seen.size;
 }
 
+// 哈密顿回路只取决于 (columns, rows)，是纯函数。chooseDirection 每个 tick 都会
+// 调用它，这里按网格尺寸缓存，避免每秒重建 240 元素数组 + Map。回路对象只读
+// （cells 永不被修改），共享引用安全。
+const hamiltonianCycleCache = new Map<string, HamiltonianCycle | null>();
+
 function buildHamiltonianCycle(columns: number, rows: number): HamiltonianCycle | null {
+  const cacheKey = `${columns}x${rows}`;
+  const cached = hamiltonianCycleCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  const result = computeHamiltonianCycle(columns, rows);
+  hamiltonianCycleCache.set(cacheKey, result);
+  return result;
+}
+
+function computeHamiltonianCycle(columns: number, rows: number): HamiltonianCycle | null {
   if (columns <= 1 || rows <= 1) return null;
   const cells = rows % 2 === 0 ? buildEvenRowsCycle(columns, rows) : columns % 2 === 0 ? transposeCycle(buildEvenRowsCycle(rows, columns)) : null;
   if (!cells || cells.length !== columns * rows || !sameCellDistance(cells[0], cells[cells.length - 1])) return null;

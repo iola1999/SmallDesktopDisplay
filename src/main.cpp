@@ -32,6 +32,7 @@ uint32_t g_lastCommandPollMs = 0;
 uint32_t g_lastStatusSyncMs = 0;
 uint32_t g_lastErrorDrawMs = 0;
 bool g_statusSyncPending = true;
+bool g_frameErrorShown = false;
 app::HoldInteractionState g_holdInteraction;
 uint32_t g_holdStartedMs = 0;
 uint16_t g_holdLastPixels = UINT16_MAX;
@@ -206,6 +207,18 @@ void processButtonEvents(uint32_t nowMs)
   }
 }
 
+// 离线提示画的是整屏 banner。服务端恢复后，如果设备已经持有最新帧，轮询只会
+// 拿到 204 或零矩形的 partial 帧，都不会覆盖 banner。这里在恢复后的第一次成功
+// 轮询把 have 归零，强制下次请求整屏帧覆盖掉离线提示（仅恢复时多取一帧）。
+void clearFrameErrorIfRecovered()
+{
+  if (g_frameErrorShown)
+  {
+    g_frameErrorShown = false;
+    g_haveFrameId = 0;
+  }
+}
+
 bool pollFrame(uint32_t nowMs)
 {
   if (nowMs - g_lastFramePollMs < app_config::kRemoteFramePollMs)
@@ -222,16 +235,19 @@ bool pollFrame(uint32_t nowMs)
   if (result == remote::FrameFetchResult::Updated)
   {
     g_haveFrameId = nextFrameId;
+    clearFrameErrorIfRecovered();
     return true;
   }
   if (result == remote::FrameFetchResult::NotModified)
   {
+    clearFrameErrorIfRecovered();
     return true;
   }
 
   if (result == remote::FrameFetchResult::Failed && nowMs - g_lastErrorDrawMs > 3000U)
   {
     g_lastErrorDrawMs = nowMs;
+    g_frameErrorShown = true;
     const std::string ipLine = currentDeviceIpStatusLine();
     drawStatus("Render server offline", g_config.remoteBaseUrl.c_str(), ipLine.c_str());
   }

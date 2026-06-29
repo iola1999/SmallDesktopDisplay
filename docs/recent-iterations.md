@@ -70,6 +70,75 @@ project moved to the thin-client architecture.
   Settings selection pulse, Brightness value/bar/knob animation, detail panel
   pulse. No firmware or protocol change is needed for these animations.
 
+## 2026-06-29 Audit Optimizations And New Features
+
+Outcome of a code audit pass plus the requested feature work. All changes keep
+the thin-client architecture; remote-render stays at 81 vitest tests, firmware at
+31 host doctest cases, and the `esp12e` build is unchanged in footprint class.
+
+Optimizations (behavior-preserving unless noted):
+
+- Server request hardening (`server.ts`): malformed JSON now returns `422`
+  instead of `500`; non-object bodies fall through to `422`; request bodies are
+  capped at 16KB with `413`. A small `HttpError` maps these without log noise.
+- Lazy full-frame (`state.ts`): the per-device full-screen snapshot is no longer
+  re-encoded on every partial/animation/game frame. It is computed lazily by a
+  memoized getter only when a cold/resync client needs it. Byte-identical
+  semantics; verified by the existing cold-client/cleanup tests.
+- Device eviction (`state.ts`): idle device entries are swept after a TTL
+  (default 1h, max once/60s) so arbitrary or preview device ids no longer grow
+  the registry without bound. Returning devices resync via the normal full-frame
+  path.
+- Snake Hamiltonian cycle is memoized per `(columns, rows)` instead of rebuilt
+  every tick.
+- Graceful shutdown (`main.ts`): `SIGTERM`/`SIGINT` close the HTTP server so
+  in-flight long-poll requests are not hard-killed.
+- Firmware frame hot path (`HttpFrameClient.cpp`): the request URL is built with
+  `snprintf` into a fixed buffer instead of chained Arduino `String`
+  concatenation, and the three timing-response-header reads are deferred to only
+  when frame diagnostics are actually logged. This reduces per-poll heap churn at
+  ~20Hz. Also: removed the unreachable wait-loop in `Net.cpp`
+  `loadingUntilConnected`, the dead overflow guard in `parseHeaderMs`, and added
+  an offline-banner recovery path (force `have=0` once after a failed poll
+  succeeds so a stale "Render server offline" screen repaints).
+- Engineering: added a GitHub Actions CI workflow (vitest + typecheck + build,
+  `pio test -e host`, `pio run -e esp12e`), an `npm run typecheck` that also
+  checks test files, and a `docker-compose` healthcheck against `/api/v1/health`.
+- UI cleanups: removed a dead `useMemo`, deduped `nextFontLabel` into the shared
+  `nextFontKey`, and dropped an unreachable brightness "saved" label branch.
+
+New features (server-only, no firmware reflash):
+
+- Home lunar subtitle: a self-contained lunar calendar service
+  (`renderer/services/lunar.ts`, 1900-2100, no new npm dependency) adds农历 date
+  plus solar terms (二十四节气) and major festivals as a subtitle line under the
+  Gregorian date.
+- Optional weather: `renderer/services/weather.ts` polls Open-Meteo (free, no API
+  key) for Hangzhou Xiaoshan and caches the next 12 hours. Failures are silent and
+  never block the clock; weather polling starts in `main.ts`.
+  - Follow-up (same day): weather was first added as a Settings -> Weather detail
+    page, which buried glanceable info two levels deep. It was promoted onto the
+    Home screen instead. Settings now holds only config + diagnostics (no Weather
+    item). The home header and forecast regions were added to the per-second
+    dirty-render set so the weather elements refresh within ~1s of a cache update.
+
+- Calm home + game show (interaction rework): the ambient game was removed from
+  the Home screen so Home is a quiet clock + weather dashboard (current
+  temp/condition chip + a full next-12-hour forecast with per-hour temperatures
+  and a precipitation bar strip in the freed lower area). The games moved into a
+  dedicated game show (new `page: "game"`, GameShowPage = big clock + large game)
+  reached by `short_press` on Home. The show advances through the games on a
+  per-game dwell timer and on manual `short_press`, then returns to the calm home
+  after the last game; games never auto-run on Home. New regions GAME_TIME_REGION
+  / GAME_AREA_REGION drive game-show dirty updates; games render larger
+  (cellSize/canvas bumped ~216-224px wide).
+- Clock themes: a Settings -> Theme detail cycles Midnight / Sakura / Amber /
+  Mono palettes applied to the home clock, date, lunar line, and card background
+  (`renderer/services/clock-theme.ts`). Settings row spacing is now adaptive so
+  the longer menu still fits the card.
+- New ambient game: a deterministic digital-rain screensaver
+  (`renderer/services/auto-rain.ts` + widget) joins the home game rotation.
+
 ## Frame Transport And Diagnostics
 
 - The binary frame format is `SDD1` with raw or RGB565 RLE rectangle payloads.

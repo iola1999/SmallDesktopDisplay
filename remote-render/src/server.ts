@@ -9,9 +9,27 @@ export interface RemoteRenderServer {
   address(): ReturnType<http.Server["address"]>;
 }
 
+// 用于把客户端请求错误（坏 JSON、超大请求体）映射成正确的 4xx 状态码，
+// 而不是让它们冒泡成 500 internal server error 并污染日志。
+class HttpError extends Error {
+  constructor(
+    public status: number,
+    public detail: string,
+  ) {
+    super(detail);
+  }
+}
+
+// 请求体上限。合法的 input/status 负载只有几个小整数，16KB 足够宽松。
+const MAX_REQUEST_BODY_BYTES = 16 * 1024;
+
 export function createRemoteRenderServer(registry = new DeviceRegistry()): RemoteRenderServer {
   const server = http.createServer((request, response) => {
     handleRequest(registry, request, response).catch((error: unknown) => {
+      if (error instanceof HttpError) {
+        sendJson(response, error.status, {detail: error.detail});
+        return;
+      }
       console.error(error);
       sendJson(response, 500, {detail: "internal server error"});
     });
@@ -132,11 +150,28 @@ function parseBoundedInt(value: string | null, min: number, max: number, fallbac
 
 async function readJson(request: IncomingMessage): Promise<Record<string, any>> {
   const chunks: Buffer[] = [];
+  let total = 0;
   for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += buffer.length;
+    if (total > MAX_REQUEST_BODY_BYTES) {
+      throw new HttpError(413, "payload too large");
+    }
+    chunks.push(buffer);
   }
   if (chunks.length === 0) return {};
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw new HttpError(422, "invalid JSON");
+  }
+  // 只接受 JSON 对象；null / 数字 / 数组等非对象负载统一当成空对象，
+  // 让后续字段校验返回 422，而不是在属性访问时抛 TypeError -> 500。
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return {};
+  }
+  return parsed as Record<string, any>;
 }
 
 function isInt(value: unknown, min: number, max = Number.MAX_SAFE_INTEGER): value is number {

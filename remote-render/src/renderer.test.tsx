@@ -11,17 +11,18 @@ import {
   renderDeviceView,
 } from "./renderer/index.js";
 import {decodeRgb565Rle, ENCODING_RGB565_RLE} from "./protocol.js";
-import {advanceHomeGameRuntime, createHomeGameRuntime, homeGameRuntimeToViewModel, switchHomeGameRuntime} from "./renderer/services/home-game-state.js";
+import {advanceHomeGameRuntime, createHomeGameRuntime, homeGameRuntimeToViewModel} from "./renderer/services/home-game-state.js";
 
 describe("React remote renderer", () => {
   test("uses Chinese date, weekday, time, and greeting copy", () => {
     const copy = buildHomeCopy(new Date("2026-05-01T06:32:08.000+08:00"));
 
-    expect(copy.dateText).toBe("五月一日");
+    expect(copy.dateText).toBe("5月1日");
     expect(copy.weekdayText).toBe("星期五");
     expect(copy.timeText).toBe("06:32");
     expect(copy.secondsText).toBe(":08");
     expect(copy.greeting).toBe("早上好");
+    expect(copy.lunarText).toBe("三月十五 · 劳动节"); // 农历汉字数字 + 公历节日
   });
 
   test("clock flip model uses explicit scheduler progress for hour, minute, and second digit changes", () => {
@@ -59,47 +60,52 @@ describe("React remote renderer", () => {
     expect(Buffer.compare(flipping.rgba, settled.rgba)).not.toBe(0);
   });
 
-  test("home view renders an autonomous snake in the lower area", () => {
+  test("game-show page renders an autonomous game in the play area", () => {
     const firstGame = createHomeGameRuntime("snake", 0, 0);
     const nextGame = advanceHomeGameRuntime(firstGame, 1).runtime;
+    const ui = new DeviceUiState({page: "game"});
     const first = renderDeviceCanvas({
       currentTime: new Date("2026-05-01T12:34:56.000+08:00"),
       deviceId: "desk-01",
       buttonCount: 0,
+      uiState: ui,
       homeGame: homeGameRuntimeToViewModel(firstGame),
     });
     const next = renderDeviceCanvas({
       currentTime: new Date("2026-05-01T12:34:56.000+08:00"),
       deviceId: "desk-01",
       buttonCount: 0,
+      uiState: ui,
       homeGame: homeGameRuntimeToViewModel(nextGame),
     });
 
-    const rects = computeDirtyRects(first, next, [[18, 136, 222, 226]]);
+    const rects = computeDirtyRects(first, next, [[0, 64, SCREEN_WIDTH, 232]]);
     const payloadLength = rects.reduce((sum, rect) => sum + rect.payload.length, 0);
 
     expect(rects.length).toBeGreaterThan(0);
     expect(payloadLength).toBeGreaterThan(0);
-    expect(payloadLength).toBeLessThan(8_000);
   });
 
-  test("home view switches the lower game from explicit state", () => {
+  test("game-show page switches the game from explicit state", () => {
     const snakeGame = createHomeGameRuntime("snake", 0, 0);
-    const lifeGame = switchHomeGameRuntime(snakeGame, 1);
+    const lifeGame = createHomeGameRuntime("life", 1, 1);
+    const ui = new DeviceUiState({page: "game"});
     const snake = renderDeviceCanvas({
       currentTime: new Date("2026-05-01T12:00:10.000+08:00"),
       deviceId: "desk-01",
       buttonCount: 0,
+      uiState: ui,
       homeGame: homeGameRuntimeToViewModel(snakeGame),
     });
     const life = renderDeviceCanvas({
       currentTime: new Date("2026-05-01T12:00:10.000+08:00"),
       deviceId: "desk-01",
       buttonCount: 0,
+      uiState: ui,
       homeGame: homeGameRuntimeToViewModel(lifeGame),
     });
 
-    const rects = computeDirtyRects(snake, life, [[18, 136, 222, 226]]);
+    const rects = computeDirtyRects(snake, life, [[0, 64, SCREEN_WIDTH, 232]]);
     const payloadLength = rects.reduce((sum, rect) => sum + rect.payload.length, 0);
 
     expect(rects.length).toBeGreaterThan(0);

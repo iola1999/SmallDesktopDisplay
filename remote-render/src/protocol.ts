@@ -77,7 +77,9 @@ export function encodeRgb565Rle(rgb565: Buffer | Uint8Array): Buffer {
     return Buffer.alloc(0);
   }
 
-  const chunks: number[] = [];
+  // 最坏情况（无重复）每像素 3 字节，预分配后直接写入，避免构建 number[] 再拷贝。
+  const out = Buffer.allocUnsafe((rgb565.length / 2) * 3);
+  let outIndex = 0;
   let runLo = rgb565[0];
   let runHi = rgb565[1];
   let runLength = 1;
@@ -88,13 +90,17 @@ export function encodeRgb565Rle(rgb565: Buffer | Uint8Array): Buffer {
       runLength += 1;
       continue;
     }
-    chunks.push(runLength, runLo, runHi);
+    out[outIndex++] = runLength;
+    out[outIndex++] = runLo;
+    out[outIndex++] = runHi;
     runLo = lo;
     runHi = hi;
     runLength = 1;
   }
-  chunks.push(runLength, runLo, runHi);
-  return Buffer.from(chunks);
+  out[outIndex++] = runLength;
+  out[outIndex++] = runLo;
+  out[outIndex++] = runHi;
+  return out.subarray(0, outIndex);
 }
 
 export function decodeRgb565Rle(payload: Buffer | Uint8Array, expectedPixels: number): Buffer {

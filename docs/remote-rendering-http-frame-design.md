@@ -61,10 +61,18 @@ Supported gesture events:
 
 Current remote UI gesture mapping:
 
+- Home: `short_press` starts the game show (a finite carousel through the ambient
+  games). The home screen itself stays a calm clock + weather and never runs a
+  game on its own.
 - Home: `long_press` enters Settings.
 - Home: `double_press` keeps the page unchanged but forces the next frame to be
   a full-screen refresh. This is a manual resync path for display corruption or
   missed partial updates.
+- Game show: `short_press` advances to the next game; after the last game it
+  returns to the calm home. The show also auto-advances on a per-game dwell timer
+  and returns home when finished.
+- Game show: `double_press` exits back to the calm home; `long_press` enters
+  Settings.
 - Settings: `short_press` moves the selected item.
 - Settings: `long_press` enters the selected detail page.
 - Brightness detail: `short_press` applies the next brightness immediately and
@@ -85,10 +93,30 @@ Current Settings items:
   uptime.
 - `Renderer`: read-only transport/protocol summary for the remote frame link.
 - `About`: device id and remote display protocol summary.
+- `Theme`: server-side clock palette selection (Midnight / Sakura / Amber /
+  Mono), applied to the home clock, date, lunar line, and card background.
+  `short_press` cycles and applies immediately, like `Font`.
 
-The Home page is a remote-rendered Chinese desktop clock rather than a debug
-screen. It shows Chinese date and weekday, large `HH:MM`, compact seconds, a
-time-of-day greeting, and a short subtitle. Device id, tap count, sync status,
+Settings holds only configuration and read-only diagnostics. Glanceable content
+(clock, weather) lives on the Home screen, not behind the Settings menu.
+
+The Home page is a calm single-screen clock + weather dashboard. It shows the
+Gregorian date (Arabic numerals) and short weekday, the current weather
+(temperature + condition, top-right), a lunar/solar-term/festival subtitle, large
+`HH:MM`, compact seconds, and a compact weather block: a single hourly row for the
+next few hours (现在 + condition icon + temperature) above a 今天 / 明天 / 后天 row
+(condition icon + high·low per day). Today's high/low and the next two days are the
+whole outlook — nothing beyond 后天 is shown, and the weather is kept small so the
+clock stays the hero. It runs no game animation, so it stays quiet by default.
+Temperatures are colour-coded cool→warm by value and condition icons are drawn in
+colour, so the 240x240 full-colour panel is not limited to one hue. Weather is fetched server-side from Open-Meteo for
+Hangzhou Xiaoshan and cached; failures are silent and never block the clock, and
+the weather elements simply do not render until the first forecast arrives.
+
+The ambient games (snake, life, breakout, ants, pacman, digital rain) live in a
+separate game show reached by a `short_press` on Home: a big clock on top and a
+large game below. The show auto-advances through the games on a dwell timer and
+on manual `short_press`, then returns to the calm home after the last game. Device id, tap count, sync status,
 RSSI, and other development-only labels are intentionally kept out of the first
 screen; detailed diagnostics live under Settings -> Device.
 Hour, minute, and second digits use a server-side flip-style transition for the

@@ -47,4 +47,77 @@ describe("Node HTTP API", () => {
 
     expect(invalid.status).toBe(422);
   });
+
+  test("accepts a valid input event with 202", async () => {
+    const response = await fetch(`${baseUrl}/api/v1/devices/desk-input/input`, {
+      method: "POST",
+      headers: {"content-type": "application/json"},
+      body: JSON.stringify({seq: 1, event: "short_press", uptime_ms: 1000}),
+    });
+
+    expect(response.status).toBe(202);
+  });
+
+  test("returns 204 for commands when none queued and the queued command after a brightness change", async () => {
+    const none = await fetch(`${baseUrl}/api/v1/devices/desk-cmd/commands?after=0`);
+    expect(none.status).toBe(204);
+
+    const post = (seq: number, event: string, uptimeMs: number) =>
+      fetch(`${baseUrl}/api/v1/devices/desk-cmd/input`, {
+        method: "POST",
+        headers: {"content-type": "application/json"},
+        body: JSON.stringify({seq, event, uptime_ms: uptimeMs}),
+      });
+    await post(1, "long_press", 100); // home -> settings (Brightness selected)
+    await post(2, "long_press", 200); // settings -> brightness detail
+    await post(3, "short_press", 300); // adjust brightness -> queues set_brightness
+
+    const queued = await fetch(`${baseUrl}/api/v1/devices/desk-cmd/commands?after=0`);
+    expect(queued.status).toBe(200);
+    await expect(queued.json()).resolves.toMatchObject({type: "set_brightness"});
+  });
+
+  test("returns 404 for unknown routes", async () => {
+    const response = await fetch(`${baseUrl}/api/v1/unknown`);
+    expect(response.status).toBe(404);
+  });
+
+  test("returns 422 for malformed JSON instead of 500", async () => {
+    const response = await fetch(`${baseUrl}/api/v1/devices/desk-bad-json/input`, {
+      method: "POST",
+      headers: {"content-type": "application/json"},
+      body: "{bad json",
+    });
+
+    expect(response.status).toBe(422);
+  });
+
+  test("returns 422 for non-object JSON bodies instead of 500", async () => {
+    const nullBody = await fetch(`${baseUrl}/api/v1/devices/desk-null/input`, {
+      method: "POST",
+      headers: {"content-type": "application/json"},
+      body: "null",
+    });
+    expect(nullBody.status).toBe(422);
+
+    const nullStatus = await fetch(`${baseUrl}/api/v1/devices/desk-null/status`, {
+      method: "POST",
+      headers: {"content-type": "application/json"},
+      body: "null",
+    });
+    expect(nullStatus.status).toBe(422);
+  });
+
+  test("rejects an oversized request body with 413 and stays responsive", async () => {
+    const oversized = await fetch(`${baseUrl}/api/v1/devices/desk-big/input`, {
+      method: "POST",
+      headers: {"content-type": "application/json"},
+      body: `{"seq":1,"event":"short_press","uptime_ms":1,"pad":"${"x".repeat(64 * 1024)}"}`,
+    });
+    expect(oversized.status).toBe(413);
+
+    await expect(fetch(`${baseUrl}/api/v1/health`).then((response) => response.json())).resolves.toEqual({
+      status: "ok",
+    });
+  });
 });

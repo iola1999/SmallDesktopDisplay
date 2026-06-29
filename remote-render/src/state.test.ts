@@ -2,7 +2,6 @@ import {describe, expect, test} from "vitest";
 
 import {applyFrameToRgba, decodeFrame} from "./tools/frame-preview.js";
 import {DeviceRegistry} from "./state.js";
-import {HOME_GAME_REGION} from "./renderer/index.js";
 
 describe("device registry", () => {
   test("returns latest frame then no content for same frame id", async () => {
@@ -16,25 +15,21 @@ describe("device registry", () => {
     expect(second).toBeNull();
   });
 
-  test("short press on home switches the ambient game and sends the full game region", async () => {
+  test("short press on home enters the game show with a full frame", async () => {
     const registry = new DeviceRegistry();
 
     const first = await registry.getFrame("desk-02", 0, 0);
     const frameId = first!.readUInt32LE(8);
-    const initialGame = registry.devices.get("desk-02")!.homeGame!.kind;
+    expect(registry.devices.get("desk-02")!.homeGame).toBeNull(); // 安静首页无游戏
 
     expect(registry.recordInput("desk-02", 1, "short_press", 1000)).toBe(true);
 
-    const switched = await registry.getFrame("desk-02", frameId, 1);
-    const decoded = decodeFrame(switched!);
+    const shown = await registry.getFrame("desk-02", frameId, 1);
+    const decoded = decodeFrame(shown!);
 
-    expect(registry.devices.get("desk-02")!.homeGame!.kind).not.toBe(initialGame);
-    expect(decoded.fullFrame).toBe(false);
-    expect(decoded.rects).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({x: HOME_GAME_REGION[0], y: HOME_GAME_REGION[1], width: HOME_GAME_REGION[2] - HOME_GAME_REGION[0], height: HOME_GAME_REGION[3] - HOME_GAME_REGION[1]}),
-      ]),
-    );
+    expect(registry.devices.get("desk-02")!.ui.page).toBe("game");
+    expect(registry.devices.get("desk-02")!.homeGame).not.toBeNull();
+    expect(decoded.fullFrame).toBe(true);
   });
 
   test("double press on home forces a full refresh frame", async () => {
@@ -109,77 +104,54 @@ describe("device registry", () => {
     expect(Buffer.compare(rgba, fullSnapshot)).toBe(0);
   });
 
-  test("emits slower home game frames after clock cleanup", async () => {
+  test("game show advances the game animation on each tick", async () => {
     let now = 0;
-    const baseTime = new Date("2026-05-01T12:34:56.000+08:00").getTime();
     const registry = new DeviceRegistry({
       monotonic: () => now,
-      now: () => new Date(baseTime + now * 1000),
-      frameIntervalSeconds: 1,
-      animationFrameIntervalSeconds: 0.05,
-      clockFlipAnimationSeconds: 0.3,
       homeGameFrameIntervalSeconds: 1,
+      gameShowDwellSeconds: 100,
     });
-    const deviceId = "desk-snake-live";
+    const deviceId = "desk-show";
 
     const first = await registry.getFrame(deviceId, 0, 0);
-    const firstFrameId = first!.readUInt32LE(8);
+    let have = first!.readUInt32LE(8);
 
-    now = 0.5;
-    await expect(registry.getFrame(deviceId, firstFrameId, 0)).resolves.toBeNull();
+    expect(registry.recordInput(deviceId, 1, "short_press", 100)).toBe(true);
+    const enter = await registry.getFrame(deviceId, have, 0);
+    have = enter!.readUInt32LE(8);
+    expect(registry.devices.get(deviceId)!.ui.page).toBe("game");
 
     now = 1;
-    const gameFrame = await registry.getFrame(deviceId, firstFrameId, 0);
-    const gameDecoded = decodeFrame(gameFrame!);
-    let have = gameFrame!.readUInt32LE(8);
+    const tick = await registry.getFrame(deviceId, have, 0);
+    const decoded = decodeFrame(tick!);
 
-    expect(gameDecoded.fullFrame).toBe(false);
-    expect(gameDecoded.rects.length).toBeGreaterThan(0);
-    expect(gameDecoded.rects.some((rect) => rect.y >= 136 && rect.y < 226)).toBe(true);
-
-    now = 1.31;
-    const cleanupFrame = await registry.getFrame(deviceId, have, 0);
-    have = cleanupFrame!.readUInt32LE(8);
-
-    now = 1.5;
-    await expect(registry.getFrame(deviceId, have, 0)).resolves.toBeNull();
+    expect(decoded.fullFrame).toBe(false);
+    expect(decoded.rects.length).toBeGreaterThan(0);
+    expect(decoded.rects.some((rect) => rect.y >= 64)).toBe(true); // 游戏区
   });
 
-  test("sends the full game region when the home game times out and switches", async () => {
+  test("game show auto-advances by dwell and returns to the calm home after the last game", async () => {
     let now = 0;
-    const baseTime = new Date("2026-05-01T12:09:59.000+08:00").getTime();
     const registry = new DeviceRegistry({
       monotonic: () => now,
-      now: () => new Date(baseTime + now * 1000),
-      frameIntervalSeconds: 1,
-      animationFrameIntervalSeconds: 0.05,
-      clockFlipAnimationSeconds: 0.3,
+      gameShowDwellSeconds: 5,
       homeGameFrameIntervalSeconds: 1,
     });
-    const deviceId = "desk-game-switch-clear";
+    const deviceId = "desk-carousel";
 
-    const first = await registry.getFrame(deviceId, 0, 0);
-    let rgba = applyFrameToRgba(Buffer.alloc(0), 240, decodeFrame(first!));
-    let have = first!.readUInt32LE(8);
-    const initialGame = registry.devices.get(deviceId)!.homeGame!.kind;
+    await registry.getFrame(deviceId, 0, 0);
+    expect(registry.recordInput(deviceId, 1, "short_press", 100)).toBe(true);
+    expect(registry.devices.get(deviceId)!.ui.page).toBe("game");
+    expect(registry.devices.get(deviceId)!.ui.gameIndex).toBe(0);
 
-    now = 1200;
-    const switched = await registry.getFrame(deviceId, have, 0);
-    const decoded = decodeFrame(switched!);
-    rgba = applyFrameToRgba(rgba, 240, decoded);
-    have = switched!.readUInt32LE(8);
-    const fullSnapshot = applyFrameToRgba(Buffer.alloc(0), 240, decodeFrame(registry.devices.get(deviceId)!.fullFrame));
-    const [left, top, right, bottom] = HOME_GAME_REGION;
+    // 每过一个停留时长自动切下一个；6 个游戏播完后回到安静首页。
+    for (let step = 1; step <= 6; step += 1) {
+      now = step * 5;
+      await registry.getFrame(deviceId, registry.devices.get(deviceId)!.frameId, 0);
+    }
 
-    expect(registry.devices.get(deviceId)!.homeGame!.kind).not.toBe(initialGame);
-    expect(decoded.fullFrame).toBe(false);
-    expect(decoded.rects).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({x: left, y: top, width: right - left, height: bottom - top}),
-      ]),
-    );
-    expect(Buffer.compare(rgba, fullSnapshot)).toBe(0);
-    expect(registry.devices.get(deviceId)!.latestBaseFrameId).toBe(have - 1);
+    expect(registry.devices.get(deviceId)!.ui.page).toBe("home");
+    expect(registry.devices.get(deviceId)!.homeGame).toBeNull();
   });
 
   test("emits a full final frame when a navigation animation expires between polls", async () => {
@@ -246,5 +218,28 @@ describe("device registry", () => {
       wifiRssi: -48,
       uptimeMs: 4321,
     });
+  });
+
+  test("evicts idle devices past the TTL while keeping active ones", async () => {
+    let now = 0;
+    const registry = new DeviceRegistry({
+      monotonic: () => now,
+      deviceIdleTtlSeconds: 100,
+      evictionSweepIntervalSeconds: 10,
+    });
+
+    await registry.getFrame("idle-1", 0, 0);
+    await registry.getFrame("idle-2", 0, 0);
+    expect(registry.devices.size).toBe(2);
+
+    now = 50;
+    await registry.getFrame("active", 0, 0);
+    expect(registry.devices.has("idle-1")).toBe(true);
+
+    now = 200;
+    await registry.getFrame("active", 0, 0);
+    expect(registry.devices.has("idle-1")).toBe(false);
+    expect(registry.devices.has("idle-2")).toBe(false);
+    expect(registry.devices.has("active")).toBe(true);
   });
 });
