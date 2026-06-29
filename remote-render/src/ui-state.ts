@@ -1,4 +1,4 @@
-export type PageName = "home" | "settings" | "detail";
+export type PageName = "home" | "game" | "settings" | "detail";
 export type InputEventName = "short_press" | "double_press" | "long_press";
 
 export const FONT_WENKAI_SCREEN = "lxgw_wenkai_screen";
@@ -45,6 +45,7 @@ export interface DeviceUiStateInit {
   page?: PageName;
   selectedIndex?: number;
   detailIndex?: number;
+  gameIndex?: number;
   brightness?: number;
   pendingBrightness?: number;
   fontKey?: string;
@@ -60,6 +61,7 @@ export class DeviceUiState {
   page: PageName = "home";
   selectedIndex = 0;
   detailIndex = 0;
+  gameIndex = 0;
   brightness = 50;
   pendingBrightness = 50;
   fontKey = FONT_WENKAI_SCREEN;
@@ -79,6 +81,24 @@ export class DeviceUiState {
 export function applyInputEvent(state: DeviceUiState, event: InputEventName, now: number): DeviceCommand[] {
   if (state.page === "home") {
     if (event === "long_press") {
+      state.page = "settings";
+      state.selectedIndex = 0;
+      startAnimation(state, "enter_settings", now);
+    } else if (event === "short_press") {
+      // 单击进入游戏轮播：从第一个游戏开始（首页本身保持安静，不跑游戏）。
+      state.page = "game";
+      state.gameIndex = 0;
+    }
+    return [];
+  }
+
+  if (state.page === "game") {
+    // 游戏轮播页：单击切下一个，播完由 state 层判定回首页；双击直接回首页；长按进设置。
+    if (event === "short_press") {
+      state.gameIndex += 1;
+    } else if (event === "double_press") {
+      state.page = "home";
+    } else if (event === "long_press") {
       state.page = "settings";
       state.selectedIndex = 0;
       startAnimation(state, "enter_settings", now);

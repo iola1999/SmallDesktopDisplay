@@ -118,11 +118,20 @@ New features (server-only, no firmware reflash):
   never block the clock; weather polling starts in `main.ts`.
   - Follow-up (same day): weather was first added as a Settings -> Weather detail
     page, which buried glanceable info two levels deep. It was promoted onto the
-    Home screen instead: a current temperature+condition chip on the date row plus
-    a thin 12-hour precipitation trend strip between the clock and the ambient
-    game. Settings now holds only config + diagnostics (no Weather item). The home
-    header and forecast regions were added to the per-second dirty-render set so
-    the chip/strip refresh within ~1s of a cache update.
+    Home screen instead. Settings now holds only config + diagnostics (no Weather
+    item). The home header and forecast regions were added to the per-second
+    dirty-render set so the weather elements refresh within ~1s of a cache update.
+
+- Calm home + game show (interaction rework): the ambient game was removed from
+  the Home screen so Home is a quiet clock + weather dashboard (current
+  temp/condition chip + a full next-12-hour forecast with per-hour temperatures
+  and a precipitation bar strip in the freed lower area). The games moved into a
+  dedicated game show (new `page: "game"`, GameShowPage = big clock + large game)
+  reached by `short_press` on Home. The show advances through the games on a
+  per-game dwell timer and on manual `short_press`, then returns to the calm home
+  after the last game; games never auto-run on Home. New regions GAME_TIME_REGION
+  / GAME_AREA_REGION drive game-show dirty updates; games render larger
+  (cellSize/canvas bumped ~216-224px wide).
 - Clock themes: a Settings -> Theme detail cycles Midnight / Sakura / Amber /
   Mono palettes applied to the home clock, date, lunar line, and card background
   (`renderer/services/clock-theme.ts`). Settings row spacing is now adaptive so

@@ -61,10 +61,18 @@ Supported gesture events:
 
 Current remote UI gesture mapping:
 
+- Home: `short_press` starts the game show (a finite carousel through the ambient
+  games). The home screen itself stays a calm clock + weather and never runs a
+  game on its own.
 - Home: `long_press` enters Settings.
 - Home: `double_press` keeps the page unchanged but forces the next frame to be
   a full-screen refresh. This is a manual resync path for display corruption or
   missed partial updates.
+- Game show: `short_press` advances to the next game; after the last game it
+  returns to the calm home. The show also auto-advances on a per-game dwell timer
+  and returns home when finished.
+- Game show: `double_press` exits back to the calm home; `long_press` enters
+  Settings.
 - Settings: `short_press` moves the selected item.
 - Settings: `long_press` enters the selected detail page.
 - Brightness detail: `short_press` applies the next brightness immediately and
@@ -92,13 +100,19 @@ Current Settings items:
 Settings holds only configuration and read-only diagnostics. Glanceable content
 (clock, weather) lives on the Home screen, not behind the Settings menu.
 
-The Home page is a single-screen remote-rendered desktop dashboard. It shows the
+The Home page is a calm single-screen clock + weather dashboard. It shows the
 Gregorian date (Arabic numerals) and short weekday, the current weather
 (temperature + condition, top-right), a lunar/solar-term/festival subtitle, large
-`HH:MM`, compact seconds, a thin next-12-hour precipitation trend strip, and a
-rotating ambient game. Weather is fetched server-side from Open-Meteo for
+`HH:MM`, compact seconds, and a next-12-hour forecast (per-hour temperatures and
+a precipitation bar strip) in the lower area. It runs no game animation, so it
+stays quiet by default. Weather is fetched server-side from Open-Meteo for
 Hangzhou Xiaoshan and cached; failures are silent and never block the clock, and
-the weather elements simply do not render until the first forecast arrives. Device id, tap count, sync status,
+the weather elements simply do not render until the first forecast arrives.
+
+The ambient games (snake, life, breakout, ants, pacman, digital rain) live in a
+separate game show reached by a `short_press` on Home: a big clock on top and a
+large game below. The show auto-advances through the games on a dwell timer and
+on manual `short_press`, then returns to the calm home after the last game. Device id, tap count, sync status,
 RSSI, and other development-only labels are intentionally kept out of the first
 screen; detailed diagnostics live under Settings -> Device.
 Hour, minute, and second digits use a server-side flip-style transition for the

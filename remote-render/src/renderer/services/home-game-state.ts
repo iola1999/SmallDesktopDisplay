@@ -57,22 +57,23 @@ export interface HomeGameRuntime {
 
 export function createHomeGameRuntime(kind: HomeGameKind = "snake", round = 0, startedAt = 0): HomeGameRuntime {
   const seed = `home-${kind}:${round}`;
+  // 游戏现在在轮播页放大展示，使用较大的网格 / 画布尺寸（约 216-224px 宽）。
   if (kind === "snake") {
-    return {kind, round, startedAt, seed, snake: createAutoSnakeRuntime()};
+    return {kind, round, startedAt, seed, snake: createAutoSnakeRuntime({cellSize: 9})};
   }
   if (kind === "life") {
-    return {kind, round, startedAt, seed, life: createConwayLifeRuntime({seed})};
+    return {kind, round, startedAt, seed, life: createConwayLifeRuntime({seed, cellSize: 7})};
   }
   if (kind === "breakout") {
-    return {kind, round, startedAt, seed, breakout: createAutoBreakoutRuntime({seed})};
+    return {kind, round, startedAt, seed, breakout: createAutoBreakoutRuntime({seed, width: 224, height: 132})};
   }
   if (kind === "ants") {
-    return {kind, round, startedAt, seed, ants: createAntColonyRuntime({seed})};
+    return {kind, round, startedAt, seed, ants: createAntColonyRuntime({seed, cellSize: 7})};
   }
   if (kind === "rain") {
-    return {kind, round, startedAt, seed, rain: createAutoRainRuntime({seed})};
+    return {kind, round, startedAt, seed, rain: createAutoRainRuntime({seed, cellSize: 7})};
   }
-  return {kind, round, startedAt, seed, pacman: createAutoPacmanRuntime({seed})};
+  return {kind, round, startedAt, seed, pacman: createAutoPacmanRuntime({seed, cellSize: 9})};
 }
 
 export function advanceHomeGameRuntime(runtime: HomeGameRuntime, now: number): {runtime: HomeGameRuntime; status: HomeGameAdvanceStatus} {

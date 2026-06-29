@@ -14,14 +14,25 @@ describe("device UI state", () => {
     expect(currentAnimationProgress(state, 10)).toBe(0);
   });
 
-  test("short press on home has no visible state change", () => {
+  test("short press on home enters the game show at the first game", () => {
     const state = new DeviceUiState();
 
     const commands = applyInputEvent(state, "short_press", 10);
 
     expect(commands).toEqual([]);
+    expect(state.page).toBe("game");
+    expect(state.gameIndex).toBe(0);
+  });
+
+  test("short press in the game show advances to the next game", () => {
+    const state = new DeviceUiState({page: "game", gameIndex: 0});
+
+    applyInputEvent(state, "short_press", 10);
+    expect(state.page).toBe("game");
+    expect(state.gameIndex).toBe(1);
+
+    applyInputEvent(state, "double_press", 20);
     expect(state.page).toBe("home");
-    expect(state.animation).toBe("");
   });
 
   test("brightness detail queues a set brightness command", () => {

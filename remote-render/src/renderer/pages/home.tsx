@@ -3,7 +3,6 @@ import {Box, Screen, Text} from "../components/primitives.js";
 import type {ClockFlipGlyphViewModel, HomeViewModel} from "../models/view-model.js";
 import {mixColor} from "../services/color.js";
 import type {WeatherView} from "../services/weather.js";
-import {HomeAmbientGame} from "../widgets/home-ambient-game.js";
 
 export function HomePage({model}: {model: HomeViewModel}) {
   const theme = model.theme;
@@ -31,35 +30,55 @@ export function HomePage({model}: {model: HomeViewModel}) {
       {model.clockGlyphs.map((glyph) => (
         <ClockGlyph key={glyph.key} glyph={glyph} background={theme.background} />
       ))}
-      {weather ? <HomeForecastStrip weather={weather} /> : null}
-      <HomeAmbientGame model={model.game} />
+      {weather ? <HomeForecast weather={weather} /> : null}
     </Screen>
   );
 }
 
-// 时钟与游戏之间的细窄 12 小时降水趋势条：每小时一根柱，高度/亮度随降水概率变化。
-function HomeForecastStrip({weather}: {weather: WeatherView}) {
-  const baseline = 144;
-  const maxBar = 12;
+// 首页下方的 12 小时预报：每 2 小时标温度，逐时降水柱 + 整点刻度。游戏移到轮播页后，
+// 这块空间用来把天气展示得更完整。
+function HomeForecast({weather}: {weather: WeatherView}) {
+  const baseline = 210;
+  const maxBar = 32;
   return (
     <>
-      {weather.hours.map((hour, index) => {
-        const height = Math.max(1, Math.round((hour.precip / 100) * maxBar));
-        return (
-          <Box
-            key={index}
-            style={{
-              x: 20 + index * 17,
-              y: baseline - height,
-              width: 13,
-              height,
-              borderRadius: 1,
-              backgroundColor: mixColor("#264a52", "#7ccbff", hour.precip / 100),
-              opacity: 0.45 + (hour.precip / 100) * 0.55,
-            }}
-          />
-        );
-      })}
+      <Text style={{x: 16, y: 148, width: 88, height: 14, fontSize: 12, color: "#5f8088"}}>未来 12 小时</Text>
+      <Text style={{x: 118, y: 148, width: 106, height: 14, fontSize: 12, color: "#5f8088", alignItems: "center"}}>
+        {`${weather.tempLow}~${weather.tempHigh}°  雨 ${weather.maxPrecip}%`}
+      </Text>
+      {weather.hours.map((hour, index) => (
+        <ForecastColumn key={index} x={18 + index * 17} hour={hour} baseline={baseline} maxBar={maxBar} showTemp={index % 2 === 0} />
+      ))}
+    </>
+  );
+}
+
+function ForecastColumn({
+  x,
+  hour,
+  baseline,
+  maxBar,
+  showTemp,
+}: {
+  x: number;
+  hour: WeatherView["hours"][number];
+  baseline: number;
+  maxBar: number;
+  showTemp: boolean;
+}) {
+  const barHeight = Math.max(2, Math.round((hour.precip / 100) * maxBar));
+  return (
+    <>
+      {showTemp ? (
+        <Text style={{x: x - 8, y: baseline - maxBar - 14, width: 34, height: 12, fontSize: 11, color: "#cfe0d8", alignItems: "center"}}>
+          {`${hour.temp}°`}
+        </Text>
+      ) : null}
+      <Box style={{x, y: baseline - maxBar, width: 13, height: maxBar, borderRadius: 3, backgroundColor: "#0e1a20"}} />
+      <Box style={{x, y: baseline - barHeight, width: 13, height: barHeight, borderRadius: 3, backgroundColor: mixColor("#1d4a5e", "#6ec8ff", hour.precip / 100)}} />
+      <Text style={{x: x - 2, y: baseline + 4, width: 17, height: 12, fontSize: 10, color: "#7d949b", alignItems: "center"}}>
+        {hour.hourLabel}
+      </Text>
     </>
   );
 }

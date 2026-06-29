@@ -2,7 +2,7 @@ import type {HomeCopy} from "../types.js";
 import type {ClockTheme} from "../services/clock-theme.js";
 import type {WeatherView} from "../services/weather.js";
 
-export type DeviceViewModel = HomeViewModel | SettingsViewModel | DetailViewModel;
+export type DeviceViewModel = HomeViewModel | GameViewModel | SettingsViewModel | DetailViewModel;
 
 export interface BaseViewModel {
   fontKey: string;
@@ -12,9 +12,15 @@ export interface HomeViewModel extends BaseViewModel {
   page: "home";
   copy: HomeCopy;
   clockGlyphs: ClockFlipGlyphViewModel[];
-  game: HomeAmbientGameViewModel;
   theme: ClockTheme;
   weather?: WeatherView;
+}
+
+export interface GameViewModel extends BaseViewModel {
+  page: "game";
+  timeText: string;
+  theme: ClockTheme;
+  game: HomeAmbientGameViewModel;
 }
 
 export type ClockFlipGlyphGroup = "time" | "seconds";

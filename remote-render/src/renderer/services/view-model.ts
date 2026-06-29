@@ -42,6 +42,15 @@ export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceVi
     return buildDetailViewModel(input, fontKey);
   }
   const theme = resolveClockTheme(resolveThemeKeyForView(input.state));
+  if (input.state.page === "game") {
+    return {
+      page: "game",
+      fontKey,
+      theme,
+      timeText: buildHomeCopy(input.currentTime).timeText,
+      game: input.homeGame ?? buildHomeAmbientGameViewModel({kind: "snake"}),
+    };
+  }
   return {
     page: "home",
     fontKey,
@@ -51,7 +60,6 @@ export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceVi
       timeColor: theme.time,
       secondsColor: theme.seconds,
     }),
-    game: input.homeGame ?? buildHomeAmbientGameViewModel({kind: "snake"}),
     theme,
     weather: buildWeatherView(getWeatherSnapshot()) ?? undefined,
   };
