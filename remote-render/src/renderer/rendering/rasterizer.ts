@@ -3,7 +3,7 @@ import type React from "react";
 import Yoga, {Align, Direction, FlexDirection, Justify, PositionType} from "yoga-layout";
 import type {Node as YogaNode} from "yoga-layout";
 
-import {SCREEN_HEIGHT, SCREEN_WIDTH} from "../constants.js";
+import {SCREEN_HEIGHT, SCREEN_WIDTH, SUPERSAMPLE_SCALE} from "../constants.js";
 import {HostNode, HostText, renderReactElement} from "../host/reconciler.js";
 import {fontFamily} from "../services/font-registry.js";
 import type {CanvasImage, Style} from "../types.js";
@@ -23,15 +23,30 @@ export function rasterizeElement(element: React.ReactElement, fontKey: string): 
   return rasterHostTree(root.children.filter((child): child is HostNode => child instanceof HostNode), fontKey);
 }
 
+// 超采样抗锯齿：按 SUPERSAMPLE_SCALE 倍分辨率光栅化，再高质量缩回 240x240。
+// 布局/坐标全程逻辑像素（measureText 不受画布 transform 影响），只有落笔精度变高；
+// 小字号 CJK 笔画与圆角边缘明显更顺滑。缩放后的帧照常走 diff/编码，链路无感知。
 function rasterHostTree(children: HostNode[], fontKey: string): CanvasImage {
-  const canvas = createCanvas(SCREEN_WIDTH, SCREEN_HEIGHT);
+  const scale = SUPERSAMPLE_SCALE;
+  const canvas = createCanvas(SCREEN_WIDTH * scale, SCREEN_HEIGHT * scale);
   const ctx = canvas.getContext("2d");
   ctx.textBaseline = "top";
+  if (scale !== 1) {
+    ctx.scale(scale, scale);
+  }
   for (const child of children) {
     const layout = layoutHostNode(child, ctx, fontKey);
     paintLayout(ctx, layout, 0, 0, fontFamily(fontKey));
   }
-  return {width: SCREEN_WIDTH, height: SCREEN_HEIGHT, rgba: Buffer.from(canvas.data())};
+  if (scale === 1) {
+    return {width: SCREEN_WIDTH, height: SCREEN_HEIGHT, rgba: Buffer.from(canvas.data())};
+  }
+  const output = createCanvas(SCREEN_WIDTH, SCREEN_HEIGHT);
+  const outputCtx = output.getContext("2d");
+  outputCtx.imageSmoothingEnabled = true;
+  outputCtx.imageSmoothingQuality = "high";
+  outputCtx.drawImage(canvas, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+  return {width: SCREEN_WIDTH, height: SCREEN_HEIGHT, rgba: Buffer.from(output.data())};
 }
 
 function layoutHostNode(host: HostNode, ctx: SKRSContext2D, fontKey: string): LayoutNode {

@@ -36,12 +36,13 @@ export function HomePage({model}: {model: HomeViewModel}) {
 
 // 常驻暗背景数字雨：游戏轮播删除后留下的"活气"。纯 (seed, tick) 推导（tick 每秒
 // 走一格，由视图模型从墙钟算出），无持久状态。颜色从主题秒针色向背景色压暗到
-// 6%-24%，垫在所有正文之下，不与时钟/天气抢对比度。
-// 引擎行数(60)大于可见行数(34)：雨头有一半时间在"屏幕下方"走，等效让约半数列空闲，
-// 画面稀疏；单元高度=行距(6px)，雨带连成细线而不是虚线点。
+// 6%-26%，垫在所有正文之下，不与时钟/天气抢对比度。
+// 行距 8px：每秒下落 8px（比 6px 版快 1/3），雨带 24-48px 更修长；
+// 尾迹亮度按 level 连续渐变（雨头略亮 + 平滑衰减），不再是头亮尾灰的两段跳变。
+// 引擎行数(60)大于可见行数(25)：雨头大部分时间在"屏幕下方"走，画面保持稀疏。
 const RAIN_COLUMNS = 12;
 const RAIN_ENGINE_ROWS = 60;
-const RAIN_VISIBLE_ROWS = 34;
+const RAIN_VISIBLE_ROWS = 25;
 
 function RainBackdrop({tick, theme}: {tick: number; theme: ClockTheme}) {
   const view = autoRainRuntimeToViewModel({columns: RAIN_COLUMNS, rows: RAIN_ENGINE_ROWS, cellSize: 6, seed: "home-rain", tick});
@@ -54,10 +55,10 @@ function RainBackdrop({tick, theme}: {tick: number; theme: ClockTheme}) {
             key={`${cell.x}-${cell.y}`}
             style={{
               x: 16 + cell.x * 18,
-              y: 14 + cell.y * 6,
+              y: 14 + cell.y * 8,
               width: 2,
-              height: 6,
-              backgroundColor: mixColor(theme.seconds, theme.background, cell.level >= 1 ? 0.76 : 0.86 + (1 - cell.level) * 0.08),
+              height: 8,
+              backgroundColor: mixColor(theme.seconds, theme.background, cell.level >= 1 ? 0.74 : 0.78 + (1 - cell.level) * 0.14),
             }}
           />
         ))}

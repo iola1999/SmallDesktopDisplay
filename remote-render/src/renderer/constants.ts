@@ -6,6 +6,8 @@ export const TIME_REGION: RectTuple = [0, 44, SCREEN_WIDTH, 112];
 export const FORECAST_REGION: RectTuple = [0, 112, SCREEN_WIDTH, 232];
 export const DIRTY_TILE_WIDTH = 24;
 export const DIRTY_TILE_HEIGHT = 8;
-export const SUPERSAMPLE_SCALE = 1;
+// 超采样倍率：2 = 以 480x480 光栅化后高质量缩回 240x240（小字 CJK 抗锯齿明显更顺）。
+// 光栅像素量 x4，实测整帧约 1.5ms -> ~5ms，峰值 8 帧/秒时 ~4% 单核，可接受。
+export const SUPERSAMPLE_SCALE: number = 2;
 
 export type RectTuple = [number, number, number, number];
