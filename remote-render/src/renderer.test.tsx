@@ -11,7 +11,6 @@ import {
   renderDeviceView,
 } from "./renderer/index.js";
 import {decodeRgb565Rle, ENCODING_RGB565_RLE} from "./protocol.js";
-import {advanceHomeGameRuntime, createHomeGameRuntime, homeGameRuntimeToViewModel} from "./renderer/services/home-game-state.js";
 
 describe("React remote renderer", () => {
   test("uses Chinese date, weekday, time, and greeting copy", () => {
@@ -58,58 +57,6 @@ describe("React remote renderer", () => {
 
     expect(Buffer.compare(flipping.rgba, previous.rgba)).not.toBe(0);
     expect(Buffer.compare(flipping.rgba, settled.rgba)).not.toBe(0);
-  });
-
-  test("game-show page renders an autonomous game in the play area", () => {
-    const firstGame = createHomeGameRuntime("snake", 0, 0);
-    const nextGame = advanceHomeGameRuntime(firstGame, 1).runtime;
-    const ui = new DeviceUiState({page: "game"});
-    const first = renderDeviceCanvas({
-      currentTime: new Date("2026-05-01T12:34:56.000+08:00"),
-      deviceId: "desk-01",
-      buttonCount: 0,
-      uiState: ui,
-      homeGame: homeGameRuntimeToViewModel(firstGame),
-    });
-    const next = renderDeviceCanvas({
-      currentTime: new Date("2026-05-01T12:34:56.000+08:00"),
-      deviceId: "desk-01",
-      buttonCount: 0,
-      uiState: ui,
-      homeGame: homeGameRuntimeToViewModel(nextGame),
-    });
-
-    const rects = computeDirtyRects(first, next, [[0, 64, SCREEN_WIDTH, 232]]);
-    const payloadLength = rects.reduce((sum, rect) => sum + rect.payload.length, 0);
-
-    expect(rects.length).toBeGreaterThan(0);
-    expect(payloadLength).toBeGreaterThan(0);
-  });
-
-  test("game-show page switches the game from explicit state", () => {
-    const snakeGame = createHomeGameRuntime("snake", 0, 0);
-    const lifeGame = createHomeGameRuntime("life", 1, 1);
-    const ui = new DeviceUiState({page: "game"});
-    const snake = renderDeviceCanvas({
-      currentTime: new Date("2026-05-01T12:00:10.000+08:00"),
-      deviceId: "desk-01",
-      buttonCount: 0,
-      uiState: ui,
-      homeGame: homeGameRuntimeToViewModel(snakeGame),
-    });
-    const life = renderDeviceCanvas({
-      currentTime: new Date("2026-05-01T12:00:10.000+08:00"),
-      deviceId: "desk-01",
-      buttonCount: 0,
-      uiState: ui,
-      homeGame: homeGameRuntimeToViewModel(lifeGame),
-    });
-
-    const rects = computeDirtyRects(snake, life, [[0, 64, SCREEN_WIDTH, 232]]);
-    const payloadLength = rects.reduce((sum, rect) => sum + rect.payload.length, 0);
-
-    expect(rects.length).toBeGreaterThan(0);
-    expect(payloadLength).toBeGreaterThan(0);
   });
 
   test("renders a full-screen RGB565 frame from React host primitives", () => {

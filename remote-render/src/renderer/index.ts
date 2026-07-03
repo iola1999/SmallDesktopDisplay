@@ -1,6 +1,5 @@
 import type {DeviceUiState} from "../ui-state.js";
 import type {RectTuple} from "./constants.js";
-import type {HomeAmbientGameViewModel} from "./models/view-model.js";
 import {renderCanvasFrame} from "./rendering/canvas-frame.js";
 import {renderDeviceCanvas} from "./rendering/device-canvas.js";
 import {registerFonts} from "./services/font-registry.js";
@@ -8,8 +7,6 @@ import type {RenderedFrame} from "./types.js";
 
 export {
   FORECAST_REGION,
-  GAME_AREA_REGION,
-  GAME_TIME_REGION,
   HEADER_REGION,
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
@@ -33,7 +30,6 @@ interface RenderDeviceViewOptions {
   now?: Date;
   uiState?: DeviceUiState;
   animationProgress?: number;
-  homeGame?: HomeAmbientGameViewModel;
 }
 
 registerFonts();
@@ -45,7 +41,6 @@ export function renderDeviceView(options: RenderDeviceViewOptions): RenderedFram
     buttonCount: options.buttonCount,
     uiState: options.uiState,
     animationProgress: options.animationProgress,
-    homeGame: options.homeGame,
   });
   return renderCanvasFrame(image, {
     frameId: options.frameId ?? 1,

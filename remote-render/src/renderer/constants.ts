@@ -4,9 +4,6 @@ export const SCREEN_HEIGHT = 240;
 export const HEADER_REGION: RectTuple = [0, 8, SCREEN_WIDTH, 44];
 export const TIME_REGION: RectTuple = [0, 44, SCREEN_WIDTH, 124];
 export const FORECAST_REGION: RectTuple = [0, 124, SCREEN_WIDTH, 232];
-// 游戏轮播页分区：顶部大时间 / 下方大游戏区。
-export const GAME_TIME_REGION: RectTuple = [0, 8, SCREEN_WIDTH, 64];
-export const GAME_AREA_REGION: RectTuple = [0, 64, SCREEN_WIDTH, 232];
 export const DIRTY_TILE_WIDTH = 24;
 export const DIRTY_TILE_HEIGHT = 8;
 export const SUPERSAMPLE_SCALE = 1;

@@ -61,18 +61,12 @@ Supported gesture events:
 
 Current remote UI gesture mapping:
 
-- Home: `short_press` starts the game show (a finite carousel through the ambient
-  games). The home screen itself stays a calm clock + weather and never runs a
-  game on its own.
+- Home: `short_press` is a no-op. The home screen is the only content page;
+  there is nothing to switch to, and an accidental tap must not move the clock.
 - Home: `long_press` enters Settings.
 - Home: `double_press` keeps the page unchanged but forces the next frame to be
   a full-screen refresh. This is a manual resync path for display corruption or
   missed partial updates.
-- Game show: `short_press` advances to the next game; after the last game it
-  returns to the calm home. The show also auto-advances on a per-game dwell timer
-  and returns home when finished.
-- Game show: `double_press` exits back to the calm home; `long_press` enters
-  Settings.
 - Settings: `short_press` moves the selected item.
 - Settings: `long_press` enters the selected detail page.
 - Brightness detail: `short_press` applies the next brightness immediately and
@@ -100,34 +94,37 @@ Current Settings items:
 Settings holds only configuration and read-only diagnostics. Glanceable content
 (clock, weather) lives on the Home screen, not behind the Settings menu.
 
-The Home page is a calm single-screen clock + weather dashboard. It shows the
-Gregorian date (Arabic numerals) and short weekday, the current weather
-(temperature + condition, top-right), a lunar/solar-term/festival subtitle, large
-`HH:MM`, compact seconds, and a compact weather block: a single hourly row for the
-next few hours (现在 + condition icon + temperature) above a 今天 / 明天 / 后天 row
-(condition icon + high·low per day). Today's high/low and the next two days are the
-whole outlook — nothing beyond 后天 is shown, and the weather is kept small so the
-clock stays the hero. It runs no game animation, so it stays quiet by default.
-Temperatures are colour-coded cool→warm by value and condition icons are drawn in
-colour, so the 240x240 full-colour panel is not limited to one hue. Weather is fetched server-side from Open-Meteo for
-Hangzhou Xiaoshan and cached; failures are silent and never block the clock, and
-the weather elements simply do not render until the first forecast arrives.
+The Home page is a calm single-screen clock + weather dashboard, organized on a
+centered axis: a top row with the Gregorian date + short weekday (left) and the
+lunar/solar-term/festival subtitle (right), a large 60px `HH:MM` with compact
+seconds, then an Apple-Weather-style summary instead of any hourly detail — a
+big centered colour-coded current temperature, below it one line with the
+condition icon + label (left column) and today's 高/低 (right column). A bottom
+row shows 明天 and 后天 as two generous columns (label + icon over high/low),
+sharing the same column centers as the summary line so the whole weather block
+reads as one grid. Nothing beyond 后天 is shown. Highs are colour-coded
+cool→warm; lows use one muted blue-gray. Weather is fetched server-side from
+Open-Meteo for Hangzhou Xiaoshan and cached; failures are silent and never block
+the clock, and the weather elements simply do not render until the first
+forecast arrives.
 
-The ambient games (snake, life, breakout, ants, pacman, digital rain) live in a
-separate game show reached by a `short_press` on Home: a big clock on top and a
-large game below. The show auto-advances through the games on a dwell timer and
-on manual `short_press`, then returns to the calm home after the last game. Device id, tap count, sync status,
-RSSI, and other development-only labels are intentionally kept out of the first
-screen; detailed diagnostics live under Settings -> Device.
+Behind the content, a digital-rain backdrop (the one survivor of the removed
+ambient-game carousel) drips slowly at ~2s per step. It is pure `(seed, tick)`
+derivation with the tick taken from the wall clock, needs no per-device state,
+and is dimmed toward the theme background (mixing the theme's seconds colour at
+15-30%) so it never competes with the clock or weather. Device id, tap count,
+sync status, RSSI, and other development-only labels are intentionally kept out
+of the first screen; detailed diagnostics live under Settings -> Device.
 Hour, minute, and second digits use a server-side flip-style transition for the
-first 300ms after each second boundary. The registry passes explicit scheduler
+first 450ms after each second boundary. The registry passes explicit scheduler
 progress into the renderer, so the transition is not tied to wall-clock
-millisecond timing. Each changing digit is drawn inside a clipped slot with the
-old glyph sliding out and the new glyph sliding in; the dirty region is limited
-to the clock band. After the animation window expires, the registry emits one
-extra `progress=1` cleanup frame for the same clock band. That final partial
-clears any translucent outgoing glyph pixels before the second is considered
-settled.
+millisecond timing. Each changing digit is drawn inside a clipped slot: the old
+glyph eases out (ease-in-out cubic, quadratic fade) while the new glyph rises in
+and settles with a slight ease-out-back overshoot. Flip frames diff all three
+home regions so the rain backdrop advances atomically with the clock. After the
+animation window expires, the registry emits one extra `progress=1` cleanup
+frame. That final partial clears any translucent outgoing glyph pixels before
+the second is considered settled.
 
 Brightness uses a separate command channel because it is a local hardware side
 effect, not pixels. The current command response is JSON:

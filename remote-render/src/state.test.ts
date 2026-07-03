@@ -15,21 +15,18 @@ describe("device registry", () => {
     expect(second).toBeNull();
   });
 
-  test("short press on home enters the game show with a full frame", async () => {
+  test("short press on home is accepted but produces no page change", async () => {
     const registry = new DeviceRegistry();
 
     const first = await registry.getFrame("desk-02", 0, 0);
     const frameId = first!.readUInt32LE(8);
-    expect(registry.devices.get("desk-02")!.homeGame).toBeNull(); // 安静首页无游戏
 
     expect(registry.recordInput("desk-02", 1, "short_press", 1000)).toBe(true);
 
-    const shown = await registry.getFrame("desk-02", frameId, 1);
-    const decoded = decodeFrame(shown!);
-
-    expect(registry.devices.get("desk-02")!.ui.page).toBe("game");
-    expect(registry.devices.get("desk-02")!.homeGame).not.toBeNull();
-    expect(decoded.fullFrame).toBe(true);
+    expect(registry.devices.get("desk-02")!.ui.page).toBe("home");
+    // 无可见变化：同一秒内不应产生新帧
+    const after = await registry.getFrame("desk-02", frameId, 0);
+    expect(after).toBeNull();
   });
 
   test("double press on home forces a full refresh frame", async () => {
@@ -102,56 +99,6 @@ describe("device registry", () => {
     expect(decoded.fullFrame).toBe(false);
     expect(decoded.rects.length).toBeGreaterThan(0);
     expect(Buffer.compare(rgba, fullSnapshot)).toBe(0);
-  });
-
-  test("game show advances the game animation on each tick", async () => {
-    let now = 0;
-    const registry = new DeviceRegistry({
-      monotonic: () => now,
-      homeGameFrameIntervalSeconds: 1,
-      gameShowDwellSeconds: 100,
-    });
-    const deviceId = "desk-show";
-
-    const first = await registry.getFrame(deviceId, 0, 0);
-    let have = first!.readUInt32LE(8);
-
-    expect(registry.recordInput(deviceId, 1, "short_press", 100)).toBe(true);
-    const enter = await registry.getFrame(deviceId, have, 0);
-    have = enter!.readUInt32LE(8);
-    expect(registry.devices.get(deviceId)!.ui.page).toBe("game");
-
-    now = 1;
-    const tick = await registry.getFrame(deviceId, have, 0);
-    const decoded = decodeFrame(tick!);
-
-    expect(decoded.fullFrame).toBe(false);
-    expect(decoded.rects.length).toBeGreaterThan(0);
-    expect(decoded.rects.some((rect) => rect.y >= 64)).toBe(true); // 游戏区
-  });
-
-  test("game show auto-advances by dwell and returns to the calm home after the last game", async () => {
-    let now = 0;
-    const registry = new DeviceRegistry({
-      monotonic: () => now,
-      gameShowDwellSeconds: 5,
-      homeGameFrameIntervalSeconds: 1,
-    });
-    const deviceId = "desk-carousel";
-
-    await registry.getFrame(deviceId, 0, 0);
-    expect(registry.recordInput(deviceId, 1, "short_press", 100)).toBe(true);
-    expect(registry.devices.get(deviceId)!.ui.page).toBe("game");
-    expect(registry.devices.get(deviceId)!.ui.gameIndex).toBe(0);
-
-    // 每过一个停留时长自动切下一个；6 个游戏播完后回到安静首页。
-    for (let step = 1; step <= 6; step += 1) {
-      now = step * 5;
-      await registry.getFrame(deviceId, registry.devices.get(deviceId)!.frameId, 0);
-    }
-
-    expect(registry.devices.get(deviceId)!.ui.page).toBe("home");
-    expect(registry.devices.get(deviceId)!.homeGame).toBeNull();
   });
 
   test("emits a full final frame when a navigation animation expires between polls", async () => {

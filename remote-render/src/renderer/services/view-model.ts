@@ -10,12 +10,10 @@ import type {
   DetailRowViewModel,
   DetailViewModel,
   DeviceViewModel,
-  HomeAmbientGameViewModel,
   SettingsRowViewModel,
 } from "../models/view-model.js";
 import {buildClockFlipGlyphs} from "./clock-flip.js";
 import {resolveClockTheme} from "./clock-theme.js";
-import {buildHomeAmbientGameViewModel} from "./home-ambient-game.js";
 import {buildHomeCopy} from "./home-copy.js";
 import {buildWeatherView, getWeatherSnapshot} from "./weather.js";
 
@@ -25,7 +23,6 @@ export interface BuildDeviceViewModelInput {
   state: DeviceUiState;
   progress: number;
   clockFlipProgress?: number;
-  homeGame?: HomeAmbientGameViewModel;
 }
 
 export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceViewModel {
@@ -42,15 +39,6 @@ export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceVi
     return buildDetailViewModel(input, fontKey);
   }
   const theme = resolveClockTheme(resolveThemeKeyForView(input.state));
-  if (input.state.page === "game") {
-    return {
-      page: "game",
-      fontKey,
-      theme,
-      timeText: buildHomeCopy(input.currentTime).timeText,
-      game: input.homeGame ?? buildHomeAmbientGameViewModel({kind: "snake"}),
-    };
-  }
   return {
     page: "home",
     fontKey,
@@ -62,6 +50,8 @@ export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceVi
     }),
     theme,
     weather: buildWeatherView(getWeatherSnapshot()) ?? undefined,
+    // 暗背景雨滴每 2 秒推进一步：纯墙钟推导，重启/多设备天然一致。
+    rainTick: Math.floor(input.currentTime.getTime() / 2000),
   };
 }
 

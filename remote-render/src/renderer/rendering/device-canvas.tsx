@@ -1,7 +1,6 @@
 import {DeviceUiState} from "../../ui-state.js";
 import {DeviceView} from "../view.js";
 import type {CanvasImage} from "../types.js";
-import type {HomeAmbientGameViewModel} from "../models/view-model.js";
 import {pasteAnimatedPage, shouldPasteAnimatedPage} from "./animation.js";
 import {rasterizeElement} from "./rasterizer.js";
 import {resolveFontKeyForView} from "../services/view-model.js";
@@ -13,7 +12,6 @@ export interface RenderDeviceCanvasOptions {
   uiState?: DeviceUiState;
   animationProgress?: number;
   clockFlipProgress?: number;
-  homeGame?: HomeAmbientGameViewModel;
 }
 
 export function renderDeviceCanvas(options: RenderDeviceCanvasOptions): CanvasImage {
@@ -27,7 +25,6 @@ export function renderDeviceCanvas(options: RenderDeviceCanvasOptions): CanvasIm
       state={state}
       progress={progress}
       clockFlipProgress={options.clockFlipProgress}
-      homeGame={options.homeGame}
     />,
     fontKey,
   );

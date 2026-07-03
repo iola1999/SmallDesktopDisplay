@@ -24,7 +24,7 @@ export interface BuildClockFlipGlyphsOptions {
 
 export function buildClockFlipGlyphs(currentTime: Date, options: BuildClockFlipGlyphsOptions = {}): ClockFlipGlyphViewModel[] {
   const previousTime = new Date(currentTime.getTime() - 1000);
-  const progress = options.progress ?? flipProgress(currentTime, options.durationMs ?? 300);
+  const progress = options.progress ?? flipProgress(currentTime, options.durationMs ?? 450);
   return [
     ...buildGlyphs({
       group: "time",

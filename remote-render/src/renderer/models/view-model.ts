@@ -2,7 +2,7 @@ import type {HomeCopy} from "../types.js";
 import type {ClockTheme} from "../services/clock-theme.js";
 import type {WeatherView} from "../services/weather.js";
 
-export type DeviceViewModel = HomeViewModel | GameViewModel | SettingsViewModel | DetailViewModel;
+export type DeviceViewModel = HomeViewModel | SettingsViewModel | DetailViewModel;
 
 export interface BaseViewModel {
   fontKey: string;
@@ -14,13 +14,8 @@ export interface HomeViewModel extends BaseViewModel {
   clockGlyphs: ClockFlipGlyphViewModel[];
   theme: ClockTheme;
   weather?: WeatherView;
-}
-
-export interface GameViewModel extends BaseViewModel {
-  page: "game";
-  timeText: string;
-  theme: ClockTheme;
-  game: HomeAmbientGameViewModel;
+  // 首页暗背景数字雨的步进（每 2 秒 +1），由墙钟推导，无需持久状态。
+  rainTick: number;
 }
 
 export type ClockFlipGlyphGroup = "time" | "seconds";
@@ -39,45 +34,6 @@ export interface ClockFlipGlyphViewModel {
   color: string;
 }
 
-export interface AutoSnakeViewModel {
-  columns: number;
-  rows: number;
-  cellSize: number;
-  body: SnakeCellViewModel[];
-  food: SnakeCellViewModel;
-}
-
-export interface SnakeCellViewModel {
-  x: number;
-  y: number;
-}
-
-export type HomeAmbientGameViewModel =
-  | {
-      kind: "snake";
-      snake: AutoSnakeViewModel;
-    }
-  | {
-      kind: "life";
-      life: ConwayLifeViewModel;
-    }
-  | {
-      kind: "breakout";
-      breakout: AutoBreakoutViewModel;
-    }
-  | {
-      kind: "ants";
-      ants: AntColonyViewModel;
-    }
-  | {
-      kind: "pacman";
-      pacman: AutoPacmanViewModel;
-    }
-  | {
-      kind: "rain";
-      rain: AutoRainViewModel;
-    };
-
 export interface AutoRainViewModel {
   columns: number;
   rows: number;
@@ -89,87 +45,6 @@ export interface RainCellViewModel {
   x: number;
   y: number;
   level: number;
-}
-
-export interface ConwayLifeViewModel {
-  columns: number;
-  rows: number;
-  cellSize: number;
-  alive: SnakeCellViewModel[];
-}
-
-export interface AutoBreakoutViewModel {
-  width: number;
-  height: number;
-  bricks: BreakoutBrickViewModel[];
-  balls: BreakoutBallViewModel[];
-  drops: BreakoutDropViewModel[];
-  paddle: BreakoutPaddleViewModel;
-}
-
-export interface AntColonyViewModel {
-  columns: number;
-  rows: number;
-  cellSize: number;
-  nest: SnakeCellViewModel;
-  ants: AntViewModel[];
-  food: SnakeCellViewModel[];
-  pheromones: AntPheromoneViewModel[];
-  delivered: number;
-}
-
-export interface AntViewModel extends SnakeCellViewModel {
-  carrying: boolean;
-}
-
-export interface AntPheromoneViewModel extends SnakeCellViewModel {
-  level: number;
-}
-
-export interface AutoPacmanViewModel {
-  columns: number;
-  rows: number;
-  cellSize: number;
-  pacman: PacmanViewModel;
-  ghosts: GhostViewModel[];
-  walls: SnakeCellViewModel[];
-  pellets: SnakeCellViewModel[];
-}
-
-export interface PacmanViewModel extends SnakeCellViewModel {
-  direction: SnakeCellViewModel;
-  mouthOpen: boolean;
-}
-
-export interface GhostViewModel extends SnakeCellViewModel {
-  color: string;
-}
-
-export interface BreakoutBrickViewModel {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  strength: number;
-}
-
-export interface BreakoutBallViewModel {
-  x: number;
-  y: number;
-  radius: number;
-}
-
-export interface BreakoutDropViewModel {
-  x: number;
-  y: number;
-  size: number;
-}
-
-export interface BreakoutPaddleViewModel {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
 }
 
 export interface SettingsViewModel extends BaseViewModel {

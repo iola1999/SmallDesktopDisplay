@@ -3,8 +3,6 @@ import {
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
   FORECAST_REGION,
-  GAME_AREA_REGION,
-  GAME_TIME_REGION,
   HEADER_REGION,
   TIME_REGION,
   type CanvasImage,
@@ -22,13 +20,6 @@ import {
   currentAnimationProgress,
   isAnimationActive,
 } from "./ui-state.js";
-import {
-  HOME_GAME_KINDS,
-  createHomeGameRuntime,
-  advanceHomeGameRuntime,
-  homeGameRuntimeToViewModel,
-  type HomeGameRuntime,
-} from "./renderer/services/home-game-state.js";
 
 export class QueuedCommand {
   constructor(
@@ -58,10 +49,6 @@ export class DeviceState {
   lastClockAnimationSecond = -1;
   lastClockAnimationFrameAt = -1;
   lastClockAnimationCleanupSecond = -1;
-  lastHomeGameFrameAt = -1;
-  // 游戏轮播：当前展示的游戏运行时 + 本局开始的单调时刻（用于停留时长自动切下一个）。
-  homeGame: HomeGameRuntime | null = null;
-  gameShownAt = -1;
   frame: Buffer<ArrayBufferLike> = Buffer.alloc(0);
   // 全屏帧只有冷启动 / 重同步客户端才会用到。不再在每个 partial 帧里重新编码
   // 整屏，改为惰性计算：partial 渲染时把缓存置空，真正有客户端要全屏帧时再从
@@ -104,8 +91,6 @@ interface DeviceRegistryOptions {
   frameIntervalSeconds?: number;
   animationFrameIntervalSeconds?: number;
   clockFlipAnimationSeconds?: number;
-  homeGameFrameIntervalSeconds?: number;
-  gameShowDwellSeconds?: number;
   now?: () => Date;
   deviceIdleTtlSeconds?: number;
   evictionSweepIntervalSeconds?: number;
@@ -117,8 +102,6 @@ export class DeviceRegistry {
   private frameIntervalSeconds: number;
   private animationFrameIntervalSeconds: number;
   private clockFlipAnimationSeconds: number;
-  private homeGameFrameIntervalSeconds: number;
-  private gameShowDwellSeconds: number;
   private now: () => Date;
   private deviceIdleTtlSeconds: number;
   private evictionSweepIntervalSeconds: number;
@@ -128,10 +111,7 @@ export class DeviceRegistry {
     this.monotonic = options.monotonic ?? (() => performance.now() / 1000);
     this.frameIntervalSeconds = options.frameIntervalSeconds ?? 1;
     this.animationFrameIntervalSeconds = options.animationFrameIntervalSeconds ?? 1 / 20;
-    this.clockFlipAnimationSeconds = options.clockFlipAnimationSeconds ?? 0.3;
-    this.homeGameFrameIntervalSeconds = options.homeGameFrameIntervalSeconds ?? 1;
-    // 游戏轮播：每个游戏停留时长，到点自动切下一个；播完回到安静首页。
-    this.gameShowDwellSeconds = options.gameShowDwellSeconds ?? 20;
+    this.clockFlipAnimationSeconds = options.clockFlipAnimationSeconds ?? 0.45;
     this.now = options.now ?? (() => new Date());
     // 默认 1 小时不活跃即淘汰，最多每 60s 扫描一次，避免任意 / 预览 device id
     // 让 devices Map 无限增长。回来的真实设备会因 have>frameId 自动收到全屏帧重同步。
@@ -188,31 +168,12 @@ export class DeviceRegistry {
       this.queueCommand(state, command);
     }
 
-    // 游戏轮播页：进入（首页单击）/ 切下一个（单击）/ 播完回首页
-    if (state.ui.page === "game") {
-      if (state.ui.gameIndex >= HOME_GAME_KINDS.length) {
-        this.endGameShow(state);
-        this.render(state, true);
-      } else {
-        this.startGameShow(state, now);
-      }
-      return true;
-    }
-
-    // 离开游戏轮播（双击回首页 / 长按进设置）：清理游戏运行时后整屏 / 动画切换
-    if (previousPage === "game") {
-      state.homeGame = null;
-      state.gameShownAt = -1;
-      this.render(state, !state.ui.animation);
-      return true;
-    }
-
     // 首页双击 = 强制整屏刷新
     if (previousPage === "home" && state.ui.page === "home" && event === "double_press") {
       this.render(state, true);
       return true;
     }
-    // 首页无可见变化（short_press 已进游戏页、long_press 已进设置）
+    // 首页无可见变化（short_press 为无操作、long_press 已进设置页由动画分支处理）
     if (previousPage === "home" && state.ui.page === "home" && !state.ui.animation) {
       return true;
     }
@@ -281,21 +242,18 @@ export class DeviceRegistry {
       state.lastAnimationFrameAt = -1;
       return this.render(state, true);
     }
-    // 游戏轮播页：推进当前游戏动画，停留到点自动切下一个，播完回安静首页。
-    if (state.ui.page === "game") {
-      return this.renderGameShowIfDue(state, now);
-    }
 
     const currentSecond = Math.floor(now / this.frameIntervalSeconds);
     if (state.ui.page === "home" && currentSecond === state.lastClockAnimationSecond) {
       const elapsed = now - currentSecond * this.frameIntervalSeconds;
       if (elapsed < this.clockFlipAnimationSeconds && now - state.lastClockAnimationFrameAt >= this.animationFrameIntervalSeconds) {
         state.lastClockAnimationFrameAt = now;
-        return this.render(state, false, [TIME_REGION], elapsed / this.clockFlipAnimationSeconds);
+        // diff 覆盖全部三个分区而不只是时钟带：暗背景雨滴跨区分布，跟着翻页帧整屏一致推进。
+        return this.render(state, false, [HEADER_REGION, TIME_REGION, FORECAST_REGION], elapsed / this.clockFlipAnimationSeconds);
       }
       if (elapsed >= this.clockFlipAnimationSeconds && state.lastClockAnimationCleanupSecond !== currentSecond) {
         state.lastClockAnimationCleanupSecond = currentSecond;
-        return this.render(state, false, [TIME_REGION], 1);
+        return this.render(state, false, [HEADER_REGION, TIME_REGION, FORECAST_REGION], 1);
       }
     }
     if (currentSecond <= state.lastRenderSecond) {
@@ -304,32 +262,10 @@ export class DeviceRegistry {
     if (state.ui.page === "home") {
       state.lastClockAnimationSecond = currentSecond;
       state.lastClockAnimationFrameAt = now;
-      // 安静首页每秒刷新：顶部（日期+当前天气）、时钟带、下方 12h 预报；无游戏动画。
+      // 安静首页每秒刷新：顶部（日期+农历）、时钟带、下方天气区（含暗背景雨滴）。
       return this.render(state, false, [HEADER_REGION, TIME_REGION, FORECAST_REGION]);
     }
     return this.render(state, false, [TIME_REGION]);
-  }
-
-  // 游戏轮播页的逐帧推进与停留到点切换。
-  private renderGameShowIfDue(state: DeviceState, now: number): number {
-    if (state.gameShownAt >= 0 && now - state.gameShownAt >= this.gameShowDwellSeconds) {
-      state.ui.gameIndex += 1;
-      if (state.ui.gameIndex >= HOME_GAME_KINDS.length) {
-        this.endGameShow(state);
-        return this.render(state, true);
-      }
-      state.homeGame = createHomeGameRuntime(HOME_GAME_KINDS[state.ui.gameIndex], state.ui.gameIndex, now);
-      state.gameShownAt = now;
-      state.lastHomeGameFrameAt = now;
-      return this.render(state, true);
-    }
-    if (state.homeGame && (state.lastHomeGameFrameAt < 0 || now - state.lastHomeGameFrameAt >= this.homeGameFrameIntervalSeconds)) {
-      const advanced = advanceHomeGameRuntime(state.homeGame, now);
-      state.homeGame = advanced.runtime;
-      state.lastHomeGameFrameAt = now;
-      return this.render(state, false, [GAME_TIME_REGION, GAME_AREA_REGION]);
-    }
-    return 0;
   }
 
   private selectFrameForClient(state: DeviceState, have: number): Buffer | null {
@@ -360,13 +296,6 @@ export class DeviceRegistry {
   ): number {
     const now = this.monotonic();
     const started = now;
-    // 仅游戏轮播页携带游戏；首页/设置/详情无游戏。离开游戏页时清理运行时。
-    const showGame = state.ui.page === "game" ? state.homeGame : null;
-    if (state.ui.page !== "game") {
-      state.homeGame = null;
-      state.lastHomeGameFrameAt = -1;
-      state.gameShownAt = -1;
-    }
     const baseFrameId = state.frameId;
     state.frameId += 1;
     state.lastRenderSecond = Math.floor(now / this.frameIntervalSeconds);
@@ -381,7 +310,6 @@ export class DeviceRegistry {
       uiState: state.ui,
       animationProgress: currentAnimationProgress(state.ui, now),
       clockFlipProgress,
-      homeGame: showGame ? homeGameRuntimeToViewModel(showGame) : undefined,
     });
     let rendered: RenderedFrame;
     if (fullFrame || state.canvas === null) {
@@ -410,22 +338,6 @@ export class DeviceRegistry {
     // 等真正有冷启动 / 重同步客户端请求时再由 get fullFrame 惰性编码。
     state.fullFrameCache = fullFrame ? state.frame : null;
     return Math.max(0, this.monotonic() - started);
-  }
-
-  // 进入 / 切到 gameIndex 指向的游戏，整屏切换。
-  private startGameShow(state: DeviceState, now: number): void {
-    state.homeGame = createHomeGameRuntime(HOME_GAME_KINDS[state.ui.gameIndex % HOME_GAME_KINDS.length], state.ui.gameIndex, now);
-    state.gameShownAt = now;
-    state.lastHomeGameFrameAt = now;
-    this.render(state, true);
-  }
-
-  // 轮播播完：回到安静首页。
-  private endGameShow(state: DeviceState): void {
-    state.ui.page = "home";
-    state.ui.gameIndex = 0;
-    state.homeGame = null;
-    state.gameShownAt = -1;
   }
 
   private queueCommand(state: DeviceState, command: DeviceCommand): void {
