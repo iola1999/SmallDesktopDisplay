@@ -1,4 +1,4 @@
-import {afterEach, describe, expect, test} from "vitest";
+import {afterEach, describe, expect, test, vi} from "vitest";
 
 import {
   buildWeatherView,
@@ -7,6 +7,7 @@ import {
   parseOpenMeteoDays,
   refreshWeather,
   setWeatherSnapshotForTest,
+  startWeatherPolling,
   tempColor,
   wmoLabel,
 } from "./weather.js";
@@ -78,6 +79,42 @@ describe("weather service", () => {
   test("buildWeatherView returns null without data", () => {
     expect(buildWeatherView(null)).toBeNull();
     expect(buildWeatherView({fetchedAtMs: 0, hours: [], days: []})).toBeNull();
+  });
+
+  test("polling retries quickly while the snapshot is empty, then relaxes to the slow interval", async () => {
+    vi.useFakeTimers();
+    try {
+      setWeatherSnapshotForTest(null);
+      let calls = 0;
+      let succeed = false;
+      const flaky: typeof fetch = (async () => {
+        calls += 1;
+        if (!succeed) throw new Error("boot network blip");
+        return {ok: true, json: async () => SAMPLE};
+      }) as unknown as typeof fetch;
+
+      const stop = startWeatherPolling({fetchImpl: flaky as never, intervalMs: 1000_000, emptyRetryMs: 1000});
+      await vi.advanceTimersByTimeAsync(0);
+      expect(calls).toBe(1); // 启动即首拉（失败）
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(calls).toBe(2); // 空快照 → 短间隔重试，而不是等 30 分钟
+
+      succeed = true;
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(calls).toBe(3);
+      expect(getWeatherSnapshot()).not.toBeNull();
+
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(calls).toBe(3); // 拿到数据后回到慢间隔
+
+      stop();
+      await vi.advanceTimersByTimeAsync(2000_000);
+      expect(calls).toBe(3); // stop 后不再拉
+    } finally {
+      vi.useRealTimers();
+      setWeatherSnapshotForTest(null);
+    }
   });
 
   test("refreshWeather caches a successful fetch and keeps the cache on failure", async () => {

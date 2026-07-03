@@ -9,6 +9,9 @@ export const WEATHER_LOCATION_LABEL = "萧山";
 
 const FORECAST_HOURS = 12;
 const DEFAULT_REFRESH_MS = 30 * 60 * 1000; // 30 分钟
+// 还没有任何缓存时（典型：容器刚启动首拉超时）用短间隔重试，
+// 否则一次网络抖动会让屏幕空 30 分钟天气。
+const DEFAULT_EMPTY_RETRY_MS = 30 * 1000;
 const FETCH_TIMEOUT_MS = 10 * 1000;
 
 export interface WeatherHour {
@@ -68,7 +71,8 @@ const OPEN_METEO_URL =
   `&timezone=Asia%2FShanghai`;
 
 let snapshot: WeatherSnapshot | null = null;
-let pollTimer: ReturnType<typeof setInterval> | null = null;
+let pollTimer: ReturnType<typeof setTimeout> | null = null;
+let pollGeneration = 0;
 
 export function getWeatherSnapshot(): WeatherSnapshot | null {
   return snapshot;
@@ -113,19 +117,34 @@ export async function refreshWeather(options: RefreshWeatherOptions = {}): Promi
   }
 }
 
-export function startWeatherPolling(options: RefreshWeatherOptions & {intervalMs?: number} = {}): () => void {
-  void refreshWeather(options);
+export function startWeatherPolling(
+  options: RefreshWeatherOptions & {intervalMs?: number; emptyRetryMs?: number} = {},
+): () => void {
   const intervalMs = options.intervalMs ?? DEFAULT_REFRESH_MS;
-  pollTimer = setInterval(() => void refreshWeather(options), intervalMs);
-  if (typeof pollTimer === "object" && pollTimer && "unref" in pollTimer) {
-    (pollTimer as {unref?: () => void}).unref?.();
-  }
+  const emptyRetryMs = options.emptyRetryMs ?? DEFAULT_EMPTY_RETRY_MS;
+  stopWeatherPolling();
+  const generation = pollGeneration;
+
+  const schedule = (delayMs: number): void => {
+    pollTimer = setTimeout(run, delayMs);
+    if (typeof pollTimer === "object" && pollTimer && "unref" in pollTimer) {
+      (pollTimer as {unref?: () => void}).unref?.();
+    }
+  };
+  const run = (): void => {
+    void refreshWeather(options).then(() => {
+      if (generation !== pollGeneration) return; // 已被 stop / 重启
+      schedule(snapshot ? intervalMs : emptyRetryMs);
+    });
+  };
+  run();
   return stopWeatherPolling;
 }
 
 export function stopWeatherPolling(): void {
+  pollGeneration += 1;
   if (pollTimer) {
-    clearInterval(pollTimer);
+    clearTimeout(pollTimer);
     pollTimer = null;
   }
 }
