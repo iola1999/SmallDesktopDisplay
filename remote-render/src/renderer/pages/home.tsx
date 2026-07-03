@@ -1,14 +1,12 @@
 import {FrameBackground} from "../components/frame-background.js";
 import {Box, Screen, Text} from "../components/primitives.js";
 import type {ClockFlipGlyphViewModel, HomeViewModel} from "../models/view-model.js";
-import {mixColor} from "../services/color.js";
 import {tempColor, type WeatherDayView, type WeatherView} from "../services/weather.js";
 import {WeatherIcon} from "../widgets/weather-icon.js";
 
-// 低温统一用蓝灰而不是 tempColor，避免底部出现一排彩虹数字。
+// 低温统一用蓝灰而不是 tempColor，避免出现一排彩虹数字。
 const LOW_TEMP_COLOR = "#7fb2d8";
 const LABEL_COLOR = "#8a97a0";
-const MUTED_COLOR = "#8b96a1";
 
 export function HomePage({model}: {model: HomeViewModel}) {
   const theme = model.theme;
@@ -16,7 +14,7 @@ export function HomePage({model}: {model: HomeViewModel}) {
   return (
     <Screen fontKey={model.fontKey} backgroundColor={theme.background}>
       <FrameBackground background={theme.background} />
-      {/* 顶行：左公历日期，右农历（不再单起一行，也不再有穿字分隔线） */}
+      {/* 顶行：左公历日期，右农历 */}
       <Text style={{x: 16, y: 22, width: 130, height: 22, fontSize: 17, color: theme.date}}>
         {`${model.copy.dateText} ${model.copy.weekdayShort}`}
       </Text>
@@ -26,64 +24,41 @@ export function HomePage({model}: {model: HomeViewModel}) {
       {model.clockGlyphs.map((glyph) => (
         <ClockGlyph key={glyph.key} glyph={glyph} background={theme.background} />
       ))}
-      {weather ? <CurrentConditions weather={weather} theme={{text: theme.date}} /> : null}
-      {weather ? <HourlyForecast weather={weather} /> : null}
+      {weather ? <WeatherSummary weather={weather} textColor={theme.date} /> : null}
       {weather && weather.days.length >= 3 ? <DailyOutlook weather={weather} /> : null}
     </Screen>
   );
 }
 
-// 当前状态条：整个首页唯一一处"现在"（图标 + 描述 + 温度 | 今天高低温）。
-function CurrentConditions({weather, theme}: {weather: WeatherView; theme: {text: string}}) {
+// 参考 Apple 天气列表卡的摘要：左上地点 / 右上大温度 / 左下图标+天气 / 右下 高·低。
+// 不再显示逐小时明细——摘要 + 明天后天就够一眼读完。
+function WeatherSummary({weather, textColor}: {weather: WeatherView; textColor: string}) {
   const today = weather.days[0];
   return (
     <>
-      <WeatherIcon kind={weather.current.icon} x={20} y={130} size={26} />
-      <Text style={{x: 52, y: 136, width: 48, height: 18, fontSize: 15, color: theme.text}}>{weather.current.label}</Text>
-      <Text style={{x: 102, y: 130, width: 46, height: 24, fontSize: 21, color: tempColor(weather.current.temp)}}>
+      <Text style={{x: 24, y: 132, width: 90, height: 18, fontSize: 14, color: LABEL_COLOR}}>{weather.location}</Text>
+      <Text style={{x: 136, y: 128, width: 88, height: 38, fontSize: 36, color: tempColor(weather.current.temp), alignItems: "flex-end"}}>
         {`${weather.current.temp}°`}
       </Text>
+      <WeatherIcon kind={weather.current.icon} x={24} y={158} size={22} />
+      <Text style={{x: 52, y: 160, width: 66, height: 20, fontSize: 16, color: textColor}}>{weather.current.label}</Text>
       {today ? (
         <>
-          <Text style={{x: 140, y: 138, width: 26, height: 14, fontSize: 12, color: LABEL_COLOR}}>今天</Text>
-          <Text style={{x: 168, y: 134, width: 26, height: 18, fontSize: 15, color: tempColor(today.tempMax), alignItems: "flex-end"}}>
+          <Text style={{x: 136, y: 165, width: 13, height: 14, fontSize: 11, color: LABEL_COLOR}}>高</Text>
+          <Text style={{x: 150, y: 160, width: 32, height: 20, fontSize: 17, color: tempColor(today.tempMax), alignItems: "flex-end"}}>
             {`${today.tempMax}°`}
           </Text>
-          <Text style={{x: 195, y: 136, width: 6, height: 16, fontSize: 13, color: MUTED_COLOR}}>/</Text>
-          <Text style={{x: 201, y: 134, width: 22, height: 18, fontSize: 15, color: LOW_TEMP_COLOR}}>{`${today.tempMin}°`}</Text>
+          <Text style={{x: 186, y: 165, width: 13, height: 14, fontSize: 11, color: LABEL_COLOR}}>低</Text>
+          <Text style={{x: 198, y: 160, width: 26, height: 20, fontSize: 17, color: LOW_TEMP_COLOR, alignItems: "flex-end"}}>
+            {`${today.tempMin}°`}
+          </Text>
         </>
       ) : null}
     </>
   );
 }
 
-// 未来 5 小时（从下一小时开始，"现在"已由当前条呈现）：小时 / 图标 / 彩色温度。
-function HourlyForecast({weather}: {weather: WeatherView}) {
-  const columns = weather.hours.slice(1, 6);
-  return (
-    <>
-      {columns.map((hour, index) => (
-        <HourColumn key={index} hour={hour} cx={36 + index * 42} />
-      ))}
-    </>
-  );
-}
-
-function HourColumn({hour, cx}: {hour: WeatherView["hours"][number]; cx: number}) {
-  return (
-    <>
-      <Text style={{x: cx - 21, y: 162, width: 42, height: 16, fontSize: 13, color: LABEL_COLOR, alignItems: "center"}}>
-        {`${hour.hourLabel}时`}
-      </Text>
-      <WeatherIcon kind={hour.icon} x={cx - 12} y={178} size={24} />
-      <Text style={{x: cx - 21, y: 204, width: 42, height: 20, fontSize: 17, color: tempColor(hour.temp), alignItems: "center"}}>
-        {`${hour.temp}°`}
-      </Text>
-    </>
-  );
-}
-
-// 底行：明天 / 后天，各占半屏（今天的高低温已并入当前条）。
+// 底部：明天 / 后天，各占半屏两行（标签+图标 / 高低温）。
 function DailyOutlook({weather}: {weather: WeatherView}) {
   return (
     <>
@@ -96,14 +71,29 @@ function DailyOutlook({weather}: {weather: WeatherView}) {
 function DailyColumn({day, center}: {day: WeatherDayView; center: number}) {
   return (
     <>
-      <Text style={{x: center - 42, y: 219, width: 24, height: 13, fontSize: 11, color: LABEL_COLOR}}>{day.label}</Text>
-      <WeatherIcon kind={day.icon} x={center - 16} y={218} size={13} />
-      <Text style={{x: center + 1, y: 217, width: 22, height: 15, fontSize: 14, color: tempColor(day.tempMax)}}>
+      <Text style={{x: center - 40, y: 188, width: 36, height: 18, fontSize: 14, color: LABEL_COLOR, alignItems: "flex-end"}}>
+        {day.label}
+      </Text>
+      <WeatherIcon kind={day.icon} x={center + 6} y={186} size={20} />
+      <Text style={{x: center - 40, y: 208, width: 36, height: 20, fontSize: 17, color: tempColor(day.tempMax), alignItems: "flex-end"}}>
         {`${day.tempMax}°`}
       </Text>
-      <Text style={{x: center + 24, y: 218, width: 28, height: 14, fontSize: 12, color: MUTED_COLOR}}>{`/${day.tempMin}°`}</Text>
+      <Text style={{x: center + 6, y: 210, width: 42, height: 18, fontSize: 14, color: LOW_TEMP_COLOR}}>
+        {`/${day.tempMin}°`}
+      </Text>
     </>
   );
+}
+
+// 翻页缓动：旧字快出（三次方缓出），新字带一点回弹落位，观感比线性平移更"翻页"。
+function easeOutCubic(progress: number): number {
+  return 1 - Math.pow(1 - progress, 3);
+}
+
+function easeOutBack(progress: number): number {
+  const overshoot = 0.8; // 峰值约多走 3.5%，在 40px 行程上是 ~1.5px 的轻微回弹
+  const cubic = overshoot + 1;
+  return 1 + cubic * Math.pow(progress - 1, 3) + overshoot * Math.pow(progress - 1, 2);
 }
 
 function ClockGlyph({glyph, background}: {glyph: ClockFlipGlyphViewModel; background: string}) {
@@ -116,15 +106,15 @@ function ClockGlyph({glyph, background}: {glyph: ClockFlipGlyphViewModel; backgr
     );
   }
 
-  const eased = glyph.progress;
-  const travel = glyph.height * 0.5;
-  const muted = mixColor(glyph.color, background, 0.72);
+  const exit = easeOutCubic(glyph.progress);
+  const enter = easeOutBack(glyph.progress);
+  const travel = Math.round(glyph.height * 0.55);
   return (
     <Box style={{x: glyph.x, y: glyph.y, width: glyph.width, height: glyph.height, backgroundColor: background, overflow: "hidden"}}>
-      <Text style={{...baseStyle, y: -Math.round(travel * eased), color: mixColor(glyph.color, muted, eased), opacity: 1 - eased * 0.35}}>
+      <Text style={{...baseStyle, y: -Math.round(travel * exit), color: glyph.color, opacity: Math.max(0, 1 - glyph.progress * 1.4)}}>
         {glyph.previousChar}
       </Text>
-      <Text style={{...baseStyle, y: Math.round(travel * (1 - eased)), color: mixColor(muted, glyph.color, eased), opacity: 0.35 + eased * 0.65}}>
+      <Text style={{...baseStyle, y: Math.round(travel * (1 - enter)), color: glyph.color, opacity: 0.3 + 0.7 * exit}}>
         {glyph.char}
       </Text>
     </Box>
