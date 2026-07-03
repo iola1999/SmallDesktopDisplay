@@ -236,6 +236,10 @@ bool pollFrame(uint32_t nowMs)
   {
     g_haveFrameId = nextFrameId;
     clearFrameErrorIfRecovered();
+    // 排空模式：刚拿到新帧说明服务端可能正在出动画（20fps > 轮询节拍），
+    // 让下一轮 loop() 立即再轮询，直到拿到 204 才回到 50ms 节流。
+    // 这样动画帧的到达间隔跟随服务端渲染节拍，而不是被轮询相位放大成 50-90ms 抖动。
+    g_lastFramePollMs = nowMs - app_config::kRemoteFramePollMs;
     return true;
   }
   if (result == remote::FrameFetchResult::NotModified)

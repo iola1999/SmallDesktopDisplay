@@ -68,3 +68,55 @@ TEST_CASE("remote rect parser accepts rle rgb565 rect headers")
   CHECK(parsed.encoding == remote::kEncodingRgb565Rle);
   CHECK(parsed.payloadLength == 3);
 }
+
+namespace
+{
+
+// 逐位参考实现（查表版上线前的旧实现），用于验证查表结果一致。
+uint32_t crc32UpdateBitwise(uint32_t crc, const uint8_t *data, std::size_t length)
+{
+  for (std::size_t index = 0; index < length; ++index)
+  {
+    crc ^= data[index];
+    for (uint8_t bit = 0; bit < 8; ++bit)
+    {
+      const uint32_t mask = static_cast<uint32_t>(0U - (crc & 1U));
+      crc = (crc >> 1) ^ (0xEDB88320UL & mask);
+    }
+  }
+  return crc;
+}
+
+} // namespace
+
+TEST_CASE("table-driven crc32 matches the standard check vector")
+{
+  const uint8_t message[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
+  const uint32_t crc = remote::crc32Finish(remote::crc32Update(remote::crc32Begin(), message, sizeof(message)));
+  CHECK(crc == 0xCBF43926UL);
+}
+
+TEST_CASE("table-driven crc32 matches the bitwise reference across chunked updates")
+{
+  uint8_t data[1024];
+  uint32_t seed = 0x12345678UL;
+  for (std::size_t index = 0; index < sizeof(data); ++index)
+  {
+    seed = seed * 1664525UL + 1013904223UL;
+    data[index] = static_cast<uint8_t>(seed >> 24);
+  }
+
+  uint32_t table = remote::crc32Begin();
+  uint32_t bitwise = remote::crc32Begin();
+  // 模拟固件按 rect 头 / 行块分段喂数据的方式。
+  const std::size_t chunks[] = {16, 1, 480, 192, 335};
+  std::size_t offset = 0;
+  for (const std::size_t chunk : chunks)
+  {
+    table = remote::crc32Update(table, data + offset, chunk);
+    bitwise = crc32UpdateBitwise(bitwise, data + offset, chunk);
+    offset += chunk;
+  }
+  CHECK(offset == sizeof(data));
+  CHECK(remote::crc32Finish(table) == remote::crc32Finish(bitwise));
+}

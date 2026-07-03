@@ -219,10 +219,8 @@ bool HttpFrameClient::readExact(WiFiClient &stream, uint8_t *buffer, std::size_t
 
 bool HttpFrameClient::consumeFrame(WiFiClient &stream, const FrameHeader &header, app::FrameDiagnostics &diagnostics)
 {
-  constexpr uint16_t kMaxBatchRows = 2;
   uint32_t crc = crc32Begin();
   uint32_t remainingPayload = header.payloadLength;
-  uint16_t rowBuffer[240 * kMaxBatchRows];
 
   for (uint16_t index = 0; index < header.rectCount; ++index)
   {
@@ -243,7 +241,7 @@ bool HttpFrameClient::consumeFrame(WiFiClient &stream, const FrameHeader &header
     if (rect.encoding == kEncodingRaw)
     {
       if (rect.payloadLength != expectedPayload ||
-          !consumeRawRect(stream, rect, crc, diagnostics, rowBuffer, kMaxBatchRows))
+          !consumeRawRect(stream, rect, crc, diagnostics, rowBuffer_, kMaxBatchRows))
       {
         return false;
       }
@@ -251,7 +249,7 @@ bool HttpFrameClient::consumeFrame(WiFiClient &stream, const FrameHeader &header
     else if (rect.encoding == kEncodingRgb565Rle)
     {
       if (rect.payloadLength == 0 || rect.payloadLength % 3U != 0 ||
-          !consumeRleRect(stream, rect, crc, diagnostics, rowBuffer, kMaxBatchRows))
+          !consumeRleRect(stream, rect, crc, diagnostics, rowBuffer_, kMaxBatchRows))
       {
         return false;
       }

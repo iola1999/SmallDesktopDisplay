@@ -50,6 +50,11 @@ private:
   WiFiClient client_;
   HTTPClient http_;
   app::RemoteKeepAlivePolicy keepAlivePolicy_;
+  // 解码/绘制共用的行块缓冲（240px × 2 行 RGB565 = 960B）。
+  // 放成员而不是 consumeFrame 的栈上：ESP8266 任务栈只有 ~4KB，HTTP 栈帧之上再压
+  // 近 1KB 缓冲曾是审计里的栈压力项；对象本身是全局静态，成员落在 BSS 不占堆。
+  static constexpr uint16_t kMaxBatchRows = 2;
+  uint16_t rowBuffer_[240 * kMaxBatchRows] = {};
 };
 
 } // namespace remote

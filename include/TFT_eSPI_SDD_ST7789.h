@@ -29,8 +29,9 @@
 #define LOAD_GFXFF
 #define SMOOTH_FONT
 
-// 原项目已验证过的 SPI 频率
-#define SPI_FREQUENCY 27000000
+// SPI 写频率：ST7789 手册上限为 62.5MHz，40MHz 是 TFT_eSPI 对该驱动的常用稳定值，
+// 相比原 27MHz 全屏推送快 ~48%（割裂感更短）。如出现花屏/噪点，改回 27000000 即可。
+#define SPI_FREQUENCY 40000000
 #define SPI_READ_FREQUENCY 20000000
 #define SPI_TOUCH_FREQUENCY 2500000
 
