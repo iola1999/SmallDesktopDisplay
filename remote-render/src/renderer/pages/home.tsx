@@ -72,7 +72,7 @@ function WeatherSummary({weather, textColor}: {weather: WeatherView; textColor: 
   const today = weather.days[0];
   return (
     <>
-      <WeatherIcon kind={weather.current.icon} x={20} y={140} size={26} />
+      <WeatherIcon kind={weather.current.icon} x={22} y={142} size={22} />
       <Text style={{x: 50, y: 143, width: 42, height: 26, fontSize: 22, color: tempColor(weather.current.temp)}}>
         {`${weather.current.temp}°`}
       </Text>
@@ -109,7 +109,7 @@ function DailyColumn({day, center}: {day: WeatherDayView; center: number}) {
       <Text style={{x: center - 40, y: 190, width: 36, height: 18, fontSize: 14, color: LABEL_COLOR, alignItems: "flex-end"}}>
         {day.label}
       </Text>
-      <WeatherIcon kind={day.icon} x={center + 6} y={188} size={20} />
+      <WeatherIcon kind={day.icon} x={center + 8} y={189} size={18} />
       <Text style={{x: center - 40, y: 210, width: 36, height: 20, fontSize: 17, color: tempColor(day.tempMax), alignItems: "flex-end"}}>
         {`${day.tempMax}°`}
       </Text>

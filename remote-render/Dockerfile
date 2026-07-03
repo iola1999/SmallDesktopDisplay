@@ -9,7 +9,7 @@ ARG LXGW_WENKAI_SCREEN_VERSION=v1.522
 ARG LXGW_WENKAI_SCREEN_SHA256=cd1a6fa39c4ea42fd8f4e289945789b0e510cf7016435640f8893cdad9b220f3
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl fonts-dejavu-core fonts-noto-cjk unzip \
+    && apt-get install -y --no-install-recommends ca-certificates curl fonts-dejavu-core fonts-noto-cjk fonts-noto-color-emoji unzip \
     && curl -fsSL "https://github.com/subframe7536/maple-font/releases/download/${MAPLE_MONO_VERSION}/MapleMono-NF-CN.zip" -o /tmp/maple-mono-nf-cn.zip \
     && echo "${MAPLE_MONO_NF_CN_SHA256}  /tmp/maple-mono-nf-cn.zip" | sha256sum -c - \
     && mkdir -p /tmp/maple-mono-nf-cn /usr/local/share/fonts/maple-mono-nf-cn \

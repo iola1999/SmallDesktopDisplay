@@ -1,8 +1,44 @@
-import {Box} from "../components/primitives.js";
+import {Box, Text} from "../components/primitives.js";
+import {EMOJI_FONT_FAMILY, hasEmojiFont} from "../services/font-registry.js";
 import type {WeatherIconKind} from "../services/weather.js";
 
-// 用基本图元拼出的小天气图标，绝对定位在屏幕坐标 x,y。
-// size 为图标边长（默认 20，坐标按 20 基准等比缩放取整）。
+// 天气图标：优先用彩色 emoji 字体（Noto/Apple Color Emoji，专业设计、任意缩放），
+// 环境里没有 emoji 字体时回退到图元手绘（圆角矩形拼装）。
+// size 为图标视觉边长，emoji 文本框按其放大约 1.3 倍以容纳字形出血。
+const EMOJI: Record<WeatherIconKind, string> = {
+  sun: "☀️", // ☀️
+  cloud: "⛅", // ⛅ 少云
+  overcast: "☁️", // ☁️
+  fog: "\u{1F32B}️", // 🌫️
+  rain: "\u{1F327}️", // 🌧️
+  snow: "\u{1F328}️", // 🌨️
+  thunder: "⛈️", // ⛈️
+};
+
+export function WeatherIcon({kind, x, y, size = 20}: {kind: WeatherIconKind; x: number; y: number; size?: number}) {
+  if (hasEmojiFont()) {
+    const box = Math.round(size * 1.3);
+    const offset = Math.round((box - size) / 2);
+    return (
+      <Text
+        style={{
+          x: x - offset,
+          y: y - offset,
+          width: box,
+          height: box,
+          fontSize: size,
+          fontFamily: EMOJI_FONT_FAMILY,
+          alignItems: "center",
+        }}
+      >
+        {EMOJI[kind]}
+      </Text>
+    );
+  }
+  return <PrimitiveWeatherIcon kind={kind} x={x} y={y} size={size} />;
+}
+
+// ---- 图元回退（无 emoji 字体的环境）----
 const CLOUD = "#cdd5dd";
 const CLOUD_DARK = "#9aa6b0";
 const SUN = "#ffce54";
@@ -10,7 +46,7 @@ const RAINDROP = "#5ac8fa";
 const BOLT = "#ffd24d";
 const SNOW = "#eaf1f6";
 
-export function WeatherIcon({kind, x, y, size = 20}: {kind: WeatherIconKind; x: number; y: number; size?: number}) {
+function PrimitiveWeatherIcon({kind, x, y, size}: {kind: WeatherIconKind; x: number; y: number; size: number}) {
   const px = (value: number) => Math.round((value * size) / 20);
   if (kind === "sun") {
     return <Box style={{x: x + px(4), y: y + px(4), width: px(12), height: px(12), borderRadius: px(6), backgroundColor: SUN}} />;
