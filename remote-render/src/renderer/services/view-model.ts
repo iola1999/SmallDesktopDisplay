@@ -50,8 +50,9 @@ export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceVi
     }),
     theme,
     weather: buildWeatherView(getWeatherSnapshot()) ?? undefined,
-    // 暗背景雨滴每 2 秒推进一步：纯墙钟推导，重启/多设备天然一致。
-    rainTick: Math.floor(input.currentTime.getTime() / 2000),
+    // 暗背景雨滴每秒推进一步：纯墙钟推导，重启/多设备天然一致，
+    // 且恰好搭每秒渲染的便车，不产生额外帧。
+    rainTick: Math.floor(input.currentTime.getTime() / 1000),
   };
 }
 

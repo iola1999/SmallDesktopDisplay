@@ -97,19 +97,18 @@ Settings holds only configuration and read-only diagnostics. Glanceable content
 The Home page is a calm single-screen clock + weather dashboard, organized on a
 centered axis: a top row with the Gregorian date + short weekday (left) and the
 lunar/solar-term/festival subtitle (right), a large 60px `HH:MM` with compact
-seconds, then an Apple-Weather-style summary instead of any hourly detail — a
-big centered colour-coded current temperature, below it one line with the
-condition icon + label (left column) and today's 高/低 (right column). A bottom
-row shows 明天 and 后天 as two generous columns (label + icon over high/low),
-sharing the same column centers as the summary line so the whole weather block
-reads as one grid. Nothing beyond 后天 is shown. Highs are colour-coded
+seconds, then a one-line weather summary instead of any hourly detail: the
+condition icon + label (left), the colour-coded current temperature (center),
+and today's high/low (right) at near-equal sizes on a shared baseline — no
+高/低 captions, the warm/blue colour split carries that meaning. A bottom row
+shows 明天 and 后天 as two generous columns (label + icon over high/low). Nothing beyond 后天 is shown. Highs are colour-coded
 cool→warm; lows use one muted blue-gray. Weather is fetched server-side from
 Open-Meteo for Hangzhou Xiaoshan and cached; failures are silent and never block
 the clock, and the weather elements simply do not render until the first
 forecast arrives.
 
 Behind the content, a digital-rain backdrop (the one survivor of the removed
-ambient-game carousel) drips slowly at ~2s per step. It is pure `(seed, tick)`
+ambient-game carousel) drips at one step per second, riding the per-second render. It is pure `(seed, tick)`
 derivation with the tick taken from the wall clock, needs no per-device state,
 and is dimmed toward the theme background (mixing the theme's seconds colour at
 15-30%) so it never competes with the clock or weather. Device id, tap count,

@@ -34,7 +34,7 @@ export function HomePage({model}: {model: HomeViewModel}) {
   );
 }
 
-// 常驻暗背景数字雨：游戏轮播删除后留下的"活气"。纯 (seed, tick) 推导（tick 每 2 秒
+// 常驻暗背景数字雨：游戏轮播删除后留下的"活气"。纯 (seed, tick) 推导（tick 每秒
 // 走一格，由视图模型从墙钟算出），无持久状态。颜色从主题秒针色向背景色压暗到
 // 6%-24%，垫在所有正文之下，不与时钟/天气抢对比度。
 // 引擎行数(60)大于可见行数(34)：雨头有一半时间在"屏幕下方"走，等效让约半数列空闲，
@@ -65,26 +65,24 @@ function RainBackdrop({tick, theme}: {tick: number; theme: ClockTheme}) {
   );
 }
 
-// 天气摘要走居中轴线：大温度居中做主角，下面一行"天气 | 高·低"与再下面的
-// 明天/后天共用同一对列中心（68 / 172），整块对成一张网格，不再四处漂。
-// 地点固定是萧山，不再占一行显示。
+// 天气摘要单行：图标+描述（左）/ 当前温度（中）/ 今天高低（右），三项字号接近、
+// 共用基线，铺满整行不留空腹；"高/低"用色彩区分（暖色=高、蓝灰=低），不写字。
 function WeatherSummary({weather, textColor}: {weather: WeatherView; textColor: string}) {
   const today = weather.days[0];
   return (
     <>
-      <Text style={{x: 60, y: 126, width: 120, height: 42, fontSize: 38, color: tempColor(weather.current.temp), alignItems: "center"}}>
+      <WeatherIcon kind={weather.current.icon} x={20} y={140} size={26} />
+      <Text style={{x: 50, y: 146, width: 58, height: 22, fontSize: 19, color: textColor}}>{weather.current.label}</Text>
+      <Text style={{x: 108, y: 143, width: 48, height: 26, fontSize: 22, color: tempColor(weather.current.temp), alignItems: "center"}}>
         {`${weather.current.temp}°`}
       </Text>
-      <WeatherIcon kind={weather.current.icon} x={34} y={162} size={18} />
-      <Text style={{x: 58, y: 164, width: 60, height: 18, fontSize: 15, color: textColor}}>{weather.current.label}</Text>
       {today ? (
         <>
-          <Text style={{x: 138, y: 169, width: 13, height: 13, fontSize: 11, color: LABEL_COLOR}}>高</Text>
-          <Text style={{x: 151, y: 163, width: 28, height: 19, fontSize: 16, color: tempColor(today.tempMax), alignItems: "flex-end"}}>
+          <Text style={{x: 160, y: 146, width: 26, height: 22, fontSize: 19, color: tempColor(today.tempMax), alignItems: "flex-end"}}>
             {`${today.tempMax}°`}
           </Text>
-          <Text style={{x: 183, y: 169, width: 13, height: 13, fontSize: 11, color: LABEL_COLOR}}>低</Text>
-          <Text style={{x: 196, y: 163, width: 28, height: 19, fontSize: 16, color: LOW_TEMP_COLOR, alignItems: "flex-end"}}>
+          <Text style={{x: 188, y: 148, width: 6, height: 20, fontSize: 16, color: LABEL_COLOR}}>/</Text>
+          <Text style={{x: 196, y: 146, width: 26, height: 22, fontSize: 19, color: LOW_TEMP_COLOR, alignItems: "flex-end"}}>
             {`${today.tempMin}°`}
           </Text>
         </>

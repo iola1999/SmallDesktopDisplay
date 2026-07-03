@@ -14,7 +14,7 @@ export interface HomeViewModel extends BaseViewModel {
   clockGlyphs: ClockFlipGlyphViewModel[];
   theme: ClockTheme;
   weather?: WeatherView;
-  // 首页暗背景数字雨的步进（每 2 秒 +1），由墙钟推导，无需持久状态。
+  // 首页暗背景数字雨的步进（每秒 +1），由墙钟推导，无需持久状态。
   rainTick: number;
 }
 
