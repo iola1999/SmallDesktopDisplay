@@ -367,7 +367,10 @@ void loop()
 
   if (WiFi.status() == WL_CONNECTED)
   {
-    if (pollFrame(nowMs))
+    // 按住按键期间暂停网络轮询：pollFrame 单次会阻塞 10-30ms，导致长按进度条
+    // 只能画出 3-4 个台阶。暂停后 loop 以亚毫秒周期运转，进度条按像素级平滑填充；
+    // 松手立即恢复轮询（排空模式会自动补上错过的帧）。
+    if (!g_holdInteraction.active && pollFrame(nowMs))
     {
       pollCommand(nowMs);
       syncDeviceStatus(nowMs);

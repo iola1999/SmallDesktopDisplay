@@ -49,6 +49,15 @@ CommandFetchResult RemoteCommandClient::fetchLatest(const String &baseUrl, const
     return CommandFetchResult::Failed;
   }
 
+  // 命令响应是一条小 JSON（<200B）。异常/被劫持的超大响应直接拒绝，
+  // 避免 getString 在 ~40KB 堆上做无界分配。
+  const int contentLength = http.getSize();
+  if (contentLength > 512)
+  {
+    Serial.printf("[RemoteCommand] body too large: %d\n", contentLength);
+    http.end();
+    return CommandFetchResult::Failed;
+  }
   const String body = http.getString();
   http.end();
   if (!parseDeviceCommand(body.c_str(), outCommand) || outCommand.id <= afterCommandId)
