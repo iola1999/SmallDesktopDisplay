@@ -19,11 +19,15 @@ export function WeatherIcon({kind, x, y, size = 20}: {kind: WeatherIconKind; x: 
   if (hasEmojiFont()) {
     const box = Math.round(size * 1.3);
     const offset = Math.round((box - size) / 2);
+    // 容器内对 Noto Color Emoji 逐像素实测（两轮）：字形墨迹中心比文本原点高约
+    // 0.65×size（☀/⛈ 等字形间 ±2px 浮动）。此处下移补偿，使图标视觉中心
+    // ≈ y + size/2，与同一行文字的墨迹中心对齐。
+    const emojiYTrim = Math.round(size * 0.65);
     return (
       <Text
         style={{
           x: x - offset,
-          y: y - offset,
+          y: y - offset + emojiYTrim,
           width: box,
           height: box,
           fontSize: size,

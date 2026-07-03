@@ -66,25 +66,30 @@ function RainBackdrop({tick, theme}: {tick: number; theme: ClockTheme}) {
 }
 
 // 天气摘要单行：左簇 = 图标 + 当前温度 + 天气描述（三者贴在一起表示"现在"），
-// 右簇 = "今天" 标注 + 高/低（暖色=高、蓝灰=低）。两簇之间留出呼吸位，
-// 当前温度不再紧贴今天高低温。
+// 右簇 = "今天" 标注 + 高/低（暖色=高、蓝灰=低）。所有元素共享同一视觉中线
+// （SUMMARY_CENTER_Y），图标经实测偏移对齐文字。三字天气描述自动降一号字。
+const SUMMARY_CENTER_Y = 135;
+
 function WeatherSummary({weather, textColor}: {weather: WeatherView; textColor: string}) {
   const today = weather.days[0];
+  const compactLabel = weather.current.label.length >= 3;
   return (
     <>
-      <WeatherIcon kind={weather.current.icon} x={22} y={142} size={22} />
-      <Text style={{x: 50, y: 143, width: 42, height: 26, fontSize: 22, color: tempColor(weather.current.temp)}}>
+      <WeatherIcon kind={weather.current.icon} x={20} y={SUMMARY_CENTER_Y - 15} size={24} />
+      <Text style={{x: 50, y: SUMMARY_CENTER_Y - 14, width: 42, height: 28, fontSize: 23, color: tempColor(weather.current.temp)}}>
         {`${weather.current.temp}°`}
       </Text>
-      <Text style={{x: 94, y: 146, width: 56, height: 22, fontSize: 19, color: textColor}}>{weather.current.label}</Text>
+      <Text style={{x: 96, y: SUMMARY_CENTER_Y - 12, width: 52, height: 24, fontSize: compactLabel ? 15 : 19, color: textColor}}>
+        {weather.current.label}
+      </Text>
       {today ? (
         <>
-          <Text style={{x: 146, y: 151, width: 24, height: 16, fontSize: 12, color: LABEL_COLOR}}>今天</Text>
-          <Text style={{x: 174, y: 147, width: 22, height: 20, fontSize: 15, color: tempColor(today.tempMax), alignItems: "flex-end"}}>
+          <Text style={{x: 148, y: SUMMARY_CENTER_Y - 8, width: 24, height: 16, fontSize: 12, color: LABEL_COLOR}}>今天</Text>
+          <Text style={{x: 174, y: SUMMARY_CENTER_Y - 11, width: 23, height: 21, fontSize: 16, color: tempColor(today.tempMax), alignItems: "flex-end"}}>
             {`${today.tempMax}°`}
           </Text>
-          <Text style={{x: 198, y: 149, width: 5, height: 18, fontSize: 13, color: LABEL_COLOR}}>/</Text>
-          <Text style={{x: 203, y: 147, width: 21, height: 20, fontSize: 15, color: LOW_TEMP_COLOR, alignItems: "flex-end"}}>
+          <Text style={{x: 199, y: SUMMARY_CENTER_Y - 9, width: 5, height: 18, fontSize: 13, color: LABEL_COLOR}}>/</Text>
+          <Text style={{x: 204, y: SUMMARY_CENTER_Y - 11, width: 21, height: 21, fontSize: 16, color: LOW_TEMP_COLOR, alignItems: "flex-end"}}>
             {`${today.tempMin}°`}
           </Text>
         </>
@@ -103,17 +108,21 @@ function DailyOutlook({weather}: {weather: WeatherView}) {
   );
 }
 
+// 明后天列放大版：标签 16px + 图标 24px 一行（共享中线），高低温 20/16px 一行。
+const DAILY_LINE1_CENTER_Y = 172;
+const DAILY_LINE2_TOP_Y = 194;
+
 function DailyColumn({day, center}: {day: WeatherDayView; center: number}) {
   return (
     <>
-      <Text style={{x: center - 40, y: 190, width: 36, height: 18, fontSize: 14, color: LABEL_COLOR, alignItems: "flex-end"}}>
+      <Text style={{x: center - 46, y: DAILY_LINE1_CENTER_Y - 11, width: 40, height: 22, fontSize: 16, color: LABEL_COLOR, alignItems: "flex-end"}}>
         {day.label}
       </Text>
-      <WeatherIcon kind={day.icon} x={center + 8} y={189} size={18} />
-      <Text style={{x: center - 40, y: 210, width: 36, height: 20, fontSize: 17, color: tempColor(day.tempMax), alignItems: "flex-end"}}>
+      <WeatherIcon kind={day.icon} x={center + 4} y={DAILY_LINE1_CENTER_Y - 15} size={24} />
+      <Text style={{x: center - 46, y: DAILY_LINE2_TOP_Y, width: 40, height: 24, fontSize: 20, color: tempColor(day.tempMax), alignItems: "flex-end"}}>
         {`${day.tempMax}°`}
       </Text>
-      <Text style={{x: center + 6, y: 212, width: 42, height: 18, fontSize: 14, color: LOW_TEMP_COLOR}}>
+      <Text style={{x: center + 2, y: DAILY_LINE2_TOP_Y + 3, width: 48, height: 20, fontSize: 16, color: LOW_TEMP_COLOR}}>
         {`/${day.tempMin}°`}
       </Text>
     </>

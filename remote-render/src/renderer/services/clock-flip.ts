@@ -2,17 +2,17 @@ import type {ClockFlipGlyphGroup, ClockFlipGlyphViewModel} from "../models/view-
 import {buildHomeCopy} from "./home-copy.js";
 
 const BIG_TIME_LAYOUT = [
-  {x: 18, width: 38},
-  {x: 57, width: 38},
-  {x: 96, width: 16},
-  {x: 114, width: 38},
-  {x: 153, width: 38},
+  {x: 24, width: 34},
+  {x: 59, width: 34},
+  {x: 93, width: 15},
+  {x: 110, width: 34},
+  {x: 145, width: 34},
 ] as const;
 
 const SECONDS_LAYOUT = [
-  {x: 192, width: 9},
-  {x: 202, width: 13},
-  {x: 216, width: 13},
+  {x: 184, width: 9},
+  {x: 194, width: 13},
+  {x: 208, width: 13},
 ] as const;
 
 export interface BuildClockFlipGlyphsOptions {
@@ -31,9 +31,9 @@ export function buildClockFlipGlyphs(currentTime: Date, options: BuildClockFlipG
       current: buildHomeCopy(currentTime).timeText,
       previous: buildHomeCopy(previousTime).timeText,
       progress,
-      y: 50,
-      height: 72,
-      fontSize: 60,
+      y: 48,
+      height: 60,
+      fontSize: 54,
       color: options.timeColor ?? "#f0f8ee",
       layout: BIG_TIME_LAYOUT,
     }),
@@ -42,7 +42,7 @@ export function buildClockFlipGlyphs(currentTime: Date, options: BuildClockFlipG
       current: buildHomeCopy(currentTime).secondsText,
       previous: buildHomeCopy(previousTime).secondsText,
       progress,
-      y: 82,
+      y: 74,
       height: 26,
       fontSize: 20,
       color: options.secondsColor ?? "#80dac6",
