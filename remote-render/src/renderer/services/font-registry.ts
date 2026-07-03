@@ -7,6 +7,10 @@ export function registerFonts(): void {
   const candidates: Array<[string, string]> = [
     ["/usr/local/share/fonts/lxgw-wenkai-screen/LXGWWenKaiScreen.ttf", "LXGW WenKai Screen"],
     [path.join(process.env.HOME ?? "", "Library/Fonts/LXGWWenKaiScreen.ttf"), "LXGW WenKai Screen"],
+    // GB 子集发行版的文件名变体：注册为同一族名，保证 host 预览与设备字体一致。
+    ["/usr/local/share/fonts/lxgw-wenkai-screen/LXGWWenKaiGBScreen.ttf", "LXGW WenKai Screen"],
+    [path.join(process.env.HOME ?? "", "Library/Fonts/LXGWWenKaiGBScreen.ttf"), "LXGW WenKai Screen"],
+    [path.join(process.env.HOME ?? "", "Library/Fonts/LXGWWenKai-Regular.ttf"), "LXGW WenKai Screen"],
     ["/usr/local/share/fonts/maple-mono-nf-cn/MapleMono-NF-CN-Regular.ttf", "Maple Mono NF CN"],
     [path.join(process.env.HOME ?? "", "Library/Fonts/MapleMono-NF-CN-Regular.ttf"), "Maple Mono NF CN"],
     ["/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "Noto Sans CJK"],

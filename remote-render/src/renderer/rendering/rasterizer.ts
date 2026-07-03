@@ -108,6 +108,8 @@ function paintLayout(ctx: SKRSContext2D, node: LayoutNode, parentX: number, pare
     let textX = x;
     if (node.style.alignItems === "center") {
       textX = x + Math.max(0, (node.width - metrics.width) / 2);
+    } else if (node.style.alignItems === "flex-end") {
+      textX = x + Math.max(0, node.width - metrics.width);
     }
     ctx.fillText(textValue, textX, y + Math.max(0, (node.height - fontSize * 1.1) / 2));
   }
