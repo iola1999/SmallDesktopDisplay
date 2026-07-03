@@ -1,7 +1,10 @@
 import http, {type IncomingMessage, type ServerResponse} from "node:http";
 
+import {CONSOLE_HTML} from "./console.js";
+import {encodeCanvasImagePng} from "./renderer/rendering/png.js";
+import {WEATHER_LOCATION_LABEL, getWeatherSnapshot} from "./renderer/services/weather.js";
 import {DeviceRegistry} from "./state.js";
-import type {InputEventName} from "./ui-state.js";
+import {FONT_OPTIONS, THEME_OPTIONS, type InputEventName} from "./ui-state.js";
 
 export interface RemoteRenderServer {
   listen(port: number, hostname?: string): Promise<void>;
@@ -59,6 +62,77 @@ async function handleRequest(registry: DeviceRegistry, request: IncomingMessage,
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
   if (request.method === "GET" && url.pathname === "/api/v1/health") {
     sendJson(response, 200, {status: "ok"});
+    return;
+  }
+
+  // Web 控制台（局域网免登录）：预览 + 主题/字体/亮度 + 手势模拟。
+  if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/console")) {
+    const body = Buffer.from(CONSOLE_HTML, "utf8");
+    response.writeHead(200, {"content-type": "text/html; charset=utf-8", "content-length": String(body.length)});
+    response.end(body);
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/v1/devices") {
+    sendJson(response, 200, {devices: registry.listDevices()});
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/v1/status") {
+    const snapshot = getWeatherSnapshot();
+    sendJson(response, 200, {
+      weather: snapshot
+        ? {hasData: true, location: WEATHER_LOCATION_LABEL, ageSeconds: Math.max(0, Math.round((Date.now() - snapshot.fetchedAtMs) / 1000))}
+        : {hasData: false, location: WEATHER_LOCATION_LABEL},
+      deviceCount: registry.devices.size,
+    });
+    return;
+  }
+
+  const previewMatch = url.pathname.match(/^\/api\/v1\/devices\/([^/]+)\/preview\.png$/);
+  if (request.method === "GET" && previewMatch) {
+    const png = encodeCanvasImagePng(registry.getPreviewImage(decodeURIComponent(previewMatch[1])));
+    response.writeHead(200, {"content-type": "image/png", "content-length": String(png.length), "cache-control": "no-store"});
+    response.end(png);
+    return;
+  }
+
+  const prefsMatch = url.pathname.match(/^\/api\/v1\/devices\/([^/]+)\/prefs$/);
+  if (request.method === "POST" && prefsMatch) {
+    const payload = await readJson(request);
+    const hasTheme = payload.themeKey !== undefined;
+    const hasFont = payload.fontKey !== undefined;
+    const hasBrightness = payload.brightness !== undefined;
+    if (!hasTheme && !hasFont && !hasBrightness) {
+      sendJson(response, 422, {detail: "no prefs given"});
+      return;
+    }
+    if (hasTheme && !(THEME_OPTIONS as readonly string[]).includes(payload.themeKey)) {
+      sendJson(response, 422, {detail: "unknown themeKey"});
+      return;
+    }
+    if (hasFont && !(FONT_OPTIONS as readonly string[]).includes(payload.fontKey)) {
+      sendJson(response, 422, {detail: "unknown fontKey"});
+      return;
+    }
+    if (hasBrightness && !isInt(payload.brightness, 0, 100)) {
+      sendJson(response, 422, {detail: "brightness must be 0-100"});
+      return;
+    }
+    sendJson(response, 200, registry.applyPrefs(decodeURIComponent(prefsMatch[1]), payload));
+    return;
+  }
+
+  const consoleInputMatch = url.pathname.match(/^\/api\/v1\/devices\/([^/]+)\/console-input$/);
+  if (request.method === "POST" && consoleInputMatch) {
+    const payload = await readJson(request);
+    if (!["short_press", "double_press", "long_press"].includes(payload.event)) {
+      sendJson(response, 422, {detail: "invalid gesture"});
+      return;
+    }
+    registry.applyConsoleGesture(decodeURIComponent(consoleInputMatch[1]), payload.event as InputEventName);
+    response.writeHead(202, {"content-length": "0"});
+    response.end();
     return;
   }
 

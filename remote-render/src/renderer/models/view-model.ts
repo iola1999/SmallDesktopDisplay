@@ -85,6 +85,8 @@ export interface RowsDetailViewModel extends BaseViewModel {
   title: string;
   subtitle: string;
   rows: DetailRowViewModel[];
+  // Theme 详情页专用：用待选主题给页面染色，切换当场可见。
+  themePreview?: ClockTheme;
 }
 
 export interface DetailRowViewModel {

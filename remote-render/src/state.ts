@@ -16,10 +16,13 @@ import {
   type InputEventName,
   DeviceCommand,
   DeviceUiState,
+  FONT_OPTIONS,
+  THEME_OPTIONS,
   applyInputEvent,
   currentAnimationProgress,
   isAnimationActive,
 } from "./ui-state.js";
+import type {DevicePrefs, PrefsMap} from "./prefs-store.js";
 
 export class QueuedCommand {
   constructor(
@@ -94,6 +97,9 @@ interface DeviceRegistryOptions {
   now?: () => Date;
   deviceIdleTtlSeconds?: number;
   evictionSweepIntervalSeconds?: number;
+  // 落盘的设备偏好（主题/字体）：新设备条目创建时应用；变化时经回调持久化。
+  initialPrefs?: PrefsMap;
+  onPrefsChanged?: (deviceId: string, prefs: Required<DevicePrefs>) => void;
 }
 
 export class DeviceRegistry {
@@ -106,6 +112,8 @@ export class DeviceRegistry {
   private deviceIdleTtlSeconds: number;
   private evictionSweepIntervalSeconds: number;
   private lastEvictionSweepAt = -Infinity;
+  private initialPrefs: PrefsMap;
+  private onPrefsChanged?: (deviceId: string, prefs: Required<DevicePrefs>) => void;
 
   constructor(options: DeviceRegistryOptions = {}) {
     this.monotonic = options.monotonic ?? (() => performance.now() / 1000);
@@ -117,6 +125,8 @@ export class DeviceRegistry {
     // 让 devices Map 无限增长。回来的真实设备会因 have>frameId 自动收到全屏帧重同步。
     this.deviceIdleTtlSeconds = options.deviceIdleTtlSeconds ?? 3600;
     this.evictionSweepIntervalSeconds = options.evictionSweepIntervalSeconds ?? 60;
+    this.initialPrefs = options.initialPrefs ?? {};
+    this.onPrefsChanged = options.onPrefsChanged;
   }
 
   async getFrame(deviceId: string, have: number, waitMs: number): Promise<Buffer | null> {
@@ -159,26 +169,89 @@ export class DeviceRegistry {
       return false;
     }
     const now = this.monotonic();
-    const previousPage = state.ui.page;
     state.lastInputSeq = seq;
     state.lastInputUptimeMs = uptimeMs;
     state.buttonCount += 1;
+    this.applyGesture(state, event, now);
+    return true;
+  }
+
+  // Web 控制台注入的手势：不参与设备的 seq/uptime 去重（否则控制台的大 seq
+  // 会让设备后续的真实按键被误判为重放而丢弃）。
+  applyConsoleGesture(deviceId: string, event: InputEventName): void {
+    const state = this.ensureDevice(deviceId);
+    this.applyGesture(state, event, this.monotonic());
+  }
+
+  // 控制台直接设定偏好：主题/字体立即生效并持久化；亮度走命令通道由设备落 EEPROM。
+  applyPrefs(deviceId: string, prefs: {themeKey?: string; fontKey?: string; brightness?: number}): Required<DevicePrefs> & {brightness: number} {
+    const state = this.ensureDevice(deviceId);
+    const before = prefsSnapshot(state);
+    if (prefs.themeKey !== undefined && (THEME_OPTIONS as readonly string[]).includes(prefs.themeKey)) {
+      state.ui.themeKey = prefs.themeKey;
+      state.ui.pendingThemeKey = prefs.themeKey;
+    }
+    if (prefs.fontKey !== undefined && (FONT_OPTIONS as readonly string[]).includes(prefs.fontKey)) {
+      state.ui.fontKey = prefs.fontKey;
+      state.ui.pendingFontKey = prefs.fontKey;
+    }
+    if (prefs.brightness !== undefined) {
+      const value = Math.max(0, Math.min(100, Math.round(prefs.brightness)));
+      state.ui.brightness = value;
+      state.ui.pendingBrightness = value;
+      this.queueCommand(state, new DeviceCommand("set_brightness", value, true));
+    }
+    this.emitPrefsIfChanged(state, before);
+    this.render(state, true);
+    return {themeKey: state.ui.themeKey, fontKey: state.ui.fontKey, brightness: state.ui.brightness};
+  }
+
+  // 控制台设备列表（只读，不创建条目）。
+  listDevices(): Array<{deviceId: string; page: string; themeKey: string; fontKey: string; brightness: number; frameId: number; idleSeconds: number}> {
+    const now = this.monotonic();
+    return [...this.devices.values()].map((state) => ({
+      deviceId: state.deviceId,
+      page: state.ui.page,
+      themeKey: state.ui.themeKey,
+      fontKey: state.ui.fontKey,
+      brightness: state.ui.brightness,
+      frameId: state.frameId,
+      idleSeconds: Math.max(0, Math.round(now - state.lastTouchedAt)),
+    }));
+  }
+
+  // 控制台预览：确保画面新鲜后返回当前 canvas（ensureDevice 首渲染保证非空）。
+  getPreviewImage(deviceId: string): CanvasImage {
+    const state = this.ensureDevice(deviceId);
+    this.renderIfDue(state);
+    return state.canvas!;
+  }
+
+  private applyGesture(state: DeviceState, event: InputEventName, now: number): void {
+    const previousPage = state.ui.page;
+    const before = prefsSnapshot(state);
     const commands = applyInputEvent(state.ui, event, now);
     for (const command of commands) {
       this.queueCommand(state, command);
     }
+    this.emitPrefsIfChanged(state, before);
 
     // 首页双击 = 强制整屏刷新
     if (previousPage === "home" && state.ui.page === "home" && event === "double_press") {
       this.render(state, true);
-      return true;
+      return;
     }
     // 首页无可见变化（short_press 为无操作、long_press 已进设置页由动画分支处理）
     if (previousPage === "home" && state.ui.page === "home" && !state.ui.animation) {
-      return true;
+      return;
     }
     this.render(state, false);
-    return true;
+  }
+
+  private emitPrefsIfChanged(state: DeviceState, before: Required<DevicePrefs>): void {
+    if (!this.onPrefsChanged) return;
+    if (before.themeKey === state.ui.themeKey && before.fontKey === state.ui.fontKey) return;
+    this.onPrefsChanged(state.deviceId, {themeKey: state.ui.themeKey, fontKey: state.ui.fontKey});
   }
 
   getCommand(deviceId: string, after: number): QueuedCommand | null {
@@ -207,6 +280,15 @@ export class DeviceRegistry {
     let state = this.devices.get(deviceId);
     if (!state) {
       state = new DeviceState(deviceId);
+      const stored = this.initialPrefs[deviceId];
+      if (stored?.themeKey && (THEME_OPTIONS as readonly string[]).includes(stored.themeKey)) {
+        state.ui.themeKey = stored.themeKey;
+        state.ui.pendingThemeKey = stored.themeKey;
+      }
+      if (stored?.fontKey && (FONT_OPTIONS as readonly string[]).includes(stored.fontKey)) {
+        state.ui.fontKey = stored.fontKey;
+        state.ui.pendingFontKey = stored.fontKey;
+      }
       this.render(state, true);
       this.devices.set(deviceId, state);
     }
@@ -368,6 +450,10 @@ function result(frame: Buffer | null, waitSeconds: number, renderSeconds: number
 
 function elapsedMs(seconds: number): number {
   return Math.max(0, Math.round(seconds * 1000));
+}
+
+function prefsSnapshot(state: DeviceState): Required<import("./prefs-store.js").DevicePrefs> {
+  return {themeKey: state.ui.themeKey, fontKey: state.ui.fontKey};
 }
 
 function sleep(seconds: number): Promise<void> {

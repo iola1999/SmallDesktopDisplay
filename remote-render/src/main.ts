@@ -1,8 +1,22 @@
 import {createRemoteRenderServer} from "./server.js";
 import {startWeatherPolling} from "./renderer/services/weather.js";
+import {createPrefsSaver, loadPrefs} from "./prefs-store.js";
+import {DeviceRegistry} from "./state.js";
 
 const port = Number(process.env.PORT ?? "8080");
-const server = createRemoteRenderServer();
+// 设备偏好（主题/字体）落盘：容器重建后不再丢用户选择。
+const stateDir = process.env.STATE_DIR ?? "./data";
+const prefs = loadPrefs(stateDir);
+const savePrefs = createPrefsSaver(stateDir);
+const registry = new DeviceRegistry({
+  initialPrefs: prefs,
+  onPrefsChanged: (deviceId, changed) => {
+    prefs[deviceId] = changed;
+    savePrefs(prefs);
+  },
+});
+console.log(`[RemoteRender] loaded prefs for ${Object.keys(prefs).length} device(s) from ${stateDir}`);
+const server = createRemoteRenderServer(registry);
 
 await server.listen(port, "0.0.0.0");
 console.log(`[RemoteRender] listening on 0.0.0.0:${port}`);

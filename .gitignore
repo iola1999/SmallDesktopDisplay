@@ -19,3 +19,4 @@ remote-render/frame-previews/
 CLAUDE.local.md
 __pycache__/
 *.pyc
+remote-render/data/

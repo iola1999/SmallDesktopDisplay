@@ -6,6 +6,9 @@ services:
       - "${REMOTE_RENDER_PORT:-8080}:8080"
     environment:
       NODE_ENV: production
+      STATE_DIR: /data
+    volumes:
+      - ./data:/data
     # 容器内固定监听 8080；命中已存在的 /api/v1/health 端点上报健康状态。
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]

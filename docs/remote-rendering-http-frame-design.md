@@ -77,6 +77,18 @@ Current remote UI gesture mapping:
 The firmware only recognizes gestures and posts them; all page routing lives in
 the Docker service.
 
+## Web console
+
+`GET /` (or `/console`) serves a LAN-only, no-auth control page: a live PNG
+preview (`GET /api/v1/devices/{id}/preview.png`, ~1 fps polling), theme / font /
+brightness controls (`POST /api/v1/devices/{id}/prefs`), simulated gestures
+(`POST /api/v1/devices/{id}/console-input` — deliberately bypasses the seq
+dedup so console taps can never poison the device's replay window), a device
+list (`GET /api/v1/devices`) and weather/server status (`GET /api/v1/status`).
+Theme and font choices persist to `STATE_DIR/device-prefs.json` (a compose
+volume), so container rebuilds no longer reset them; brightness stays owned by
+the device EEPROM via the command channel.
+
 Current Settings items:
 
 - `Brightness`: local backlight PWM, changed through the command channel.

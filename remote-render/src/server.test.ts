@@ -77,6 +77,72 @@ describe("Node HTTP API", () => {
     await expect(queued.json()).resolves.toMatchObject({type: "set_brightness"});
   });
 
+  test("serves the web console at / and /console", async () => {
+    const root = await fetch(`${baseUrl}/`);
+    expect(root.status).toBe(200);
+    expect(root.headers.get("content-type")).toContain("text/html");
+    expect(await root.text()).toContain("SmallDesktopDisplay 控制台");
+    expect((await fetch(`${baseUrl}/console`)).status).toBe(200);
+  });
+
+  test("lists devices and serves a PNG preview", async () => {
+    await fetch(`${baseUrl}/api/v1/devices/desk-list/frame?have=0`);
+    const list = await (await fetch(`${baseUrl}/api/v1/devices`)).json();
+    expect(list.devices.some((d: {deviceId: string}) => d.deviceId === "desk-list")).toBe(true);
+
+    const preview = await fetch(`${baseUrl}/api/v1/devices/desk-list/preview.png`);
+    expect(preview.status).toBe(200);
+    expect(preview.headers.get("content-type")).toBe("image/png");
+    const png = Buffer.from(await preview.arrayBuffer());
+    expect(png.subarray(1, 4).toString("ascii")).toBe("PNG");
+  });
+
+  test("prefs endpoint applies theme and font, rejects unknown keys", async () => {
+    const ok = await fetch(`${baseUrl}/api/v1/devices/desk-prefs/prefs`, {
+      method: "POST",
+      headers: {"content-type": "application/json"},
+      body: JSON.stringify({themeKey: "sakura", fontKey: "noto_cjk"}),
+    });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({themeKey: "sakura", fontKey: "noto_cjk"});
+
+    const bad = await fetch(`${baseUrl}/api/v1/devices/desk-prefs/prefs`, {
+      method: "POST",
+      headers: {"content-type": "application/json"},
+      body: JSON.stringify({themeKey: "neon"}),
+    });
+    expect(bad.status).toBe(422);
+
+    const empty = await fetch(`${baseUrl}/api/v1/devices/desk-prefs/prefs`, {
+      method: "POST",
+      headers: {"content-type": "application/json"},
+      body: JSON.stringify({}),
+    });
+    expect(empty.status).toBe(422);
+  });
+
+  test("console gestures do not poison the device input dedup", async () => {
+    // 控制台长按进设置
+    const gesture = await fetch(`${baseUrl}/api/v1/devices/desk-console/console-input`, {
+      method: "POST",
+      headers: {"content-type": "application/json"},
+      body: JSON.stringify({event: "long_press"}),
+    });
+    expect(gesture.status).toBe(202);
+    const list = await (await fetch(`${baseUrl}/api/v1/devices`)).json();
+    expect(list.devices.find((d: {deviceId: string}) => d.deviceId === "desk-console")?.page).toBe("settings");
+
+    // 设备首次真实按键（seq 从 1 开始）必须仍被接受：短按在设置页移动选中项
+    const device = await fetch(`${baseUrl}/api/v1/devices/desk-console/input`, {
+      method: "POST",
+      headers: {"content-type": "application/json"},
+      body: JSON.stringify({seq: 1, event: "double_press", uptime_ms: 500}),
+    });
+    expect(device.status).toBe(202);
+    const after = await (await fetch(`${baseUrl}/api/v1/devices`)).json();
+    expect(after.devices.find((d: {deviceId: string}) => d.deviceId === "desk-console")?.page).toBe("home");
+  });
+
   test("returns 404 for unknown routes", async () => {
     const response = await fetch(`${baseUrl}/api/v1/unknown`);
     expect(response.status).toBe(404);

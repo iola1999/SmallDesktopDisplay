@@ -127,6 +127,28 @@ describe("device registry", () => {
     expect(decoded.rects[0]).toMatchObject({x: 0, y: 0, width: 240, height: 240});
   });
 
+  test("applies stored prefs to new devices and reports pref changes", async () => {
+    const changes: Array<{deviceId: string; themeKey: string; fontKey: string}> = [];
+    const registry = new DeviceRegistry({
+      initialPrefs: {"desk-pref": {themeKey: "amber", fontKey: "noto_cjk"}},
+      onPrefsChanged: (deviceId, prefs) => changes.push({deviceId, ...prefs}),
+    });
+
+    await registry.getFrame("desk-pref", 0, 0);
+    expect(registry.devices.get("desk-pref")!.ui.themeKey).toBe("amber");
+    expect(registry.devices.get("desk-pref")!.ui.fontKey).toBe("noto_cjk");
+
+    registry.applyPrefs("desk-pref", {themeKey: "mono"});
+    expect(registry.devices.get("desk-pref")!.ui.themeKey).toBe("mono");
+    expect(registry.devices.get("desk-pref")!.ui.pendingThemeKey).toBe("mono");
+    expect(changes).toEqual([{deviceId: "desk-pref", themeKey: "mono", fontKey: "noto_cjk"}]);
+
+    // 亮度走命令通道，不进偏好回调
+    registry.applyPrefs("desk-pref", {brightness: 80});
+    expect(registry.getCommand("desk-pref", 0)).toMatchObject({type: "set_brightness", value: 80});
+    expect(changes).toHaveLength(1);
+  });
+
   test("queues brightness command from detail confirm", async () => {
     const registry = new DeviceRegistry();
     const deviceId = "desk-brightness-command";

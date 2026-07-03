@@ -65,24 +65,26 @@ function RainBackdrop({tick, theme}: {tick: number; theme: ClockTheme}) {
   );
 }
 
-// 天气摘要单行：图标+描述（左）/ 当前温度（中）/ 今天高低（右），三项字号接近、
-// 共用基线，铺满整行不留空腹；"高/低"用色彩区分（暖色=高、蓝灰=低），不写字。
+// 天气摘要单行：左簇 = 图标 + 当前温度 + 天气描述（三者贴在一起表示"现在"），
+// 右簇 = "今天" 标注 + 高/低（暖色=高、蓝灰=低）。两簇之间留出呼吸位，
+// 当前温度不再紧贴今天高低温。
 function WeatherSummary({weather, textColor}: {weather: WeatherView; textColor: string}) {
   const today = weather.days[0];
   return (
     <>
       <WeatherIcon kind={weather.current.icon} x={20} y={140} size={26} />
-      <Text style={{x: 50, y: 146, width: 58, height: 22, fontSize: 19, color: textColor}}>{weather.current.label}</Text>
-      <Text style={{x: 108, y: 143, width: 48, height: 26, fontSize: 22, color: tempColor(weather.current.temp), alignItems: "center"}}>
+      <Text style={{x: 50, y: 143, width: 42, height: 26, fontSize: 22, color: tempColor(weather.current.temp)}}>
         {`${weather.current.temp}°`}
       </Text>
+      <Text style={{x: 94, y: 146, width: 56, height: 22, fontSize: 19, color: textColor}}>{weather.current.label}</Text>
       {today ? (
         <>
-          <Text style={{x: 160, y: 146, width: 26, height: 22, fontSize: 19, color: tempColor(today.tempMax), alignItems: "flex-end"}}>
+          <Text style={{x: 146, y: 151, width: 24, height: 16, fontSize: 12, color: LABEL_COLOR}}>今天</Text>
+          <Text style={{x: 174, y: 147, width: 22, height: 20, fontSize: 15, color: tempColor(today.tempMax), alignItems: "flex-end"}}>
             {`${today.tempMax}°`}
           </Text>
-          <Text style={{x: 188, y: 148, width: 6, height: 20, fontSize: 16, color: LABEL_COLOR}}>/</Text>
-          <Text style={{x: 196, y: 146, width: 26, height: 22, fontSize: 19, color: LOW_TEMP_COLOR, alignItems: "flex-end"}}>
+          <Text style={{x: 198, y: 149, width: 5, height: 18, fontSize: 13, color: LABEL_COLOR}}>/</Text>
+          <Text style={{x: 203, y: 147, width: 21, height: 20, fontSize: 15, color: LOW_TEMP_COLOR, alignItems: "flex-end"}}>
             {`${today.tempMin}°`}
           </Text>
         </>

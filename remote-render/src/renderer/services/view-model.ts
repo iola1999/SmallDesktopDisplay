@@ -119,7 +119,10 @@ function buildDetailViewModel(input: BuildDeviceViewModelInput, fontKey: string)
   };
 }
 
-function buildRowsDetail(item: string, input: BuildDeviceViewModelInput): {title: string; subtitle: string; rows: DetailRowViewModel[]} {
+function buildRowsDetail(
+  item: string,
+  input: BuildDeviceViewModelInput,
+): {title: string; subtitle: string; rows: DetailRowViewModel[]; themePreview?: import("./clock-theme.js").ClockTheme} {
   if (item === "Device") {
     return {
       title: "Device",
@@ -162,6 +165,8 @@ function buildRowsDetail(item: string, input: BuildDeviceViewModelInput): {title
     return {
       title: "Theme",
       subtitle: "short apply",
+      // 用待选主题染整页：短按切换立即能在当前页看到配色变化。
+      themePreview: resolveClockTheme(input.state.pendingThemeKey),
       rows: toRows([
         ["Current", THEME_LABELS[input.state.themeKey] ?? "Theme"],
         ["Next", THEME_LABELS[nextThemeKey(input.state.themeKey)] ?? "Theme"],
