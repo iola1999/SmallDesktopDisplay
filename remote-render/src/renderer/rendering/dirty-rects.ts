@@ -38,7 +38,27 @@ function tileDirtyRects(previous: CanvasImage, current: CanvasImage, region: Rec
       rawRects.push(paddedRegion(runLeft, y, runRight, tileBottom, current.width, current.height, 0));
     }
   }
-  return rawRects.map((raw) => cropRect(current, paddedRegion(raw[0], raw[1], raw[2], raw[3], current.width, current.height, padding)));
+  return mergeVerticalRuns(rawRects).map((raw) =>
+    cropRect(current, paddedRegion(raw[0], raw[1], raw[2], raw[3], current.width, current.height, padding)),
+  );
+}
+
+// 把同一 x 范围、上下相接的条带合并成一个矩形（时钟字形 / 温度数字的典型变化形状）。
+// 不合并的话，一个 60px 高的字形会拆成 8 个条带 rect，加上 ±2 padding 后相邻条带
+// 互相重叠——设备端同一像素每帧要画两次，还要多付 7 个 rect 头与地址窗口切换。
+function mergeVerticalRuns(rects: RectTuple[]): RectTuple[] {
+  const merged: RectTuple[] = [];
+  for (const rect of rects) {
+    const previous = merged.find(
+      (candidate) => candidate[0] === rect[0] && candidate[2] === rect[2] && candidate[3] === rect[1],
+    );
+    if (previous) {
+      previous[3] = rect[3];
+      continue;
+    }
+    merged.push([rect[0], rect[1], rect[2], rect[3]]);
+  }
+  return merged;
 }
 
 function tileChanged(previous: CanvasImage, current: CanvasImage, region: RectTuple): boolean {

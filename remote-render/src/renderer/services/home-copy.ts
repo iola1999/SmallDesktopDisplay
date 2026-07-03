@@ -1,10 +1,32 @@
 import type {HomeCopy} from "../types.js";
 import {describeLunarDate} from "./lunar.js";
 
+// Intl.DateTimeFormat 构造相当昂贵（~25µs），而首页每帧要为当前秒与前一秒各算一次文案，
+// 峰值 20fps。formatter 固定不变，提为模块级；文案本身按 epoch 秒做双槽缓存
+// （当前秒 + 前一秒），翻页动画期间全部命中。
+const SHANGHAI_FORMAT = new Intl.DateTimeFormat("en-US", {
+  timeZone: "Asia/Shanghai",
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  weekday: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+const copyCache = new Map<number, HomeCopy>();
+
 export function buildHomeCopy(currentTime: Date): HomeCopy {
+  const second = Math.floor(currentTime.getTime() / 1000);
+  const cached = copyCache.get(second);
+  if (cached) {
+    return cached;
+  }
   const parts = getShanghaiParts(currentTime);
   const lunar = describeLunarDate(parts.year, parts.month, parts.day);
-  return {
+  const copy: HomeCopy = {
     dateText: `${parts.month}月${parts.day}日`,
     weekdayText: chineseWeekday(parts.weekday),
     weekdayShort: chineseWeekdayShort(parts.weekday),
@@ -14,20 +36,19 @@ export function buildHomeCopy(currentTime: Date): HomeCopy {
     subtitle: subtitleForHour(parts.hour),
     lunarText: lunar.label ? `${lunar.lunarDate} · ${lunar.label}` : lunar.lunarDate,
   };
+  copyCache.set(second, copy);
+  // 只保留最近两秒（当前 + 翻页动画的前一秒），防止长期运行累积。
+  if (copyCache.size > 2) {
+    for (const key of copyCache.keys()) {
+      if (copyCache.size <= 2) break;
+      if (key !== second) copyCache.delete(key);
+    }
+  }
+  return copy;
 }
 
 function getShanghaiParts(date: Date): {year: number; month: number; day: number; weekday: number; hour: number; minute: number; second: number} {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(date);
+  const parts = SHANGHAI_FORMAT.formatToParts(date);
   const value = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? 0);
   const weekdayMap: Record<string, number> = {Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6};
   return {
