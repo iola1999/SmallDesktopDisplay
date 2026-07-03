@@ -2,6 +2,7 @@ import {
   FONT_LABELS,
   SETTINGS_ITEMS,
   THEME_LABELS,
+  easeOutCubic,
   nextFontKey,
   nextThemeKey,
   type DeviceUiState,
@@ -28,10 +29,13 @@ export interface BuildDeviceViewModelInput {
 export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceViewModel {
   const fontKey = resolveFontKeyForView(input.state);
   if (input.state.page === "settings") {
+    const sliding = input.state.animation === "settings_select";
     return {
       page: "settings",
       fontKey,
-      pulse: input.state.animation === "settings_select" ? pulse(input.progress) : 0,
+      pulse: sliding ? pulse(input.progress) : 0,
+      highlightFromIndex: sliding ? input.state.previousSelectedIndex : input.state.selectedIndex,
+      highlightProgress: sliding ? easeOutCubic(input.progress) : 1,
       rows: buildSettingsRows(input.state),
     };
   }

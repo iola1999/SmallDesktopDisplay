@@ -16,7 +16,7 @@ export function HomePage({model}: {model: HomeViewModel}) {
   const weather = model.weather;
   return (
     <Screen fontKey={model.fontKey} backgroundColor={theme.background}>
-      <FrameBackground background={theme.background} />
+      <FrameBackground theme={theme} />
       <RainBackdrop tick={model.rainTick} theme={theme} />
       {/* 顶行：左公历日期，右农历 */}
       <Text style={{x: 16, y: 22, width: 130, height: 22, fontSize: 17, color: theme.date}}>

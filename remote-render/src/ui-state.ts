@@ -14,12 +14,14 @@ export const SETTINGS_ITEMS = ["Brightness", "Font", "Device", "Renderer", "Abou
 export const BRIGHTNESS_OPTIONS = [20, 40, 50, 60, 80, 100] as const;
 
 export const THEME_MIDNIGHT = "midnight";
+export const THEME_DUSK = "dusk";
 export const THEME_SAKURA = "sakura";
 export const THEME_AMBER = "amber";
 export const THEME_MONO = "mono";
-export const THEME_OPTIONS = [THEME_MIDNIGHT, THEME_SAKURA, THEME_AMBER, THEME_MONO] as const;
+export const THEME_OPTIONS = [THEME_MIDNIGHT, THEME_DUSK, THEME_SAKURA, THEME_AMBER, THEME_MONO] as const;
 export const THEME_LABELS: Record<string, string> = {
-  [THEME_MIDNIGHT]: "Midnight",
+  [THEME_MIDNIGHT]: "Ink",
+  [THEME_DUSK]: "Dusk",
   [THEME_SAKURA]: "Sakura",
   [THEME_AMBER]: "Amber",
   [THEME_MONO]: "Mono",
@@ -44,6 +46,7 @@ export class DeviceDiagnostics {
 export interface DeviceUiStateInit {
   page?: PageName;
   selectedIndex?: number;
+  previousSelectedIndex?: number;
   detailIndex?: number;
   brightness?: number;
   pendingBrightness?: number;
@@ -59,6 +62,8 @@ export interface DeviceUiStateInit {
 export class DeviceUiState {
   page: PageName = "home";
   selectedIndex = 0;
+  // 设置页高亮滑动动画的起点行（settings_select 动画期间从这里滑到 selectedIndex）。
+  previousSelectedIndex = 0;
   detailIndex = 0;
   brightness = 50;
   pendingBrightness = 50;
@@ -83,6 +88,7 @@ export function applyInputEvent(state: DeviceUiState, event: InputEventName, now
     if (event === "long_press") {
       state.page = "settings";
       state.selectedIndex = 0;
+      state.previousSelectedIndex = 0;
       startAnimation(state, "enter_settings", now);
     }
     return [];
@@ -90,6 +96,7 @@ export function applyInputEvent(state: DeviceUiState, event: InputEventName, now
 
   if (state.page === "settings") {
     if (event === "short_press") {
+      state.previousSelectedIndex = state.selectedIndex;
       state.selectedIndex = (state.selectedIndex + 1) % SETTINGS_ITEMS.length;
       startAnimation(state, "settings_select", now);
     } else if (event === "long_press") {

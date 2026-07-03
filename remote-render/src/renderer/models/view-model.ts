@@ -50,6 +50,9 @@ export interface RainCellViewModel {
 export interface SettingsViewModel extends BaseViewModel {
   page: "settings";
   pulse: number;
+  // 高亮条滑动动画：从 highlightFromIndex 行滑向当前选中行，progress 已做缓动（1=到位）。
+  highlightFromIndex: number;
+  highlightProgress: number;
   rows: SettingsRowViewModel[];
 }
 

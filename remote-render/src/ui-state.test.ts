@@ -14,6 +14,16 @@ describe("device UI state", () => {
     expect(currentAnimationProgress(state, 10)).toBe(0);
   });
 
+  test("settings short press slides the highlight from the previous row", () => {
+    const state = new DeviceUiState({page: "settings", selectedIndex: 2, previousSelectedIndex: 2});
+
+    applyInputEvent(state, "short_press", 10);
+
+    expect(state.selectedIndex).toBe(3);
+    expect(state.previousSelectedIndex).toBe(2);
+    expect(state.animation).toBe("settings_select");
+  });
+
   test("short press on home is a no-op (games removed, clock stays put)", () => {
     const state = new DeviceUiState();
 
