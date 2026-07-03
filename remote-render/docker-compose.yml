@@ -7,6 +7,9 @@ services:
     environment:
       NODE_ENV: production
       STATE_DIR: /data
+      # 实机色彩补偿旋钮：屏幕仍偏灰就加大，过艳就调小（改完 docker compose up -d 生效）
+      PANEL_SATURATION: "1.35"
+      PANEL_GAMMA: "1.15"
     volumes:
       - ./data:/data
     # 容器内固定监听 8080；命中已存在的 /api/v1/health 端点上报健康状态。
