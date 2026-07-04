@@ -29,8 +29,20 @@ SERIAL_PORT + devices 映射）就走串口推送，否则回落 WiFi HTTP 轮�
 - 本机 Docker：`cd remote-render && REMOTE_RENDER_PORT=18080 docker compose up -d --build`
 - 帧预览：`cd remote-render && npm run preview -- --base-url http://127.0.0.1:18080 --device-id desk-01 --frames 2 --output frame-previews/latest.png`
 
-修改 `remote-render/` 里的渲染逻辑、API 或依赖后，除了跑测试，还要重新启动本机 Docker 实例（通常用上面的 `REMOTE_RENDER_PORT=18080 docker compose up -d --build`），否则设备和预览看到的还是旧容器里的画面。
-`remote-render/docker-compose.yml` 要保持 `restart: unless-stopped`，让 Docker 启动后自动恢复远程渲染服务；除非用户明确要求，不要用会移除该容器的清理方式替代正常重启。
+**当前生产部署（2026-07-04 起）已从 Docker 容器迁移到 launchd 原生进程**：本机 Docker 是
+OrbStack（Linux 虚拟机），无法把 USB 串口透传进容器，而设备现在走串口直连。服务由
+`~/Library/LaunchAgents/com.sdd.remote-render.plist` 常驻（KeepAlive + RunAtLoad，等价
+`restart: unless-stopped`），日志在 `~/Library/Logs/sdd-remote-render.log`。修改
+`remote-render/` 后的发布方式：
+
+```bash
+cd remote-render && npm run build && launchctl kickstart -k gui/$UID/com.sdd.remote-render
+```
+
+不要再 `docker compose up`——容器已手动停止，启动会和原生进程抢 18080 端口。
+烧录固件前必须先 `launchctl bootout gui/$UID/com.sdd.remote-render` 释放串口，
+烧完 `launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.sdd.remote-render.plist`。
+compose 文件保留给 Linux 宿主机部署场景（那里 `devices:` 映射可用）。
 
 依赖版本锁在 [platformio.ini](platformio.ini)，不要擅自升级（尤其 `espressif8266@2.6.3`）。
 

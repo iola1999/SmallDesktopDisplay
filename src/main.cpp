@@ -379,7 +379,10 @@ void syncDeviceStatus(uint32_t nowMs)
 // 没有就守在串口上慢速探测并提示等待宿主机。
 void checkSerialLinkHealth(uint32_t nowMs)
 {
-  const uint32_t idleMs = nowMs - g_serialLink.lastDownlinkMs();
+  // 有符号差再截断：调用方时间戳若略早于 lastDownlinkMs（同一 loop 内
+  // tick 刚更新过），按 0 处理而不是让无符号减法下溢。
+  const int32_t idleDelta = static_cast<int32_t>(nowMs - g_serialLink.lastDownlinkMs());
+  const uint32_t idleMs = idleDelta > 0 ? static_cast<uint32_t>(idleDelta) : 0;
   if (idleMs < app_config::kSerialLinkIdleMs)
   {
     g_serialProbesLeft = app_config::kSerialProbeAttempts;
@@ -445,8 +448,12 @@ void serialLoop()
       applyRemoteCommand(result.command);
       g_serialLink.sendCommandAck(result.command.id);
     }
-    syncDeviceStatus(nowMs);
-    checkSerialLinkHealth(nowMs);
+    // tick() 消费整帧会阻塞几十到几百 ms，期间 lastDownlinkMs 被更新；
+    // 健康检查必须用 tick 之后的新鲜时间，否则 "旧 now - 新 last" 在
+    // uint32 上下溢成天文数字，曾导致每 2s 一次的假探测 HELLO。
+    const uint32_t afterTickMs = millis();
+    syncDeviceStatus(afterTickMs);
+    checkSerialLinkHealth(afterTickMs);
   }
 
   updateHoldOverlay(nowMs);
@@ -467,8 +474,11 @@ void wifiLoop()
   {
     Serial.println(F("[Link] host hello on serial, switching to serial transport"));
     g_linkMode = LinkMode::SerialLink;
-    g_serialLink.sendHello();
+    // 先关 WiFi 再回 HELLO：WIFI_OFF 的 SDK 反初始化可能阻塞上百毫秒，
+    // 若先 HELLO，宿主机立刻推来的全屏帧会在阻塞期间挤爆 4KB RX 缓冲
+    //（实测首帧 invalid frame body 即此因）。
     WiFi.mode(WIFI_OFF);
+    g_serialLink.sendHello();
     g_statusSyncPending = true;
     g_serialProbesLeft = app_config::kSerialProbeAttempts;
     return;

@@ -71,12 +71,12 @@ export class SerialTransport {
     this.port.on("data", (chunk) => this.handleData(chunk));
     this.port.on("error", (error) => {
       this.log(`[Serial] port error: ${error.message}`);
-      this.dropLink();
+      this.dropLink("port error");
     });
     this.port.on("close", () => {
       this.log("[Serial] port closed");
       this.stopped = true;
-      this.dropLink();
+      this.dropLink("port closed");
       this.clearTimers();
     });
     // 设备可能先于服务开机而错过我们的启动窗口：周期性 HELLO 探测，
@@ -91,7 +91,7 @@ export class SerialTransport {
 
   stop(): void {
     this.stopped = true;
-    this.dropLink();
+    this.dropLink("stopped");
     this.clearTimers();
   }
 
@@ -106,7 +106,10 @@ export class SerialTransport {
     this.commandTimer = null;
   }
 
-  private dropLink(): void {
+  private dropLink(reason: string): void {
+    if (this.linkUp) {
+      this.log(`[Serial] link down (${reason})`);
+    }
     this.linkUp = false;
     if (this.ackWaiter !== null) {
       clearTimeout(this.ackWaiter.timer);
@@ -167,6 +170,13 @@ export class SerialTransport {
           this.ackWaiter = null;
           clearTimeout(waiter.timer);
           waiter.resolve(frameId);
+          return;
+        }
+        // 迟到/孤儿 ACK（等待者已超时或被 HELLO 解除）：直接吸收为 have 水位，
+        // 避免下一轮重推设备已持有的帧（曾观测到 stale partial 重推）。
+        this.log(`[Serial] orphan ack frame_id=${String(frameId)} (no waiter), adopting`);
+        if (frameId !== null && frameId >= 0) {
+          this.have = frameId;
         }
         return;
       }
@@ -220,6 +230,7 @@ export class SerialTransport {
       return;
     }
     this.pumping = true;
+    this.log(`[Serial] pump start have=${this.have}`);
     try {
       while (this.linkUp && !this.stopped && this.deviceId !== null) {
         const result = await this.registry.getFrameWithStats(this.deviceId, this.have, this.framePollWaitMs);
@@ -236,8 +247,7 @@ export class SerialTransport {
         }
         if (acked === null) {
           // 超时：链路可疑，回到 HELLO 探测状态；设备重新 HELLO 后再建链。
-          this.log("[Serial] frame ack timeout, link down");
-          this.dropLink();
+          this.dropLink("frame ack timeout");
           break;
         }
         if (acked >= 0) {
@@ -248,9 +258,10 @@ export class SerialTransport {
       }
     } catch (error) {
       this.log(`[Serial] pump error: ${String(error)}`);
-      this.dropLink();
+      this.dropLink("pump error");
     } finally {
       this.pumping = false;
+      this.log(`[Serial] pump exit linkUp=${this.linkUp} have=${this.have}`);
     }
   }
 
@@ -285,7 +296,7 @@ export class SerialTransport {
       this.port.write(data);
     } catch (error) {
       this.log(`[Serial] write failed: ${String(error)}`);
-      this.dropLink();
+      this.dropLink("write failed");
     }
   }
 }
