@@ -116,6 +116,33 @@ inline bool parseRectHeader(const uint8_t *data, std::size_t length, RectHeader 
   return out.format == kFormatRgb565 && (out.encoding == kEncodingRaw || out.encoding == kEncodingRgb565Rle);
 }
 
+// 解码/绘制批量缓冲的像素容量（等价旧的 240px × 2 行）。批量行数按矩形宽度
+// 动态推导：窄矩形（如 6px 宽的雨滴列）一次可推几十行，省掉大量 2 行小批次的
+// pushImage 与流读取开销；全宽矩形维持 2 行不变。
+constexpr uint16_t kFrameBatchPixels = 480;
+
+inline uint16_t computeBatchRows(uint16_t rectWidth, uint16_t remainingRows)
+{
+  if (remainingRows == 0)
+  {
+    return 0;
+  }
+  if (rectWidth == 0)
+  {
+    return 1;
+  }
+  uint32_t rows = kFrameBatchPixels / rectWidth;
+  if (rows == 0)
+  {
+    rows = 1; // 协议已限制宽度 ≤240（≥2 行），这里仅防御
+  }
+  if (rows > remainingRows)
+  {
+    rows = remainingRows;
+  }
+  return static_cast<uint16_t>(rows);
+}
+
 inline uint32_t crc32Begin()
 {
   return 0xFFFFFFFFUL;

@@ -120,3 +120,20 @@ TEST_CASE("table-driven crc32 matches the bitwise reference across chunked updat
   CHECK(offset == sizeof(data));
   CHECK(remote::crc32Finish(table) == remote::crc32Finish(bitwise));
 }
+
+TEST_CASE("computeBatchRows scales batch height by rect width")
+{
+  // 全宽矩形：保持旧行为（480 像素缓冲 = 2 行）。
+  CHECK(remote::computeBatchRows(240, 100) == 2);
+  // 窄矩形（雨滴列典型 6px 宽）：一批可以推满 80 行。
+  CHECK(remote::computeBatchRows(6, 100) == 80);
+  // 剩余行数不足一批时收口到剩余行数。
+  CHECK(remote::computeBatchRows(6, 5) == 5);
+  CHECK(remote::computeBatchRows(240, 1) == 1);
+  // 不整除时向下取整，保证批量像素数不超过缓冲容量。
+  CHECK(remote::computeBatchRows(7, 100) == 68);
+  CHECK(static_cast<uint32_t>(remote::computeBatchRows(7, 100)) * 7 <= remote::kFrameBatchPixels);
+  // 防御分支：0 宽/0 剩余行不会除零或返回越界批量。
+  CHECK(remote::computeBatchRows(0, 10) == 1);
+  CHECK(remote::computeBatchRows(6, 0) == 0);
+}

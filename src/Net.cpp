@@ -326,6 +326,9 @@ bool connect(app::AppConfigData &config, WifiConnectMode mode)
 
   if (WiFi.status() == WL_CONNECTED)
   {
+    // 关闭 modem-sleep：默认 DTIM 省电会给收包注入几十到上百毫秒的周期性
+    // 延迟尖峰，是远程帧抖动来源之一。设备 USB 供电，不在乎这点功耗。
+    WiFi.setSleepMode(WIFI_NONE_SLEEP);
     config.wifiSsid = WiFi.SSID().c_str();
     config.wifiPsk = WiFi.psk().c_str();
     storage::saveConfig(config);
@@ -370,6 +373,8 @@ bool connect(app::AppConfigData &config, WifiConnectMode mode)
     loadingUntilConnected();
   }
 
+  // 同上：连接成功即关掉 modem-sleep，换取稳定的收包延迟。
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
   config.wifiSsid = WiFi.SSID().c_str();
   config.wifiPsk = WiFi.psk().c_str();
   storage::saveConfig(config);
