@@ -355,9 +355,15 @@ export class DeviceRegistry {
       return this.render(state, true);
     }
 
-    const currentSecond = Math.floor(now / this.frameIntervalSeconds);
+    // 秒相位一律取墙钟：翻牌的字符内容（前一秒/当前秒）与雨滴 tick 都由
+    // Date 推导；若窗口判定用进程单调秒，两者存在进程启动时随机的相位差 δ。
+    // δ 偏大时，秒中雨滴帧会以墙钟回退的 progress 把"半翻状态"定格半秒
+    //（实机症状：秒位停在偏上位置、上一字符残留一角）。
+    const wallMs = this.now().getTime();
+    const intervalMs = this.frameIntervalSeconds * 1000;
+    const currentSecond = Math.floor(wallMs / intervalMs);
     if (state.ui.page === "home" && currentSecond === state.lastClockAnimationSecond) {
-      const elapsed = now - currentSecond * this.frameIntervalSeconds;
+      const elapsed = (wallMs - currentSecond * intervalMs) / 1000;
       if (elapsed < this.clockFlipAnimationSeconds && now - state.lastClockAnimationFrameAt >= this.animationFrameIntervalSeconds) {
         state.lastClockAnimationFrameAt = now;
         // diff 覆盖全部三个分区而不只是时钟带：暗背景雨滴跨区分布，跟着翻页帧整屏一致推进。
@@ -375,9 +381,10 @@ export class DeviceRegistry {
       }
       // 秒内 +500ms 的雨滴步进帧：rainTick 的相位偏移让雨滴恰在此刻跳变，
       // 大差分（~11 rects）独享翻牌窗结束后的安静信道，不与翻牌帧抢节拍。
+      // 显式 progress=1：此帧只该推进雨滴，时钟必须保持落定状态。
       if (elapsed >= rainStepSeconds && state.lastRainStepSecond !== currentSecond) {
         state.lastRainStepSecond = currentSecond;
-        return this.render(state, false, [HEADER_REGION, TIME_REGION, FORECAST_REGION]);
+        return this.render(state, false, [HEADER_REGION, TIME_REGION, FORECAST_REGION], 1);
       }
     }
     if (currentSecond <= state.lastRenderSecond) {
@@ -438,11 +445,12 @@ export class DeviceRegistry {
     const started = now;
     const baseFrameId = state.frameId;
     state.frameId += 1;
-    state.lastRenderSecond = Math.floor(now / this.frameIntervalSeconds);
+    const currentTime = this.now();
+    // 与 renderIfDue 的 currentSecond 同基准（墙钟秒），否则每次轮询都误判新秒。
+    state.lastRenderSecond = Math.floor(currentTime.getTime() / (this.frameIntervalSeconds * 1000));
     if (isAnimationActive(state.ui, now)) {
       state.lastAnimationFrameAt = now;
     }
-    const currentTime = this.now();
     const currentCanvas = renderDeviceCanvas({
       currentTime,
       deviceId: state.deviceId,

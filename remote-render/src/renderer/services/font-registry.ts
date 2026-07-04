@@ -6,6 +6,9 @@ import {FONT_MAPLE_MONO_NF_CN, FONT_NOTO_CJK} from "../../ui-state.js";
 // 彩色 emoji 字体用于天气图标（比图元手绘精致得多）。容器里装 Noto Color Emoji，
 // macOS host 用系统 Apple Color Emoji；都没有时 WeatherIcon 回退到图元画法。
 let emojiFontRegistered = false;
+// 实际注册成功的 emoji 字族：Noto（容器）与 Apple（macOS 原生）字形基线
+// 差异明显，WeatherIcon 的垂直补偿必须按字族取值。
+let registeredEmojiFamily: "Noto Color Emoji" | "Apple Color Emoji" | null = null;
 
 // 记录实际注册成功的正文字族名，供测试判断“换字体是否真的换了像素”——
 // 缺字体的环境（如未装 CJK 字体的 CI）两个 fontKey 会回退到同一族，像素相同。
@@ -13,6 +16,10 @@ const registeredTextFamilies = new Set<string>();
 
 export function hasEmojiFont(): boolean {
   return emojiFontRegistered;
+}
+
+export function emojiFontFamilyName(): "Noto Color Emoji" | "Apple Color Emoji" | null {
+  return registeredEmojiFamily;
 }
 
 function primaryTextFamily(fontKey: string): string {
@@ -59,6 +66,9 @@ export function registerFonts(): void {
   for (const [fontPath, name] of emojiCandidates) {
     try {
       if (GlobalFonts.registerFromPath(fontPath, name)) {
+        if (!emojiFontRegistered) {
+          registeredEmojiFamily = name as "Noto Color Emoji" | "Apple Color Emoji";
+        }
         emojiFontRegistered = true;
       }
     } catch {

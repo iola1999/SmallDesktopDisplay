@@ -48,7 +48,12 @@ describe("device registry", () => {
 
   test("returns full frame to cold clients after a partial tick update", async () => {
     let now = 0;
-    const registry = new DeviceRegistry({monotonic: () => now, frameIntervalSeconds: 1});
+    const baseTime = new Date("2026-05-01T12:00:00.000+08:00").getTime();
+    const registry = new DeviceRegistry({
+      monotonic: () => now,
+      now: () => new Date(baseTime + now * 1000),
+      frameIntervalSeconds: 1,
+    });
 
     const first = await registry.getFrame("desk-reboot", 0, 0);
     const frameId = first!.readUInt32LE(8);
@@ -321,7 +326,12 @@ describe("device registry", () => {
 
   test("console preview never advances the frame chain of an actively rendering device", async () => {
     let now = 0;
-    const registry = new DeviceRegistry({monotonic: () => now, frameIntervalSeconds: 1});
+    const baseTime = new Date("2026-05-01T12:00:00.000+08:00").getTime();
+    const registry = new DeviceRegistry({
+      monotonic: () => now,
+      now: () => new Date(baseTime + now * 1000),
+      frameIntervalSeconds: 1,
+    });
     const deviceId = "desk-preview-live";
 
     await registry.getFrame(deviceId, 0, 0);
@@ -349,6 +359,38 @@ describe("device registry", () => {
     registry.applyPrefs(deviceId, {brightness: 80});
     const after = await registry.getFrameWithStats(deviceId, 0, 0);
     expect(after.commandId).toBe(1);
+  });
+
+  test("clock flip window follows the wall clock even when monotonic phase is offset", async () => {
+    // 进程单调秒与墙钟秒存在随机相位差 δ（这里模拟 δ=0.7）：
+    // 秒窗口必须按墙钟推进，否则雨滴帧会把半翻状态定格半秒。
+    let now = 0;
+    const baseTime = new Date("2026-05-01T12:00:00.700+08:00").getTime();
+    const registry = new DeviceRegistry({
+      monotonic: () => now,
+      now: () => new Date(baseTime + now * 1000),
+      frameIntervalSeconds: 1,
+    });
+    const deviceId = "desk-wall-phase";
+
+    const first = await registry.getFrame(deviceId, 0, 0);
+    let have = first!.readUInt32LE(8);
+
+    // 墙钟下一个整秒在单调 0.3 处：此时必须开始新一秒的渲染
+    now = 0.35;
+    const flipStart = await registry.getFrame(deviceId, have, 0);
+    expect(flipStart).not.toBeNull();
+    have = flipStart!.readUInt32LE(8);
+
+    // 墙钟 x.5s（单调 0.8）：雨滴步进帧
+    now = 0.82;
+    const rainStep = await registry.getFrame(deviceId, have, 0);
+    expect(rainStep).not.toBeNull();
+    have = rainStep!.readUInt32LE(8);
+
+    // 同一墙钟秒内不再有更多帧
+    now = 0.95;
+    expect(await registry.getFrame(deviceId, have, 0)).toBeNull();
   });
 
   test("evicts idle devices past the TTL while keeping active ones", async () => {

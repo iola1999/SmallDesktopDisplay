@@ -39,10 +39,11 @@ export function HomePage({model}: {model: HomeViewModel}) {
 // 6%-26%，垫在所有正文之下，不与时钟/天气抢对比度。
 // 行距 8px：每秒下落 8px（比 6px 版快 1/3），雨带 24-48px 更修长；
 // 尾迹亮度按 level 连续渐变（雨头略亮 + 平滑衰减），不再是头亮尾灰的两段跳变。
-// 引擎行数(60)大于可见行数(25)：雨头大部分时间在"屏幕下方"走，画面保持稀疏。
+// 引擎行数(60)大于可见行数(27)：雨头大部分时间在"屏幕下方"走，画面保持稀疏。
+// 边框移除后可见行 25→27，雨幕铺到 y≈230。
 const RAIN_COLUMNS = 12;
 const RAIN_ENGINE_ROWS = 60;
-const RAIN_VISIBLE_ROWS = 25;
+const RAIN_VISIBLE_ROWS = 27;
 
 function RainBackdrop({tick, theme}: {tick: number; theme: ClockTheme}) {
   const view = autoRainRuntimeToViewModel({columns: RAIN_COLUMNS, rows: RAIN_ENGINE_ROWS, cellSize: 6, seed: "home-rain", tick});
@@ -76,21 +77,21 @@ function WeatherSummary({weather, textColor}: {weather: WeatherView; textColor: 
   const compactLabel = weather.current.label.length >= 3;
   return (
     <>
-      <WeatherIcon kind={weather.current.icon} x={20} y={SUMMARY_CENTER_Y - 15} size={24} />
-      <Text style={{x: 50, y: SUMMARY_CENTER_Y - 14, width: 42, height: 28, fontSize: 23, color: tempColor(weather.current.temp)}}>
+      <WeatherIcon kind={weather.current.icon} x={16} y={SUMMARY_CENTER_Y - 16} size={26} />
+      <Text style={{x: 48, y: SUMMARY_CENTER_Y - 15, width: 46, height: 30, fontSize: 25, color: tempColor(weather.current.temp)}}>
         {`${weather.current.temp}°`}
       </Text>
-      <Text style={{x: 96, y: SUMMARY_CENTER_Y - 12, width: 52, height: 24, fontSize: compactLabel ? 15 : 19, color: textColor}}>
+      <Text style={{x: 98, y: SUMMARY_CENTER_Y - 12, width: 50, height: 24, fontSize: compactLabel ? 15 : 19, color: textColor}}>
         {weather.current.label}
       </Text>
       {today ? (
         <>
-          <Text style={{x: 148, y: SUMMARY_CENTER_Y - 8, width: 24, height: 16, fontSize: 12, color: LABEL_COLOR}}>今天</Text>
-          <Text style={{x: 174, y: SUMMARY_CENTER_Y - 11, width: 23, height: 21, fontSize: 16, color: tempColor(today.tempMax), alignItems: "flex-end"}}>
+          <Text style={{x: 146, y: SUMMARY_CENTER_Y - 9, width: 28, height: 18, fontSize: 13, color: LABEL_COLOR}}>今天</Text>
+          <Text style={{x: 176, y: SUMMARY_CENTER_Y - 12, width: 26, height: 23, fontSize: 17, color: tempColor(today.tempMax), alignItems: "flex-end"}}>
             {`${today.tempMax}°`}
           </Text>
-          <Text style={{x: 199, y: SUMMARY_CENTER_Y - 9, width: 5, height: 18, fontSize: 13, color: LABEL_COLOR}}>/</Text>
-          <Text style={{x: 204, y: SUMMARY_CENTER_Y - 11, width: 21, height: 21, fontSize: 16, color: LOW_TEMP_COLOR, alignItems: "flex-end"}}>
+          <Text style={{x: 204, y: SUMMARY_CENTER_Y - 10, width: 6, height: 19, fontSize: 13, color: LABEL_COLOR}}>/</Text>
+          <Text style={{x: 210, y: SUMMARY_CENTER_Y - 12, width: 24, height: 23, fontSize: 17, color: LOW_TEMP_COLOR, alignItems: "flex-end"}}>
             {`${today.tempMin}°`}
           </Text>
         </>
@@ -103,27 +104,29 @@ function WeatherSummary({weather, textColor}: {weather: WeatherView; textColor: 
 function DailyOutlook({weather}: {weather: WeatherView}) {
   return (
     <>
-      <DailyColumn day={weather.days[1]} center={68} />
-      <DailyColumn day={weather.days[2]} center={172} />
+      <DailyColumn day={weather.days[1]} center={66} />
+      <DailyColumn day={weather.days[2]} center={174} />
     </>
   );
 }
 
-// 明后天列放大版：标签 16px + 图标 24px 一行（共享中线），高低温 20/16px 一行。
-const DAILY_LINE1_CENTER_Y = 172;
-const DAILY_LINE2_TOP_Y = 194;
+// 明后天列（边框移除后再放大一档）：标签 18px + 图标 28px 一行（共享中线），
+// 高低温 24/18px 一行；整体下移吃掉原先浪费的底部空间（内容底缘 ~229）。
+const DAILY_LINE1_CENTER_Y = 177;
+const DAILY_LINE2_TOP_Y = 201;
 
 function DailyColumn({day, center}: {day: WeatherDayView; center: number}) {
   return (
     <>
-      <Text style={{x: center - 46, y: DAILY_LINE1_CENTER_Y - 11, width: 40, height: 22, fontSize: 16, color: LABEL_COLOR, alignItems: "flex-end"}}>
+      <Text style={{x: center - 50, y: DAILY_LINE1_CENTER_Y - 12, width: 44, height: 24, fontSize: 18, color: LABEL_COLOR, alignItems: "flex-end"}}>
         {day.label}
       </Text>
-      <WeatherIcon kind={day.icon} x={center + 4} y={DAILY_LINE1_CENTER_Y - 15} size={24} />
-      <Text style={{x: center - 46, y: DAILY_LINE2_TOP_Y, width: 40, height: 24, fontSize: 20, color: tempColor(day.tempMax), alignItems: "flex-end"}}>
+      <WeatherIcon kind={day.icon} x={center + 4} y={DAILY_LINE1_CENTER_Y - 17} size={28} />
+      <Text style={{x: center - 50, y: DAILY_LINE2_TOP_Y, width: 44, height: 28, fontSize: 24, color: tempColor(day.tempMax), alignItems: "flex-end"}}>
         {`${day.tempMax}°`}
       </Text>
-      <Text style={{x: center + 2, y: DAILY_LINE2_TOP_Y + 3, width: 48, height: 20, fontSize: 16, color: LOW_TEMP_COLOR}}>
+      {/* +2 而不是 +4：实测 18px 低温与 24px 高温的墨迹基线差 2px，上提对齐 */}
+      <Text style={{x: center + 2, y: DAILY_LINE2_TOP_Y + 2, width: 52, height: 24, fontSize: 18, color: LOW_TEMP_COLOR}}>
         {`/${day.tempMin}°`}
       </Text>
     </>

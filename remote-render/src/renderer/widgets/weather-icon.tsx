@@ -1,5 +1,5 @@
 import {Box, Text} from "../components/primitives.js";
-import {EMOJI_FONT_FAMILY, hasEmojiFont} from "../services/font-registry.js";
+import {EMOJI_FONT_FAMILY, emojiFontFamilyName, hasEmojiFont} from "../services/font-registry.js";
 import type {WeatherIconKind} from "../services/weather.js";
 
 // 天气图标：优先用彩色 emoji 字体（Noto/Apple Color Emoji，专业设计、任意缩放），
@@ -15,14 +15,21 @@ const EMOJI: Record<WeatherIconKind, string> = {
   thunder: "⛈️", // ⛈️
 };
 
+// emoji 字形墨迹中心相对文本原点的垂直补偿系数（×size，向下为正），按字族
+// 逐像素实测（双快照稳定墨迹法，过滤雨滴污染）：Noto（容器）字形墨迹明显
+// 偏上，需 0.65 大幅下移；Apple（macOS 原生）需 0.25（0.05 时 summary 图标
+// 高出文字轴 6px、daily 高 5px；☁️/🌧 字形间 ±1px 浮动，取折中）。
+const EMOJI_Y_TRIM_FACTOR: Record<string, number> = {
+  "Noto Color Emoji": 0.65,
+  "Apple Color Emoji": 0.25,
+};
+
 export function WeatherIcon({kind, x, y, size = 20}: {kind: WeatherIconKind; x: number; y: number; size?: number}) {
   if (hasEmojiFont()) {
     const box = Math.round(size * 1.3);
     const offset = Math.round((box - size) / 2);
-    // 容器内对 Noto Color Emoji 逐像素实测（两轮）：字形墨迹中心比文本原点高约
-    // 0.65×size（☀/⛈ 等字形间 ±2px 浮动）。此处下移补偿，使图标视觉中心
-    // ≈ y + size/2，与同一行文字的墨迹中心对齐。
-    const emojiYTrim = Math.round(size * 0.65);
+    const trimFactor = EMOJI_Y_TRIM_FACTOR[emojiFontFamilyName() ?? ""] ?? 0.65;
+    const emojiYTrim = Math.round(size * trimFactor);
     return (
       <Text
         style={{
