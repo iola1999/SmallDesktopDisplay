@@ -10,8 +10,16 @@ weather, NTP, page routing, and complex screen drawing stay out of the firmware.
 
 ## Current Version
 
-- Transport: HTTP polling with short long-poll support.
-- Frame model: latest-state sync, not queued playback.
+- Transport: two interchangeable links, auto-selected by the device at boot
+  with no manual switch:
+  - HTTP long-polling over WiFi (`wait_ms=80` parks the request across one
+    20fps animation frame; the server wait loop wakes every 5ms).
+  - A pushed serial link over the USB-serial cable (see "Serial Transport"),
+    used automatically whenever the render host answers on the wire.
+- Frame model: latest-state sync, not queued playback. Missed intermediate
+  frames are healed with a catch-up partial diffed against the canvas the
+  device last confirmed (full-frame resync only for cold clients or when the
+  canvas history has been evicted).
 - Image format: RGB565 rectangles, either raw or RLE-compressed.
 - Rendering service: Dockerized Node.js/TypeScript service under `remote-render/`.
 - Device role: fetch binary frames, draw rectangles to TFT, POST button events,
@@ -42,6 +50,14 @@ GET  /api/v1/health
 - `200 application/octet-stream`: a binary `SDD1` frame.
 - `204 No Content`: no newer frame exists before `wait_ms` expires.
 - `400`: malformed request.
+
+Both `200` and `204` carry `X-SDD-Cmd: <latest command id>` (`0` = none).
+The firmware compares it with its local command watermark and only issues
+`GET /commands` when the server actually holds a newer command. This replaced
+the old fixed 100ms blind command poll, which opened a fresh TCP connection
+ten times per second and injected 10-30ms stalls into the 20fps animation
+cadence. If the id moves backwards (service restart), the device adopts the
+smaller watermark and converges on the next real command.
 
 `POST /input` body:
 
@@ -120,10 +136,15 @@ the clock, and the weather elements simply do not render until the first
 forecast arrives.
 
 Behind the content, a digital-rain backdrop (the one survivor of the removed
-ambient-game carousel) drips at one step per second, riding the per-second render. It is pure `(seed, tick)`
+ambient-game carousel) drips at one step per second. It is pure `(seed, tick)`
 derivation with the tick taken from the wall clock, needs no per-device state,
 and is dimmed toward the theme background (mixing the theme's seconds colour at
-15-30%) so it never competes with the clock or weather. Device id, tap count,
+15-30%) so it never competes with the clock or weather. The rain tick is phase
+shifted by +500ms (`RAIN_STEP_OFFSET_MS`): it advances at x.5s, after the
+0-450ms clock-flip window has finished, and the scheduler emits one dedicated
+mid-second frame to carry the ~11-rect rain diff. Before this, the rain step
+landed on the first flip frame of every second and its ~4KB payload regularly
+made the seconds flip drop a beat. Device id, tap count,
 sync status, RSSI, and other development-only labels are intentionally kept out
 of the first screen; detailed diagnostics live under Settings -> Device.
 Hour, minute, and second digits use a server-side flip-style transition for the
@@ -201,8 +222,11 @@ It does not make the ESP8266 catch up through stale frames.
 4. If `N` is already latest, the server waits up to `wait_ms`.
 5. If a newer frame appears during that wait, the server returns it immediately.
 6. If the latest update is a partial frame whose `base_frame_id` does not match
-   `N`, the server returns the latest `full_frame` instead. This keeps dropped
-   animation frames and multiple clients from corrupting the display.
+   `N`, the server first tries a catch-up partial: it keeps the last 8 rendered
+   canvases per device and, when the canvas for `N` is still available, encodes
+   the dirty diff between that canvas and the current one (base = `N`). This
+   turns what used to be a 15KB/~150ms full-frame resync into a 1-2KB partial.
+   Only when the history has been evicted does it fall back to `full_frame`.
 7. If no newer frame appears, the server returns `204`.
 8. If a dirty update is unsafe or insufficient, the server returns a full frame.
 9. The device updates local `have` only after the frame is fully read, validated,
@@ -328,20 +352,106 @@ in the ESP8266 release build. First device samples after flashing show
 frames. That is a modest but real win, and much lower risk than jumping directly
 to WebSocket or raw TCP.
 
-That points the next optimization work toward smaller payloads first:
+The 2026-07 transport tuning pass addressed the remaining cadence problems:
 
-- Keep full-frame resyncs rare and continue using dirty rectangles for normal
-  UI changes.
-- Track RLE efficiency as UI complexity grows; highly noisy image-heavy screens
-  can fall back to raw RGB565 when RLE is not smaller.
-- Test larger row batches only after checking stack and heap headroom. The
-  current full frame uses 120 `pushImage` calls with a 2-row buffer; TFT time is already small,
-  so this is unlikely to remove the main scan delay by itself.
-- Continue watching `client_overhead_ms` after Keep-Alive. If it remains near
-  `9-12ms`, transport overhead is probably no longer the next bottleneck.
-- Raw TCP or WebSocket could reduce more protocol overhead, but they add a
-  longer-lived socket, reconnect state, and library/buffer memory pressure on an
-  ESP8266. Keep them behind evidence that HTTP Keep-Alive is still not enough.
+- `kRemoteFrameWaitMs` went from 10 to 80ms. With a 10ms wait, the drain-mode
+  re-poll usually landed before the next 50ms animation frame was due, burned a
+  204, and then waited out the 50ms poll throttle — the 20fps flip actually ran
+  at ~12-16fps with 50-90ms jitter. An 80ms park rides across exactly one frame
+  interval, so animation frames return on the render beat, one HTTP transaction
+  each. The server-side wait loop quantum dropped from 25ms to 5ms for the same
+  reason.
+- `WIFI_NONE_SLEEP` and default `WiFiClient` no-delay kill the DTIM modem-sleep
+  latency spikes and Nagle/delayed-ACK interactions.
+- Command polling is piggybacked on `X-SDD-Cmd` (see the API section).
+- Status POSTs no longer force a render unless the Device/Brightness page is
+  actually showing the reported values; the console preview no longer advances
+  the frame chain of an actively polling device. Both used to insert frames
+  mid-flip and trigger full-frame resyncs.
+- Decode/draw row batching is sized by the 960B buffer instead of a fixed 2
+  rows (`computeBatchRows`): narrow rain-column rects now push up to 80 rows
+  per `pushImage` instead of 2, cutting dozens of tiny TFT calls per rain frame.
+- Raw TCP or WebSocket push over WiFi was evaluated and deliberately skipped:
+  with parked long-polls, piggybacked commands, and catch-up partials the
+  remaining HTTP overhead is ~300B of headers per frame, and the serial link
+  below is the push transport for the cable-reach case.
+
+## Serial Transport
+
+When the display sits within USB reach of the Docker host, the same `SDD1`
+frames can travel over the USB-serial cable instead of WiFi. Serial is a push
+transport: zero HTTP headers, zero request round-trips, no 2.4G contention or
+modem-sleep jitter, and one cable carries both power and data. At the default
+921600 baud (~92KB/s effective) the quiet-clock workload (<20KB/s average,
+worst single frame ~4KB) fits comfortably; a 15KB full-frame resync takes
+~165ms, on par with WiFi today. The baud lives in `AppConfig.h`
+(`kSerialBaud`) and `SERIAL_BAUD` on the service; both sides must match.
+
+### Link selection (no manual switch)
+
+The device picks the transport automatically:
+
+1. Boot: the firmware sends a `DEVICE_HELLO` envelope and listens ~1.5s
+   (`kSerialDetectWindowMs`). Any valid downlink envelope (the host's probe
+   `HELLO`, or the first frame the host pushes in response) selects serial
+   mode; WiFi stays completely off (`WIFI_OFF`). On timeout the firmware
+   falls back to the existing WiFi path.
+2. WiFi mode keeps passively scanning UART RX. When the render host appears
+   (it probes `HELLO` every 2s while no device is linked), the firmware
+   switches to serial on the fly. In passive mode frame/command envelopes are
+   drained but never drawn, so two transports can never paint the panel at
+   the same time.
+3. Serial mode watches downlink liveness: the home screen renders at least
+   one frame per second, so 10s of silence (`kSerialLinkIdleMs`) means the
+   link is gone. The firmware re-probes with `HELLO` a few times, then falls
+   back to WiFi when credentials exist, or keeps waiting on serial (with a
+   status screen) when they do not. Every link (re)establishment starts from
+   `have=0`, so recovery is always a clean full frame.
+
+### Wire format
+
+Each message is an envelope; between envelopes the line may carry raw firmware
+log text, which the host forwards to its own log (the serial-monitor
+experience survives):
+
+```text
+magic0   u8     0xA5
+magic1   u8     0x5A
+type     u8
+length   u32le  payload bytes
+crc32    u32le  CRC32 of payload (zlib polynomial, same as SDD1)
+payload  length bytes
+```
+
+Downlink types: `0x01 FRAME` (payload = verbatim `SDD1` frame, envelope length
+must equal the frame's self-described size), `0x02 COMMAND` (same JSON as
+`GET /commands`), `0x03 HELLO` (`{"proto":1}`). Uplink types: `0x81
+DEVICE_HELLO` (`{"device_id","proto"}`), `0x82 INPUT` and `0x83 STATUS` (same
+JSON bodies as the HTTP POSTs), `0x84 FRAME_ACK` (`{"frame_id"}`), `0x85
+COMMAND_ACK` (`{"id"}`).
+
+The host side reuses `DeviceRegistry` unchanged: a pump loop calls
+`getFrameWithStats(deviceId, have, 1000)` exactly like an HTTP client, writes
+the frame, and waits for `FRAME_ACK` before advancing `have` (stop-and-wait,
+so at most one frame is in flight and the device's 4KB RX buffer bounds
+everything). A failed/corrupt frame is acked with the old `have`, which the
+registry heals with a catch-up partial. Commands are pushed the moment the
+queue changes — no polling anywhere on the serial path.
+
+### Operations
+
+- Enable by uncommenting the `devices:` mapping in
+  `remote-render/docker-compose.yml` and starting with
+  `SERIAL_PORT=/dev/ttyUSB0 docker compose up -d`. `SERIAL_PORT` empty keeps
+  the transport off; the HTTP API always runs.
+- The service reopens the port every 5s after USB unplug/errors.
+- Flashing firmware uses the same USB port: stop the container (or unplug)
+  before `pio run -t upload`, or esptool will fight the render service for
+  the port.
+- Logging and the protocol share UART0 at 921600; use
+  `pio device monitor -b 921600` for bare development. Firmware log lines
+  show up in the container log prefixed with `[device]` when the serial link
+  is active.
 
 ## Docker Service Structure
 
@@ -503,18 +613,32 @@ src/ui/
   TftFrameSink.h/.cpp
 ```
 
-The firmware main loop is:
+The firmware main loop dispatches on the auto-detected link mode.
+
+WiFi mode:
 
 1. Connect WiFi using the existing setup portal path.
 2. Poll button events and POST gestures to the Docker service.
-3. Poll `/commands?after=...` and execute local commands such as brightness PWM.
+3. Fetch `/commands?after=...` only when a frame response's `X-SDD-Cmd` header
+   shows a newer command id, and execute local commands such as brightness PWM.
 4. POST local status periodically and after relevant state changes.
-5. Poll `/frame?have=...`.
-6. Draw each rectangle directly to TFT, batching up to 2 RGB565 rows per
-   `pushImage` call. A previous 4-row buffer was faster, but too close to the
-   ESP8266 loop stack limit once RLE decoding added a second read buffer.
-7. Draw only the hold-progress overlay locally while the button is pressed.
-8. Show a minimal local error message if WiFi or the render service is down.
+5. Long-poll `/frame?have=...&wait_ms=80`.
+6. Keep watching UART RX for a render-host `HELLO` to switch to serial mode.
+
+Serial mode replaces 2-5 with envelope handling on UART0: frames are drawn as
+they arrive and acked, commands arrive pushed and are acked after applying,
+input/status go up the same wire.
+
+Common to both modes:
+
+- Draw each rectangle directly to TFT through the shared
+  `FrameStreamConsumer`, batching `computeBatchRows(width)` RGB565 rows per
+  `pushImage` call into a 960B buffer (2 rows at full width, up to 80 rows for
+  narrow rain-column rects). The buffer lives in BSS, not on the ~4KB loop
+  stack.
+- Draw only the hold-progress overlay locally while the button is pressed.
+- Show a minimal local error message if the active link or the render service
+  is down.
 
 The local status/error screen now also includes the device IP when connected, so
 the setup page can be reached from another LAN device without opening serial

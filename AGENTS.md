@@ -12,7 +12,13 @@ ESP-12E 模块桌面小屏显示器，基于 PlatformIO + Arduino framework。�
 
 - 构建：`~/.platformio/penv/bin/pio run -e esp12e`
 - 烧录：`~/.platformio/penv/bin/pio run -e esp12e -t upload`
-- 串口监视：`~/.platformio/penv/bin/pio device monitor -b 115200`
+- 串口监视：`~/.platformio/penv/bin/pio device monitor -b 921600`
+
+串口既是日志口也是可选的帧传输口（见 docs/remote-rendering-http-frame-design.md
+的 Serial Transport 一节）：设备开机自动探测，USB 连着渲染宿主机（容器设置了
+SERIAL_PORT + devices 映射）就走串口推送，否则回落 WiFi HTTP 轮询，无手动开关。
+注意：串口模式下烧录前要先停容器释放端口；波特率统一 921600
+（AppConfig.h kSerialBaud 与 compose 的 SERIAL_BAUD 必须一致）。
 
 如果当前 shell 已经把 `pio` 加进 PATH，上述命令可简写成 `pio ...`。
 
@@ -40,8 +46,8 @@ ESP-12E 模块桌面小屏显示器，基于 PlatformIO + Arduino framework。�
 
 - [remote-render](remote-render) — Dockerized Node.js + React/Yoga/Skia 远程渲染服务
 - [remote-render/src/tools/frame-preview.ts](remote-render/src/tools/frame-preview.ts) — 本地 HTTP 帧预览客户端，生成 PNG 辅助排查显示问题
-- [src/main.cpp](src/main.cpp) — 设备入口、远程帧轮询、按键上报、命令轮询和状态同步
-- [src/remote](src/remote) — HTTP 帧协议、帧拉取、输入事件 POST、状态 POST 和命令 GET
+- [src/main.cpp](src/main.cpp) — 设备入口、链路自动探测（串口/WiFi）、帧轮询、按键上报、命令与状态同步
+- [src/remote](src/remote) — SDD1 帧协议与流式消费器、HTTP 帧拉取、串口信封协议与链路、输入/状态/命令客户端
 - [src/ui/TftFrameSink.cpp](src/ui/TftFrameSink.cpp) — RGB565 矩形帧到 TFT 的输出桥接
 - [src/Display.cpp](src/Display.cpp) / [src/Input.cpp](src/Input.cpp) / [src/Net.cpp](src/Net.cpp) / [src/Storage.cpp](src/Storage.cpp) — 保留的硬件基础层
 - [src/app](src/app) — 纯 C++ 配置、状态文本、帧诊断、长按反馈、Keep-Alive 策略和 WiFi 配网页生成
