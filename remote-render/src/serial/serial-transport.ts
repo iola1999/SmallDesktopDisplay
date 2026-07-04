@@ -64,7 +64,9 @@ export class SerialTransport {
     this.helloIntervalMs = options.helloIntervalMs ?? 2000;
     this.ackTimeoutMs = options.ackTimeoutMs ?? 2000;
     this.commandCheckIntervalMs = options.commandCheckIntervalMs ?? 250;
-    this.framePollWaitMs = options.framePollWaitMs ?? 1000;
+    // 250ms 停靠：设备重建链路（HELLO 令 have 归零）后，最多等一次停靠
+    // 就能用新 have 推全屏帧，缩短开机/恢复时的旧画面窗口。
+    this.framePollWaitMs = options.framePollWaitMs ?? 250;
   }
 
   start(): void {
@@ -149,6 +151,11 @@ export class SerialTransport {
         // have 归零让第一帧走全屏，清掉设备屏幕上任何本地状态文本。
         this.have = 0;
         this.linkUp = true;
+        // 立即回一个 HELLO：设备开机探测窗只有 1.5s，而帧泵可能正停靠在
+        // 上一轮长轮询里（对新 HELLO 的第一帧响应最长要等 framePollWaitMs +
+        // 一次陈旧 partial 的往返）。没有这个即时回应，设备重启会误判无宿主
+        // 而绕道 WiFi。设备侧对 HELLO 回复有 1.5s 速率限制，不会形成乒乓。
+        this.safeWrite(encodeEnvelope(MSG_HELLO, Buffer.from(JSON.stringify({proto: 1}))));
         // 设备在等待 ACK 期间重启重连：用 -1 解除挂起的等待（帧泵继续、
         // 不判为超时断链），have 已归零，下一帧自动是全屏。
         if (this.ackWaiter !== null) {

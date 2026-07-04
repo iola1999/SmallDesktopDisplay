@@ -86,6 +86,10 @@ describe("serial transport", () => {
     port.emitData(deviceHello());
     await waitFor(() => port.decodeWritten().some((message) => message.type === MSG_FRAME));
 
+    // 设备 HELLO 必须得到即时 HELLO 回应：设备开机探测窗只有 1.5s，
+    // 不能等帧泵从上一轮停靠里转出来。
+    expect(port.decodeWritten().some((message) => message.type === MSG_HELLO)).toBe(true);
+
     const frames = port.decodeWritten().filter((message) => message.type === MSG_FRAME);
     expect(frames).toHaveLength(1);
     const sdd1 = frames[0].payload;

@@ -14,8 +14,6 @@ export interface HomeViewModel extends BaseViewModel {
   clockGlyphs: ClockFlipGlyphViewModel[];
   theme: ClockTheme;
   weather?: WeatherView;
-  // 首页暗背景数字雨的步进（每秒 +1），由墙钟推导，无需持久状态。
-  rainTick: number;
 }
 
 export type ClockFlipGlyphGroup = "time" | "seconds";
@@ -32,19 +30,6 @@ export interface ClockFlipGlyphViewModel {
   height: number;
   fontSize: number;
   color: string;
-}
-
-export interface AutoRainViewModel {
-  columns: number;
-  rows: number;
-  cellSize: number;
-  cells: RainCellViewModel[];
-}
-
-export interface RainCellViewModel {
-  x: number;
-  y: number;
-  level: number;
 }
 
 export interface SettingsViewModel extends BaseViewModel {

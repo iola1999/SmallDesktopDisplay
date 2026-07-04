@@ -19,7 +19,6 @@ const expectedModules = [
   "rendering/dirty-rects.ts",
   "rendering/rasterizer.ts",
   "services/color.ts",
-  "services/auto-rain.ts",
   "services/clock-flip.ts",
   "services/clock-theme.ts",
   "services/font-registry.ts",

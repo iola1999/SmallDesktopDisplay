@@ -4,7 +4,6 @@ import {
   SCREEN_WIDTH,
   FORECAST_REGION,
   HEADER_REGION,
-  RAIN_STEP_OFFSET_MS,
   TIME_REGION,
   type CanvasImage,
   type RectTuple,
@@ -57,9 +56,6 @@ export class DeviceState {
   lastClockAnimationSecond = -1;
   lastClockAnimationFrameAt = -1;
   lastClockAnimationCleanupSecond = -1;
-  // 秒内 +500ms 的雨滴步进帧已出的秒号：与 rainTick 的相位偏移配套，
-  // 保证每秒只出一帧专载雨滴差分。
-  lastRainStepSecond = -1;
   // 最近一次 render() 的单调时刻：预览端点据此判断 canvas 是否新鲜，
   // 避免与真实设备的轮询竞争插帧。
   lastRenderedAt = -Infinity;
@@ -355,10 +351,9 @@ export class DeviceRegistry {
       return this.render(state, true);
     }
 
-    // 秒相位一律取墙钟：翻牌的字符内容（前一秒/当前秒）与雨滴 tick 都由
-    // Date 推导；若窗口判定用进程单调秒，两者存在进程启动时随机的相位差 δ。
-    // δ 偏大时，秒中雨滴帧会以墙钟回退的 progress 把"半翻状态"定格半秒
-    //（实机症状：秒位停在偏上位置、上一字符残留一角）。
+    // 秒相位一律取墙钟：翻牌的字符内容（前一秒/当前秒）由 Date 推导；若窗口
+    // 判定用进程单调秒，两者存在进程启动时随机的相位差 δ，曾造成秒中渲染以
+    // 墙钟回退的 progress 把"半翻状态"定格（秒位停偏上、旧字残留一角）。
     const wallMs = this.now().getTime();
     const intervalMs = this.frameIntervalSeconds * 1000;
     const currentSecond = Math.floor(wallMs / intervalMs);
@@ -366,24 +361,10 @@ export class DeviceRegistry {
       const elapsed = (wallMs - currentSecond * intervalMs) / 1000;
       if (elapsed < this.clockFlipAnimationSeconds && now - state.lastClockAnimationFrameAt >= this.animationFrameIntervalSeconds) {
         state.lastClockAnimationFrameAt = now;
-        // diff 覆盖全部三个分区而不只是时钟带：暗背景雨滴跨区分布，跟着翻页帧整屏一致推进。
         return this.render(state, false, [HEADER_REGION, TIME_REGION, FORECAST_REGION], elapsed / this.clockFlipAnimationSeconds);
       }
-      const rainStepSeconds = RAIN_STEP_OFFSET_MS / 1000;
       if (elapsed >= this.clockFlipAnimationSeconds && state.lastClockAnimationCleanupSecond !== currentSecond) {
         state.lastClockAnimationCleanupSecond = currentSecond;
-        if (elapsed >= rainStepSeconds) {
-          // 轮询稀疏时清理帧可能已越过雨滴跳变点，此时它顺带承载了雨滴差分，
-          // 不再需要单独的雨滴帧。
-          state.lastRainStepSecond = currentSecond;
-        }
-        return this.render(state, false, [HEADER_REGION, TIME_REGION, FORECAST_REGION], 1);
-      }
-      // 秒内 +500ms 的雨滴步进帧：rainTick 的相位偏移让雨滴恰在此刻跳变，
-      // 大差分（~11 rects）独享翻牌窗结束后的安静信道，不与翻牌帧抢节拍。
-      // 显式 progress=1：此帧只该推进雨滴，时钟必须保持落定状态。
-      if (elapsed >= rainStepSeconds && state.lastRainStepSecond !== currentSecond) {
-        state.lastRainStepSecond = currentSecond;
         return this.render(state, false, [HEADER_REGION, TIME_REGION, FORECAST_REGION], 1);
       }
     }
@@ -393,7 +374,7 @@ export class DeviceRegistry {
     if (state.ui.page === "home") {
       state.lastClockAnimationSecond = currentSecond;
       state.lastClockAnimationFrameAt = now;
-      // 安静首页每秒刷新：顶部（日期+农历）、时钟带、下方天气区（含暗背景雨滴）。
+      // 安静首页每秒刷新：顶部（日期+农历）、时钟带、下方天气区。
       return this.render(state, false, [HEADER_REGION, TIME_REGION, FORECAST_REGION]);
     }
     return this.render(state, false, [TIME_REGION]);

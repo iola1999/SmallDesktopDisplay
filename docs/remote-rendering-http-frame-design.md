@@ -135,16 +135,12 @@ Open-Meteo for Hangzhou Xiaoshan and cached; failures are silent and never block
 the clock, and the weather elements simply do not render until the first
 forecast arrives.
 
-Behind the content, a digital-rain backdrop (the one survivor of the removed
-ambient-game carousel) drips at one step per second. It is pure `(seed, tick)`
-derivation with the tick taken from the wall clock, needs no per-device state,
-and is dimmed toward the theme background (mixing the theme's seconds colour at
-15-30%) so it never competes with the clock or weather. The rain tick is phase
-shifted by +500ms (`RAIN_STEP_OFFSET_MS`): it advances at x.5s, after the
-0-450ms clock-flip window has finished, and the scheduler emits one dedicated
-mid-second frame to carry the ~11-rect rain diff. Before this, the rain step
-landed on the first flip frame of every second and its ~4KB payload regularly
-made the seconds flip drop a beat. Device id, tap count,
+The digital-rain backdrop (the last survivor of the removed ambient-game
+carousel) was removed on 2026-07-04 at the user's request — it read as visual
+noise. Removing it also cut the steady payload roughly in half (the dedicated
+per-second rain frame was ~5.4KB / 8-14 rects) and shrank the full-frame resync
+from ~28KB to ~9KB. The background is now a plain theme fill; the per-second
+scheduling (flip window + cleanup frame) is unchanged. Device id, tap count,
 sync status, RSSI, and other development-only labels are intentionally kept out
 of the first screen; detailed diagnostics live under Settings -> Device.
 Hour, minute, and second digits use a server-side flip-style transition for the
@@ -152,9 +148,10 @@ first 450ms after each second boundary. The registry passes explicit scheduler
 progress into the renderer, so the transition is not tied to wall-clock
 millisecond timing. Each changing digit is drawn inside a clipped slot: the old
 glyph eases out (ease-in-out cubic, quadratic fade) while the new glyph rises in
-and settles with a slight ease-out-back overshoot. Flip frames diff all three
-home regions so the rain backdrop advances atomically with the clock. After the
-animation window expires, the registry emits one extra `progress=1` cleanup
+and settles with a slight ease-out-back overshoot. The scheduler derives the
+per-second window from the wall clock (not process-monotonic time), so the
+flip progress always agrees with the wall-clock-derived digit content. After
+the animation window expires, the registry emits one extra `progress=1` cleanup
 frame. That final partial clears any translucent outgoing glyph pixels before
 the second is considered settled.
 

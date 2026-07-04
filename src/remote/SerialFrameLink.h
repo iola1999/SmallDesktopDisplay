@@ -72,6 +72,9 @@ private:
   char deviceId_[33] = {};
   uint32_t haveFrameId_ = 0;
   uint32_t lastDownlinkMs_ = 0;
+  // HELLO 速率限制：宿主机对设备 HELLO 会立即回 HELLO，无限制互回会乒乓。
+  bool helloEverSent_ = false;
+  uint32_t lastHelloSentMs_ = 0;
   // 控制消息接收缓冲：放成员（BSS）而非 handleControl 栈上，ESP8266 栈紧张。
   uint8_t controlPayload_[kSerialMaxControlPayload + 1] = {};
 };

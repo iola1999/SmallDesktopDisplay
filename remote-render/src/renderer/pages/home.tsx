@@ -1,9 +1,6 @@
 import {FrameBackground} from "../components/frame-background.js";
 import {Box, Screen, Text} from "../components/primitives.js";
 import type {ClockFlipGlyphViewModel, HomeViewModel} from "../models/view-model.js";
-import {autoRainRuntimeToViewModel} from "../services/auto-rain.js";
-import type {ClockTheme} from "../services/clock-theme.js";
-import {mixColor} from "../services/color.js";
 import {tempColor, type WeatherDayView, type WeatherView} from "../services/weather.js";
 import {WeatherIcon} from "../widgets/weather-icon.js";
 
@@ -17,7 +14,6 @@ export function HomePage({model}: {model: HomeViewModel}) {
   return (
     <Screen fontKey={model.fontKey} backgroundColor={theme.background}>
       <FrameBackground theme={theme} />
-      <RainBackdrop tick={model.rainTick} theme={theme} />
       {/* 顶行：左公历日期，右农历 */}
       <Text style={{x: 16, y: 22, width: 130, height: 22, fontSize: 17, color: theme.date}}>
         {`${model.copy.dateText} ${model.copy.weekdayShort}`}
@@ -31,39 +27,6 @@ export function HomePage({model}: {model: HomeViewModel}) {
       {weather ? <WeatherSummary weather={weather} textColor={theme.date} /> : null}
       {weather && weather.days.length >= 3 ? <DailyOutlook weather={weather} /> : null}
     </Screen>
-  );
-}
-
-// 常驻暗背景数字雨：游戏轮播删除后留下的"活气"。纯 (seed, tick) 推导（tick 每秒
-// 走一格，由视图模型从墙钟算出），无持久状态。颜色从主题秒针色向背景色压暗到
-// 6%-26%，垫在所有正文之下，不与时钟/天气抢对比度。
-// 行距 8px：每秒下落 8px（比 6px 版快 1/3），雨带 24-48px 更修长；
-// 尾迹亮度按 level 连续渐变（雨头略亮 + 平滑衰减），不再是头亮尾灰的两段跳变。
-// 引擎行数(60)大于可见行数(27)：雨头大部分时间在"屏幕下方"走，画面保持稀疏。
-// 边框移除后可见行 25→27，雨幕铺到 y≈230。
-const RAIN_COLUMNS = 12;
-const RAIN_ENGINE_ROWS = 60;
-const RAIN_VISIBLE_ROWS = 27;
-
-function RainBackdrop({tick, theme}: {tick: number; theme: ClockTheme}) {
-  const view = autoRainRuntimeToViewModel({columns: RAIN_COLUMNS, rows: RAIN_ENGINE_ROWS, cellSize: 6, seed: "home-rain", tick});
-  return (
-    <>
-      {view.cells
-        .filter((cell) => cell.y < RAIN_VISIBLE_ROWS)
-        .map((cell) => (
-          <Box
-            key={`${cell.x}-${cell.y}`}
-            style={{
-              x: 16 + cell.x * 18,
-              y: 14 + cell.y * 8,
-              width: 2,
-              height: 8,
-              backgroundColor: mixColor(theme.seconds, theme.background, cell.level >= 1 ? 0.74 : 0.78 + (1 - cell.level) * 0.14),
-            }}
-          />
-        ))}
-    </>
   );
 }
 

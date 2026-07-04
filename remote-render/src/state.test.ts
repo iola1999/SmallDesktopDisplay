@@ -194,7 +194,7 @@ describe("device registry", () => {
     });
   });
 
-  test("schedules a dedicated rain-step frame at +500ms after the flip window", async () => {
+  test("quiet tail after the cleanup frame emits no extra frames", async () => {
     let now = 0;
     const baseTime = new Date("2026-05-01T12:00:00.000+08:00").getTime();
     const registry = new DeviceRegistry({
@@ -202,7 +202,7 @@ describe("device registry", () => {
       now: () => new Date(baseTime + now * 1000),
       frameIntervalSeconds: 1,
     });
-    const deviceId = "desk-rain-step";
+    const deviceId = "desk-quiet-tail";
 
     const first = await registry.getFrame(deviceId, 0, 0);
     let have = first!.readUInt32LE(8);
@@ -213,48 +213,16 @@ describe("device registry", () => {
     expect(flipStart).not.toBeNull();
     have = flipStart!.readUInt32LE(8);
 
-    // 翻牌窗结束（0.45s）后的清理帧，此时还没到雨滴跳变点
+    // 翻牌窗结束（0.45s）后的清理帧
     now = 1.46;
     const cleanup = await registry.getFrame(deviceId, have, 0);
     expect(cleanup).not.toBeNull();
     have = cleanup!.readUInt32LE(8);
 
-    // +500ms：雨滴 tick 跳变，调度器单独出一帧承载雨滴差分
-    now = 1.51;
-    const rainStep = await registry.getFrame(deviceId, have, 0);
-    expect(rainStep).not.toBeNull();
-    expect(rainStep![5] & 0x01).toBe(0); // partial
-    have = rainStep!.readUInt32LE(8);
-
-    // 同一秒内不再有第二个雨滴帧
+    // 之后到下一整秒之间保持安静
     now = 1.7;
     expect(await registry.getFrame(deviceId, have, 0)).toBeNull();
-  });
-
-  test("cleanup frame past the rain offset absorbs the rain step without an extra frame", async () => {
-    let now = 0;
-    const baseTime = new Date("2026-05-01T12:00:00.000+08:00").getTime();
-    const registry = new DeviceRegistry({
-      monotonic: () => now,
-      now: () => new Date(baseTime + now * 1000),
-      frameIntervalSeconds: 1,
-    });
-    const deviceId = "desk-rain-late-cleanup";
-
-    const first = await registry.getFrame(deviceId, 0, 0);
-    let have = first!.readUInt32LE(8);
-
-    now = 1.0;
-    const flipStart = await registry.getFrame(deviceId, have, 0);
-    have = flipStart!.readUInt32LE(8);
-
-    // 设备迟到，清理帧在 0.5s 之后才被拉走：它顺带承载雨滴差分
-    now = 1.6;
-    const lateCleanup = await registry.getFrame(deviceId, have, 0);
-    expect(lateCleanup).not.toBeNull();
-    have = lateCleanup!.readUInt32LE(8);
-
-    now = 1.8;
+    now = 1.95;
     expect(await registry.getFrame(deviceId, have, 0)).toBeNull();
   });
 
@@ -363,7 +331,7 @@ describe("device registry", () => {
 
   test("clock flip window follows the wall clock even when monotonic phase is offset", async () => {
     // 进程单调秒与墙钟秒存在随机相位差 δ（这里模拟 δ=0.7）：
-    // 秒窗口必须按墙钟推进，否则雨滴帧会把半翻状态定格半秒。
+    // 秒窗口必须按墙钟推进，否则秒中渲染会以墙钟回退的 progress 定格半翻状态。
     let now = 0;
     const baseTime = new Date("2026-05-01T12:00:00.700+08:00").getTime();
     const registry = new DeviceRegistry({
@@ -382,11 +350,11 @@ describe("device registry", () => {
     expect(flipStart).not.toBeNull();
     have = flipStart!.readUInt32LE(8);
 
-    // 墙钟 x.5s（单调 0.8）：雨滴步进帧
+    // 墙钟 x.52（单调 0.82）：翻牌窗结束后的清理帧
     now = 0.82;
-    const rainStep = await registry.getFrame(deviceId, have, 0);
-    expect(rainStep).not.toBeNull();
-    have = rainStep!.readUInt32LE(8);
+    const cleanup = await registry.getFrame(deviceId, have, 0);
+    expect(cleanup).not.toBeNull();
+    have = cleanup!.readUInt32LE(8);
 
     // 同一墙钟秒内不再有更多帧
     now = 0.95;

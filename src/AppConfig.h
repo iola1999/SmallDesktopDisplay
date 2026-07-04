@@ -58,6 +58,9 @@ constexpr uint32_t kSerialLinkIdleMs = 10000;
 // 链路疑似断开后的 HELLO 补发间隔与次数，全部无回应才降级 WiFi。
 constexpr uint32_t kSerialProbeIntervalMs = 2000;
 constexpr uint8_t kSerialProbeAttempts = 3;
+// 设备端 HELLO 最小发送间隔：宿主机会对设备 HELLO 立即回 HELLO（加速开机
+// 探测），设备若无条件回应会形成握手乒乓；小于宿主机 2s 探测周期即可。
+constexpr uint32_t kSerialHelloMinIntervalMs = 1500;
 // 串口整帧读取的分段超时（同 HTTP 的 lastProgress 语义，串口链路更短）。
 constexpr uint32_t kSerialReadTimeoutMs = 2000;
 

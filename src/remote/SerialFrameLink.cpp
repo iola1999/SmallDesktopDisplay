@@ -246,12 +246,22 @@ void SerialFrameLink::sendEnvelope(uint8_t type, const uint8_t *payload, std::si
 
 void SerialFrameLink::sendHello()
 {
+  // 速率限制：宿主机对设备 HELLO 会立即回 HELLO（加速开机探测），设备再
+  // 无条件回应就会互相乒乓且反复把 have 归零。1.5s 间隔小于宿主机 2s 探测
+  // 周期，不影响正常探活。
+  const uint32_t nowMs = millis();
+  if (helloEverSent_ && nowMs - lastHelloSentMs_ < app_config::kSerialHelloMinIntervalMs)
+  {
+    return;
+  }
   char body[96];
   const int written = snprintf(body, sizeof(body), "{\"device_id\":\"%s\",\"proto\":1}", deviceId_);
   if (written <= 0 || static_cast<std::size_t>(written) >= sizeof(body))
   {
     return;
   }
+  helloEverSent_ = true;
+  lastHelloSentMs_ = nowMs;
   sendEnvelope(kSerialMsgDeviceHello, reinterpret_cast<const uint8_t *>(body), static_cast<std::size_t>(written));
 }
 
