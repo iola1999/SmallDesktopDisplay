@@ -30,12 +30,15 @@ describe("Node HTTP API", () => {
     expect(first.headers.get("content-type")).toBe("application/octet-stream");
     expect(first.headers.get("transfer-encoding")).toBeNull();
     expect(first.headers.get("x-sdd-server-wait-ms")).toMatch(/^\d+$/);
+    // 命令 piggyback 信号：200/204 都必须携带，设备据此免除命令盲轮询
+    expect(first.headers.get("x-sdd-cmd")).toBe("0");
     const body = Buffer.from(await first.arrayBuffer());
     expect(first.headers.get("content-length")).toBe(String(body.length));
     const frameId = body.readUInt32LE(8);
 
     const second = await fetch(`${baseUrl}/api/v1/devices/desk-01/frame?have=${frameId}&wait_ms=1`);
     expect(second.status).toBe(204);
+    expect(second.headers.get("x-sdd-cmd")).toBe("0");
   });
 
   test("validates status payload fields like the previous API contract", async () => {
@@ -75,6 +78,11 @@ describe("Node HTTP API", () => {
     const queued = await fetch(`${baseUrl}/api/v1/devices/desk-cmd/commands?after=0`);
     expect(queued.status).toBe(200);
     await expect(queued.json()).resolves.toMatchObject({type: "set_brightness"});
+
+    // 命令入队后，帧响应头携带其 id，通知设备来取
+    const frame = await fetch(`${baseUrl}/api/v1/devices/desk-cmd/frame?have=0`);
+    expect(frame.headers.get("x-sdd-cmd")).toBe("1");
+    await frame.arrayBuffer();
   });
 
   test("serves the web console at / and /console", async () => {

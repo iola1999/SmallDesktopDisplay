@@ -8,6 +8,7 @@ import type {RenderedFrame} from "./types.js";
 export {
   FORECAST_REGION,
   HEADER_REGION,
+  RAIN_STEP_OFFSET_MS,
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
   TIME_REGION,

@@ -7,6 +7,7 @@ import {
   nextThemeKey,
   type DeviceUiState,
 } from "../../ui-state.js";
+import {RAIN_STEP_OFFSET_MS} from "../constants.js";
 import type {
   DetailRowViewModel,
   DetailViewModel,
@@ -54,9 +55,10 @@ export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceVi
     }),
     theme,
     weather: buildWeatherView(getWeatherSnapshot()) ?? undefined,
-    // 暗背景雨滴每秒推进一步：纯墙钟推导，重启/多设备天然一致，
-    // 且恰好搭每秒渲染的便车，不产生额外帧。
-    rainTick: Math.floor(input.currentTime.getTime() / 1000),
+    // 暗背景雨滴每秒推进一步：纯墙钟推导，重启/多设备天然一致。
+    // 相位后移 500ms（RAIN_STEP_OFFSET_MS）：tick 在每秒的 x.5s 跳变，
+    // 避开 0-450ms 的秒翻牌窗口，雨滴差分由调度器安排的秒中帧单独承载。
+    rainTick: Math.floor((input.currentTime.getTime() - RAIN_STEP_OFFSET_MS) / 1000),
   };
 }
 

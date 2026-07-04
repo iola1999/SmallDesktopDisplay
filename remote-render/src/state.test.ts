@@ -189,6 +189,168 @@ describe("device registry", () => {
     });
   });
 
+  test("schedules a dedicated rain-step frame at +500ms after the flip window", async () => {
+    let now = 0;
+    const baseTime = new Date("2026-05-01T12:00:00.000+08:00").getTime();
+    const registry = new DeviceRegistry({
+      monotonic: () => now,
+      now: () => new Date(baseTime + now * 1000),
+      frameIntervalSeconds: 1,
+    });
+    const deviceId = "desk-rain-step";
+
+    const first = await registry.getFrame(deviceId, 0, 0);
+    let have = first!.readUInt32LE(8);
+
+    // 秒初：翻牌起始帧
+    now = 1.0;
+    const flipStart = await registry.getFrame(deviceId, have, 0);
+    expect(flipStart).not.toBeNull();
+    have = flipStart!.readUInt32LE(8);
+
+    // 翻牌窗结束（0.45s）后的清理帧，此时还没到雨滴跳变点
+    now = 1.46;
+    const cleanup = await registry.getFrame(deviceId, have, 0);
+    expect(cleanup).not.toBeNull();
+    have = cleanup!.readUInt32LE(8);
+
+    // +500ms：雨滴 tick 跳变，调度器单独出一帧承载雨滴差分
+    now = 1.51;
+    const rainStep = await registry.getFrame(deviceId, have, 0);
+    expect(rainStep).not.toBeNull();
+    expect(rainStep![5] & 0x01).toBe(0); // partial
+    have = rainStep!.readUInt32LE(8);
+
+    // 同一秒内不再有第二个雨滴帧
+    now = 1.7;
+    expect(await registry.getFrame(deviceId, have, 0)).toBeNull();
+  });
+
+  test("cleanup frame past the rain offset absorbs the rain step without an extra frame", async () => {
+    let now = 0;
+    const baseTime = new Date("2026-05-01T12:00:00.000+08:00").getTime();
+    const registry = new DeviceRegistry({
+      monotonic: () => now,
+      now: () => new Date(baseTime + now * 1000),
+      frameIntervalSeconds: 1,
+    });
+    const deviceId = "desk-rain-late-cleanup";
+
+    const first = await registry.getFrame(deviceId, 0, 0);
+    let have = first!.readUInt32LE(8);
+
+    now = 1.0;
+    const flipStart = await registry.getFrame(deviceId, have, 0);
+    have = flipStart!.readUInt32LE(8);
+
+    // 设备迟到，清理帧在 0.5s 之后才被拉走：它顺带承载雨滴差分
+    now = 1.6;
+    const lateCleanup = await registry.getFrame(deviceId, have, 0);
+    expect(lateCleanup).not.toBeNull();
+    have = lateCleanup!.readUInt32LE(8);
+
+    now = 1.8;
+    expect(await registry.getFrame(deviceId, have, 0)).toBeNull();
+  });
+
+  test("status sync on home does not insert frames mid-animation", async () => {
+    const registry = new DeviceRegistry();
+    const deviceId = "desk-status-quiet";
+
+    const first = await registry.getFrame(deviceId, 0, 0);
+    const have = first!.readUInt32LE(8);
+
+    registry.recordStatus(deviceId, {brightness: 90, uptimeMs: 1000});
+
+    // 状态已入 ui，但首页不展示这些数字：不产生新帧
+    expect(registry.devices.get(deviceId)!.ui.brightness).toBe(90);
+    expect(await registry.getFrame(deviceId, have, 0)).toBeNull();
+  });
+
+  test("status sync still re-renders the Device diagnostics detail page", async () => {
+    const registry = new DeviceRegistry();
+    const deviceId = "desk-status-detail";
+
+    const first = await registry.getFrame(deviceId, 0, 0);
+    const have = first!.readUInt32LE(8);
+
+    const state = registry.devices.get(deviceId)!;
+    state.ui.page = "detail";
+    state.ui.detailIndex = 2; // Device
+
+    registry.recordStatus(deviceId, {brightness: 70, uptimeMs: 2000, heapFree: 30000});
+
+    const updated = await registry.getFrame(deviceId, have, 0);
+    expect(updated).not.toBeNull();
+  });
+
+  test("skipped frames get a catch-up partial against the device's canvas instead of a full resync", async () => {
+    let now = 0;
+    const baseTime = new Date("2026-05-01T12:00:00.000+08:00").getTime();
+    const registry = new DeviceRegistry({
+      monotonic: () => now,
+      now: () => new Date(baseTime + now * 1000),
+      frameIntervalSeconds: 1,
+    });
+    const deviceId = "desk-catch-up";
+
+    const first = await registry.getFrame(deviceId, 0, 0);
+    let rgba = applyFrameToRgba(Buffer.alloc(0), 240, decodeFrame(first!));
+    const have = first!.readUInt32LE(8);
+
+    // 设备错过两次渲染（例如详情页时 status 连续插帧）
+    const state = registry.devices.get(deviceId)!;
+    state.ui.page = "detail";
+    state.ui.detailIndex = 2; // Device
+    registry.recordStatus(deviceId, {brightness: 60, uptimeMs: 3000, heapFree: 11111});
+    registry.recordStatus(deviceId, {brightness: 61, uptimeMs: 3100, heapFree: 22222});
+    expect(state.latestBaseFrameId).not.toBe(have);
+
+    const catchUp = await registry.getFrame(deviceId, have, 0);
+    const decoded = decodeFrame(catchUp!);
+
+    // 不再整屏回退：以设备已确认的帧为 base 的差分 partial
+    expect(decoded.fullFrame).toBe(false);
+    expect(decoded.baseFrameId).toBe(have);
+
+    // 补差帧应用到设备画面后与服务端全屏快照逐像素一致
+    rgba = applyFrameToRgba(rgba, 240, decoded);
+    const fullSnapshot = applyFrameToRgba(Buffer.alloc(0), 240, decodeFrame(state.fullFrame));
+    expect(Buffer.compare(rgba, fullSnapshot)).toBe(0);
+  });
+
+  test("console preview never advances the frame chain of an actively rendering device", async () => {
+    let now = 0;
+    const registry = new DeviceRegistry({monotonic: () => now, frameIntervalSeconds: 1});
+    const deviceId = "desk-preview-live";
+
+    await registry.getFrame(deviceId, 0, 0);
+    const state = registry.devices.get(deviceId)!;
+    const frameId = state.frameId;
+
+    // canvas 新鲜（设备刚拉过帧）：预览不插帧
+    now = 0.5;
+    registry.getPreviewImage(deviceId);
+    expect(state.frameId).toBe(frameId);
+
+    // 预览专用 id 场景：canvas 陈旧 ≥1s 时才代为渲染
+    now = 2.5;
+    registry.getPreviewImage(deviceId);
+    expect(state.frameId).toBeGreaterThan(frameId);
+  });
+
+  test("frame result carries the latest command id for piggybacking", async () => {
+    const registry = new DeviceRegistry();
+    const deviceId = "desk-cmd-piggyback";
+
+    const idle = await registry.getFrameWithStats(deviceId, 0, 0);
+    expect(idle.commandId).toBe(0);
+
+    registry.applyPrefs(deviceId, {brightness: 80});
+    const after = await registry.getFrameWithStats(deviceId, 0, 0);
+    expect(after.commandId).toBe(1);
+  });
+
   test("evicts idle devices past the TTL while keeping active ones", async () => {
     let now = 0;
     const registry = new DeviceRegistry({

@@ -10,6 +10,14 @@ services:
       # 实机色彩补偿旋钮：屏幕仍偏灰就加大，过艳就调小（改完 docker compose up -d 生效）
       PANEL_SATURATION: "1.35"
       PANEL_GAMMA: "1.15"
+      # 串口直连（可选）：设备 USB 插到宿主机时启用。SERIAL_PORT 留空 = 关闭。
+      # 用法：取消下面 devices 映射的注释，并在宿主机 shell 里
+      #   SERIAL_PORT=/dev/ttyUSB0 docker compose up -d
+      # 波特率与固件 AppConfig.h kSerialBaud 一致（默认 921600），两侧要一起改。
+      SERIAL_PORT: "${SERIAL_PORT:-}"
+      SERIAL_BAUD: "${SERIAL_BAUD:-921600}"
+    # devices:
+    #   - "/dev/ttyUSB0:/dev/ttyUSB0"
     volumes:
       - ./data:/data
     # 容器内固定监听 8080；命中已存在的 /api/v1/health 端点上报健康状态。

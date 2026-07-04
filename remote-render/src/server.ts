@@ -27,7 +27,9 @@ class HttpError extends Error {
 const MAX_REQUEST_BODY_BYTES = 16 * 1024;
 
 export function createRemoteRenderServer(registry = new DeviceRegistry()): RemoteRenderServer {
-  const server = http.createServer((request, response) => {
+  // noDelay：帧响应是小包一问一答，禁用 Nagle 免得与设备端 delayed-ACK
+  // 相互等待放大延迟（Node 22 默认已为 true，这里显式声明意图）。
+  const server = http.createServer({noDelay: true}, (request, response) => {
     handleRequest(registry, request, response).catch((error: unknown) => {
       if (error instanceof HttpError) {
         sendJson(response, error.status, {detail: error.detail});
@@ -145,6 +147,9 @@ async function handleRequest(registry: DeviceRegistry, request: IncomingMessage,
       "X-SDD-Server-Wait-Ms": String(result.waitMs),
       "X-SDD-Server-Render-Ms": String(result.renderMs),
       "X-SDD-Server-Total-Ms": String(result.totalMs),
+      // 命令通道的驱动信号：设备比对本地命令水位，仅在这里出现更新的 id 时
+      // 才真正 GET /commands，取代旧的每 100ms 盲轮询。
+      "X-SDD-Cmd": String(result.commandId),
     };
     if (result.frame === null) {
       response.writeHead(204, headers);

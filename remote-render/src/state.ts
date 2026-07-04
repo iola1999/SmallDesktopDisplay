@@ -4,6 +4,7 @@ import {
   SCREEN_WIDTH,
   FORECAST_REGION,
   HEADER_REGION,
+  RAIN_STEP_OFFSET_MS,
   TIME_REGION,
   type CanvasImage,
   type RectTuple,
@@ -17,6 +18,7 @@ import {
   DeviceCommand,
   DeviceUiState,
   FONT_OPTIONS,
+  SETTINGS_ITEMS,
   THEME_OPTIONS,
   applyInputEvent,
   currentAnimationProgress,
@@ -38,6 +40,9 @@ export interface FrameResult {
   waitMs: number;
   renderMs: number;
   totalMs: number;
+  // 服务端当前最新命令 id（0=尚无命令）。帧响应以 X-SDD-Cmd 头携带，
+  // 设备据此决定是否需要拉取命令通道，替代固定周期的盲轮询。
+  commandId: number;
 }
 
 export class DeviceState {
@@ -52,6 +57,12 @@ export class DeviceState {
   lastClockAnimationSecond = -1;
   lastClockAnimationFrameAt = -1;
   lastClockAnimationCleanupSecond = -1;
+  // 秒内 +500ms 的雨滴步进帧已出的秒号：与 rainTick 的相位偏移配套，
+  // 保证每秒只出一帧专载雨滴差分。
+  lastRainStepSecond = -1;
+  // 最近一次 render() 的单调时刻：预览端点据此判断 canvas 是否新鲜，
+  // 避免与真实设备的轮询竞争插帧。
+  lastRenderedAt = -Infinity;
   frame: Buffer<ArrayBufferLike> = Buffer.alloc(0);
   // 全屏帧只有冷启动 / 重同步客户端才会用到。不再在每个 partial 帧里重新编码
   // 整屏，改为惰性计算：partial 渲染时把缓存置空，真正有客户端要全屏帧时再从
@@ -61,6 +72,9 @@ export class DeviceState {
   latestBaseFrameId = 0;
   latestFullFrame = true;
   canvas: CanvasImage | null = null;
+  // 最近 N 帧的 canvas 快照（frameId → canvas）：设备错过中间帧时用于差分
+  // 补齐（buildCatchUpFrame），把 15KB 整屏重同步降级成小 partial。
+  recentCanvases = new Map<number, CanvasImage>();
   ui = new DeviceUiState();
   commandId = 0;
   latestCommand: QueuedCommand | null = null;
@@ -142,25 +156,27 @@ export class DeviceRegistry {
     renderSeconds += this.renderIfDue(state);
     let frame = this.selectFrameForClient(state, have);
     if (frame !== null) {
-      return result(frame, waitSeconds, renderSeconds, this.monotonic() - started);
+      return result(frame, state, waitSeconds, renderSeconds, this.monotonic() - started);
     }
 
     while (state.frameId <= have) {
       const remaining = deadline - this.monotonic();
       if (remaining <= 0) {
-        return result(null, waitSeconds, renderSeconds, this.monotonic() - started);
+        return result(null, state, waitSeconds, renderSeconds, this.monotonic() - started);
       }
       const waitStarted = this.monotonic();
-      await sleep(Math.min(remaining, 0.025));
+      // 5ms 睡眠量子：帧就绪时刻的量化误差决定动画帧间隔抖动的下限。
+      // 旧值 25ms 在 50ms 帧间隔上会造成最高半帧的相位噪声。
+      await sleep(Math.min(remaining, 0.005));
       waitSeconds += Math.max(0, this.monotonic() - waitStarted);
       state = this.ensureDevice(deviceId);
       renderSeconds += this.renderIfDue(state);
       frame = this.selectFrameForClient(state, have);
       if (frame !== null) {
-        return result(frame, waitSeconds, renderSeconds, this.monotonic() - started);
+        return result(frame, state, waitSeconds, renderSeconds, this.monotonic() - started);
       }
     }
-    return result(this.selectFrameForClient(state, have), waitSeconds, renderSeconds, this.monotonic() - started);
+    return result(this.selectFrameForClient(state, have), state, waitSeconds, renderSeconds, this.monotonic() - started);
   }
 
   recordInput(deviceId: string, seq: number, event: InputEventName, uptimeMs = 0): boolean {
@@ -220,10 +236,15 @@ export class DeviceRegistry {
     }));
   }
 
-  // 控制台预览：确保画面新鲜后返回当前 canvas（ensureDevice 首渲染保证非空）。
+  // 控制台预览：返回当前 canvas（ensureDevice 首渲染保证非空）。
+  // 真实设备在首页每秒自渲染，canvas 恒新鲜——预览绝不能替它推进帧序列，
+  // 否则与设备轮询竞争 base，曾造成"控制台开着就整屏重同步风暴"。
+  // 只有预览专用 id（无设备拉帧、canvas 已陈旧）才代为渲染。
   getPreviewImage(deviceId: string): CanvasImage {
     const state = this.ensureDevice(deviceId);
-    this.renderIfDue(state);
+    if (this.monotonic() - state.lastRenderedAt >= 1) {
+      this.renderIfDue(state);
+    }
     return state.canvas!;
   }
 
@@ -264,6 +285,7 @@ export class DeviceRegistry {
 
   recordStatus(deviceId: string, input: RecordStatusInput): void {
     const state = this.ensureDevice(deviceId);
+    const brightnessChanged = state.ui.brightness !== input.brightness;
     state.ui.brightness = input.brightness;
     state.ui.pendingBrightness = input.brightness;
     state.ui.diagnostics.heapFree = input.heapFree ?? 0;
@@ -272,7 +294,15 @@ export class DeviceRegistry {
     state.ui.diagnostics.wifiRssi = input.wifiRssi ?? 0;
     state.ui.diagnostics.uptimeMs = input.uptimeMs;
     state.lastInputUptimeMs = Math.max(state.lastInputUptimeMs, input.uptimeMs);
-    this.render(state, false);
+    // 状态上报的数字只在少数页面可见。此前无条件渲染会在翻牌窗口里插一帧，
+    // 让下一个动画 partial 的 base 跳过设备的 have，触发整屏重同步顿挫
+    // （固件每 10s 上报一次，约一半概率落在翻牌窗内）。现在仅当页面真的
+    // 展示这些数字时才重渲染；诊断值本身总是先写入 ui 状态。
+    const detailItem = state.ui.page === "detail" ? SETTINGS_ITEMS[state.ui.detailIndex % SETTINGS_ITEMS.length] : null;
+    const brightnessVisible = state.ui.page === "settings" || detailItem === "Brightness";
+    if (detailItem === "Device" || (brightnessChanged && brightnessVisible)) {
+      this.render(state, false);
+    }
   }
 
   private ensureDevice(deviceId: string): DeviceState {
@@ -333,9 +363,21 @@ export class DeviceRegistry {
         // diff 覆盖全部三个分区而不只是时钟带：暗背景雨滴跨区分布，跟着翻页帧整屏一致推进。
         return this.render(state, false, [HEADER_REGION, TIME_REGION, FORECAST_REGION], elapsed / this.clockFlipAnimationSeconds);
       }
+      const rainStepSeconds = RAIN_STEP_OFFSET_MS / 1000;
       if (elapsed >= this.clockFlipAnimationSeconds && state.lastClockAnimationCleanupSecond !== currentSecond) {
         state.lastClockAnimationCleanupSecond = currentSecond;
+        if (elapsed >= rainStepSeconds) {
+          // 轮询稀疏时清理帧可能已越过雨滴跳变点，此时它顺带承载了雨滴差分，
+          // 不再需要单独的雨滴帧。
+          state.lastRainStepSecond = currentSecond;
+        }
         return this.render(state, false, [HEADER_REGION, TIME_REGION, FORECAST_REGION], 1);
+      }
+      // 秒内 +500ms 的雨滴步进帧：rainTick 的相位偏移让雨滴恰在此刻跳变，
+      // 大差分（~11 rects）独享翻牌窗结束后的安静信道，不与翻牌帧抢节拍。
+      if (elapsed >= rainStepSeconds && state.lastRainStepSecond !== currentSecond) {
+        state.lastRainStepSecond = currentSecond;
+        return this.render(state, false, [HEADER_REGION, TIME_REGION, FORECAST_REGION]);
       }
     }
     if (currentSecond <= state.lastRenderSecond) {
@@ -360,7 +402,23 @@ export class DeviceRegistry {
     if (state.latestFullFrame || state.latestBaseFrameId === have) {
       return state.frame;
     }
-    return state.fullFrame;
+    // partial 的 base 跳过了设备的 have（两次渲染之间被 status 上报 / 控制台
+    // 手势等插了帧）：不再整屏回退，用设备已确认画面与当前画面的差分补齐
+    // （15KB 全屏 → 通常 1-2KB partial）。canvas 历史已淘汰时才回退整屏。
+    return this.buildCatchUpFrame(state, have) ?? state.fullFrame;
+  }
+
+  private buildCatchUpFrame(state: DeviceState, have: number): Buffer | null {
+    const haveCanvas = state.recentCanvases.get(have);
+    if (haveCanvas === undefined || state.canvas === null) {
+      return null;
+    }
+    return encodeRenderedFrame({
+      frameId: state.frameId,
+      baseFrameId: have,
+      fullFrame: false,
+      rects: computeDirtyRects(haveCanvas, state.canvas),
+    });
   }
 
   private shouldAcceptInput(state: DeviceState, seq: number, uptimeMs: number): boolean {
@@ -416,6 +474,14 @@ export class DeviceRegistry {
     state.latestBaseFrameId = rendered.baseFrameId;
     state.latestFullFrame = rendered.fullFrame;
     state.canvas = currentCanvas;
+    // canvas 快照历史：保留最近 8 帧供 buildCatchUpFrame 差分补齐。8 覆盖
+    // 翻牌窗内插帧 + 一两次错过的场景；Map 按插入序淘汰最旧。
+    state.recentCanvases.set(state.frameId, currentCanvas);
+    while (state.recentCanvases.size > 8) {
+      const oldest = state.recentCanvases.keys().next().value as number;
+      state.recentCanvases.delete(oldest);
+    }
+    state.lastRenderedAt = now;
     // 全屏渲染时 state.frame 本身就是整屏帧，直接缓存；partial 渲染则置空，
     // 等真正有冷启动 / 重同步客户端请求时再由 get fullFrame 惰性编码。
     state.fullFrameCache = fullFrame ? state.frame : null;
@@ -439,12 +505,19 @@ export function encodeRenderedFrame(frame: RenderedFrame): Buffer {
   });
 }
 
-function result(frame: Buffer | null, waitSeconds: number, renderSeconds: number, totalSeconds: number): FrameResult {
+function result(
+  frame: Buffer | null,
+  state: DeviceState,
+  waitSeconds: number,
+  renderSeconds: number,
+  totalSeconds: number,
+): FrameResult {
   return {
     frame,
     waitMs: elapsedMs(waitSeconds),
     renderMs: elapsedMs(renderSeconds),
     totalMs: elapsedMs(totalSeconds),
+    commandId: state.latestCommand?.id ?? 0,
   };
 }
 
