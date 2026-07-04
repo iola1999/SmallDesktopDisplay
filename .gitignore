@@ -20,3 +20,4 @@ CLAUDE.local.md
 __pycache__/
 *.pyc
 remote-render/data/
+node_modules/
