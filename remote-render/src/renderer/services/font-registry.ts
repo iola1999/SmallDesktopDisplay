@@ -7,8 +7,23 @@ import {FONT_MAPLE_MONO_NF_CN, FONT_NOTO_CJK} from "../../ui-state.js";
 // macOS host 用系统 Apple Color Emoji；都没有时 WeatherIcon 回退到图元画法。
 let emojiFontRegistered = false;
 
+// 记录实际注册成功的正文字族名，供测试判断“换字体是否真的换了像素”——
+// 缺字体的环境（如未装 CJK 字体的 CI）两个 fontKey 会回退到同一族，像素相同。
+const registeredTextFamilies = new Set<string>();
+
 export function hasEmojiFont(): boolean {
   return emojiFontRegistered;
+}
+
+function primaryTextFamily(fontKey: string): string {
+  if (fontKey === FONT_MAPLE_MONO_NF_CN) return "Maple Mono NF CN";
+  if (fontKey === FONT_NOTO_CJK) return "Noto Sans CJK";
+  return "LXGW WenKai Screen";
+}
+
+// fontKey 对应的首选字族是否真的注册成功（文件存在且被 canvas 接受）。
+export function hasTextFont(fontKey: string): boolean {
+  return registeredTextFamilies.has(primaryTextFamily(fontKey));
 }
 
 export const EMOJI_FONT_FAMILY = '"Noto Color Emoji", "Apple Color Emoji"';
@@ -29,7 +44,9 @@ export function registerFonts(): void {
   ];
   for (const [fontPath, name] of candidates) {
     try {
-      GlobalFonts.registerFromPath(fontPath, name);
+      if (GlobalFonts.registerFromPath(fontPath, name)) {
+        registeredTextFamilies.add(name);
+      }
     } catch {
       // Missing optional font paths are expected across host and container environments.
     }

@@ -2,6 +2,8 @@
 
 #include "remote/DeviceStatusPayload.h"
 
+#include <string>
+
 TEST_CASE("device status payload serializes brightness and uptime")
 {
   char buffer[160];

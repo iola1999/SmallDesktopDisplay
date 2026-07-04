@@ -7,6 +7,7 @@ import {
   buildClockFlipGlyphs,
   buildHomeCopy,
   computeDirtyRects,
+  hasTextFont,
   renderDeviceCanvas,
   renderDeviceView,
 } from "./renderer/index.js";
@@ -136,7 +137,11 @@ describe("React remote renderer", () => {
     expect(Buffer.compare(end.rgba, staticFrame.rgba)).toBe(0);
   });
 
-  test("font key changes the rendered text pixels", () => {
+  // 需要两个字体都真的装上才能比较像素差异；缺 CJK 字体的环境（如 CI）会回退到
+  // 同一族、渲染完全相同，此时跳过而非误报失败。本机装了 WenKai/Maple 时照常校验。
+  const bothFontsInstalled = hasTextFont(FONT_WENKAI_SCREEN) && hasTextFont(FONT_MAPLE_MONO_NF_CN);
+
+  test.skipIf(!bothFontsInstalled)("font key changes the rendered text pixels", () => {
     const now = new Date("2026-05-01T12:34:56.000+08:00");
     const wenkai = renderDeviceCanvas({
       currentTime: now,

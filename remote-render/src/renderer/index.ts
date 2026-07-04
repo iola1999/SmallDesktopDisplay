@@ -17,6 +17,7 @@ export {renderDeviceCanvas} from "./rendering/device-canvas.js";
 export {computeDirtyRects} from "./rendering/dirty-rects.js";
 export {buildClockFlipGlyphs} from "./services/clock-flip.js";
 export {buildHomeCopy} from "./services/home-copy.js";
+export {hasTextFont} from "./services/font-registry.js";
 export type {RectTuple} from "./constants.js";
 export type {CanvasImage, RenderedFrame} from "./types.js";
 
