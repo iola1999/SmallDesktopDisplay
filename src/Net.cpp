@@ -287,7 +287,7 @@ void handlePortalSave()
   s_portalRestartRequested = true;
 }
 
-void runWebConfig(app::AppConfigData &config)
+void startWebConfig(app::AppConfigData &config)
 {
   s_config = &config;
   s_portalRestartRequested = false;
@@ -305,17 +305,6 @@ void runWebConfig(app::AppConfigData &config)
 
   startPortalServer(config, ConfigPortalMode::AccessPoint, WiFi.softAPIP());
   drawPortalInstructions();
-
-  while (!s_portalRestartRequested)
-  {
-    processPortalClients();
-    delay(2);
-  }
-
-  stopPortalServer();
-  s_config = nullptr;
-  delay(1200);
-  ESP.restart();
 }
 
 } // namespace
@@ -364,7 +353,8 @@ bool connect(app::AppConfigData &config, WifiConnectMode mode)
       return false;
     }
 
-    runWebConfig(config);
+    // 配网页面由主循环中的 tick() 维护，保留串口探测和按键处理机会。
+    startWebConfig(config);
     return false;
   }
 
@@ -387,6 +377,18 @@ bool connect(app::AppConfigData &config, WifiConnectMode mode)
 bool isWifiAwake()
 {
   return s_wifiAwake;
+}
+
+bool isPortalActive()
+{
+  return s_portalMode != ConfigPortalMode::None;
+}
+
+void stopPortal()
+{
+  stopPortalServer();
+  s_config = nullptr;
+  s_portalRestartRequested = false;
 }
 
 void tick()
@@ -449,8 +451,7 @@ void restart()
 
 void resetAndRestart()
 {
-  stopPortalServer();
-  s_config = nullptr;
+  stopPortal();
   storage::clearWifiCredentials();
   delay(200);
   ESP.restart();

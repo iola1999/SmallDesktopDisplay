@@ -46,6 +46,7 @@ uint32_t g_lastCommandPollMs = 0;
 uint32_t g_lastStatusSyncMs = 0;
 uint32_t g_lastErrorDrawMs = 0;
 uint32_t g_serialProbeSentMs = 0;
+uint32_t g_lastWifiSerialProbeMs = 0;
 uint8_t g_serialProbesLeft = app_config::kSerialProbeAttempts;
 bool g_statusSyncPending = true;
 bool g_frameErrorShown = false;
@@ -467,12 +468,21 @@ void wifiLoop()
   const uint32_t nowMs = millis();
   processButtonEvents(nowMs);
 
+  // 配网页面也要保持串口探测：宿主机可能晚于设备启动，不能依赖开机时
+  // 的一次 HELLO。宿主机上线后会回 HELLO，下面的被动 tick() 负责切链路。
+  if (nowMs - g_lastWifiSerialProbeMs >= app_config::kSerialProbeIntervalMs)
+  {
+    g_lastWifiSerialProbeMs = nowMs;
+    g_serialLink.sendHello();
+  }
+
   // 被动串口探测：WiFi 模式下持续监听 RX，看到宿主机 HELLO 立即切换串口
   //（acceptContent=false：帧/命令被完整读走丢弃，避免双链路同时画屏）。
   const remote::SerialTickResult probe = g_serialLink.tick(nowMs, false);
   if (probe.hostHelloSeen)
   {
     Serial.println(F("[Link] host hello on serial, switching to serial transport"));
+    net::stopPortal();
     g_linkMode = LinkMode::SerialLink;
     // 先关 WiFi 再回 HELLO：WIFI_OFF 的 SDK 反初始化可能阻塞上百毫秒，
     // 若先 HELLO，宿主机立刻推来的全屏帧会在阻塞期间挤爆 4KB RX 缓冲
@@ -495,7 +505,7 @@ void wifiLoop()
       syncDeviceStatus(nowMs);
     }
   }
-  else if (nowMs - g_lastErrorDrawMs > 3000U)
+  else if (!net::isPortalActive() && nowMs - g_lastErrorDrawMs > 3000U)
   {
     g_lastErrorDrawMs = nowMs;
     drawStatus("WiFi disconnected", "waiting");
@@ -573,7 +583,10 @@ void setup()
 
   if (!net::connect(g_config, net::WifiConnectMode::ForegroundBlocking))
   {
-    drawStatus("WiFi unavailable", "open setup portal");
+    if (!net::isPortalActive())
+    {
+      drawStatus("WiFi unavailable", "open setup portal");
+    }
     return;
   }
 

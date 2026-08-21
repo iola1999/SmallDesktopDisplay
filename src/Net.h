@@ -14,6 +14,8 @@ enum class WifiConnectMode
 
 bool connect(app::AppConfigData &config, WifiConnectMode mode);
 bool isWifiAwake();
+bool isPortalActive();
+void stopPortal();
 void tick();
 void sleep();
 void wake();
