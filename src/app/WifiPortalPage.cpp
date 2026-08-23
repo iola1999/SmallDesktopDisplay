@@ -39,6 +39,14 @@ bool isNineDigitCityCode(const std::string &input)
   });
 }
 
+bool isAsciiDeviceIdCharacter(char ch)
+{
+  return (ch >= 'A' && ch <= 'Z') ||
+         (ch >= 'a' && ch <= 'z') ||
+         (ch >= '0' && ch <= '9') ||
+         ch == '.' || ch == '_' || ch == '-';
+}
+
 std::string escapeHtml(const std::string &input)
 {
   std::string escaped;
@@ -99,6 +107,19 @@ std::string normalizeRemoteBaseUrlInput(const std::string &input)
   }
 
   return trimmed;
+}
+
+std::string normalizeDeviceIdInput(const std::string &input)
+{
+  const std::string trimmed = trimCopy(input);
+  if (trimmed.empty() || trimmed.size() > 23)
+  {
+    return "";
+  }
+
+  const bool valid =
+    std::all_of(trimmed.begin(), trimmed.end(), isAsciiDeviceIdCharacter);
+  return valid ? trimmed : "";
 }
 
 std::string buildWifiPortalPage(const std::string &apSsid,
@@ -164,7 +185,7 @@ std::string buildWifiPortalPage(const std::string &apSsid,
        << "<p><label>Password<br><input name='psk' type='password' maxlength='63' style='width:100%;padding:10px'></label></p>"
        << "<p><label>Render server<br><input name='RemoteBaseUrl' maxlength='95' style='width:100%;padding:10px' placeholder='http://192.168.1.20:8080' value='"
        << escapeHtml(remoteBaseUrl) << "'></label></p>"
-       << "<p><label>Device ID<br><input name='DeviceId' maxlength='23' style='width:100%;padding:10px' value='"
+       << "<p><label>Device ID<br><input name='DeviceId' maxlength='23' pattern='[A-Za-z0-9._-]{1,23}' style='width:100%;padding:10px' value='"
        << escapeHtml(deviceId) << "'></label></p>"
        << "<p><button type='submit' style='padding:10px 14px'>Save and Restart</button></p>"
        << "</form></body></html>";

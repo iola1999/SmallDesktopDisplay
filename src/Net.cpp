@@ -267,16 +267,18 @@ void handlePortalSave()
     return;
   }
 
-  if (deviceId.length() == 0)
+  const std::string normalizedDeviceId = app::normalizeDeviceIdInput(deviceId.c_str());
+  if (normalizedDeviceId.empty())
   {
-    sendPortalPage("Device ID is required.", ssid, remoteBaseUrlInput, deviceId);
+    sendPortalPage("Device ID must use 1-23 letters, numbers, dots, underscores, or hyphens.", ssid,
+                   remoteBaseUrlInput, deviceId);
     return;
   }
 
   s_config->wifiSsid = ssid.c_str();
   s_config->wifiPsk = psk.c_str();
   s_config->remoteBaseUrl = normalizedRemoteBaseUrl;
-  s_config->remoteDeviceId = deviceId.c_str();
+  s_config->remoteDeviceId = normalizedDeviceId;
   storage::saveConfig(*s_config);
 
   s_server.send(

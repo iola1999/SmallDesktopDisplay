@@ -10,6 +10,7 @@ import {
   MSG_FRAME_ACK,
   MSG_HELLO,
   MSG_INPUT,
+  MSG_STATUS,
   encodeEnvelope,
 } from "./envelope.js";
 import {SerialTransport, type SerialPortLike} from "./serial-transport.js";
@@ -97,10 +98,11 @@ describe("serial transport", () => {
     expect(sdd1[5] & 0x01).toBe(0x01); // 建链第一帧必是全屏
     const frameId = sdd1.readUInt32LE(8);
 
-    // ACK 后 have 前进：同一秒内没有新帧，泵停在长轮询里，不重复推同一帧
+    // ACK 后 have 前进，不重复推同一帧。等待期间若跨过秒边界，时钟可以产生新帧。
     port.emitData(frameAck(frameId));
     await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(port.decodeWritten().filter((message) => message.type === MSG_FRAME)).toHaveLength(1);
+    const framesAfterAck = port.decodeWritten().filter((message) => message.type === MSG_FRAME);
+    expect(framesAfterAck.filter((message) => message.payload.readUInt32LE(8) === frameId)).toHaveLength(1);
     expect(transport.isLinkUp()).toBe(true);
 
     transport.stop();
@@ -133,6 +135,70 @@ describe("serial transport", () => {
 
     const command = port.decodeWritten().find((message) => message.type === MSG_COMMAND)!;
     expect(JSON.parse(command.payload.toString("utf8"))).toMatchObject({id: 1, type: "set_brightness"});
+
+    transport.stop();
+  });
+
+  test("status preserves missing diagnostics and validates reported ranges", async () => {
+    const registry = new DeviceRegistry();
+    const port = new FakePort();
+    const transport = new SerialTransport({registry, port, log: () => {}, framePollWaitMs: 20});
+    transport.start();
+    port.emitData(deviceHello("desk-serial-status"));
+    await waitFor(() => registry.devices.has("desk-serial-status"));
+
+    port.emitData(
+      encodeEnvelope(
+        MSG_STATUS,
+        Buffer.from(JSON.stringify({brightness: 20, uptime_ms: 0})),
+      ),
+    );
+    expect(registry.listDevices()[0].diagnostics).toEqual({uptimeMs: 0});
+
+    port.emitData(
+      encodeEnvelope(
+        MSG_STATUS,
+        Buffer.from(
+          JSON.stringify({
+            brightness: 40,
+            uptime_ms: 5_000,
+            heap_free: 0,
+            heap_max_block: 8192,
+            heap_fragmentation: 100,
+            wifi_rssi: -127,
+          }),
+        ),
+      ),
+    );
+    expect(registry.listDevices()[0].diagnostics).toEqual({
+      uptimeMs: 5_000,
+      heapFree: 0,
+      heapMaxBlock: 8192,
+      heapFragmentation: 100,
+      wifiRssi: -127,
+    });
+
+    port.emitData(
+      encodeEnvelope(
+        MSG_STATUS,
+        Buffer.from(JSON.stringify({brightness: 60, uptime_ms: 8_000, wifi_rssi: 12})),
+      ),
+    );
+    expect(registry.devices.get("desk-serial-status")?.ui.brightness).toBe(40);
+
+    transport.stop();
+  });
+
+  test.each(["null", "[]", "42", '"text"'])("drops non-object JSON payload %s", (payload) => {
+    const registry = new DeviceRegistry();
+    const port = new FakePort();
+    const lines: string[] = [];
+    const transport = new SerialTransport({registry, port, log: (line) => lines.push(line)});
+    transport.start();
+
+    expect(() => port.emitData(encodeEnvelope(MSG_DEVICE_HELLO, Buffer.from(payload)))).not.toThrow();
+    expect(transport.isLinkUp()).toBe(false);
+    expect(lines).toContain("[Serial] dropped message with non-object JSON payload");
 
     transport.stop();
   });

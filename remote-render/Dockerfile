@@ -23,8 +23,9 @@ RUN apt-get update \
     && rm -rf /tmp/maple-mono-nf-cn /tmp/maple-mono-nf-cn.zip \
     && rm -rf /var/lib/apt/lists/*
 
-COPY package.json package-lock.json tsconfig.json ./
+COPY package.json package-lock.json tsconfig.json tsconfig.console.json vite.config.ts ./
 COPY src ./src
+COPY console ./console
 
 RUN --mount=type=cache,target=/root/.npm npm ci \
     && npm run build \

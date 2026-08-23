@@ -1,3 +1,4 @@
+import type {HomeConfig} from "../../config/schema.js";
 import type {HomeCopy} from "../types.js";
 import type {ClockTheme} from "../services/clock-theme.js";
 import type {WeatherView} from "../services/weather.js";
@@ -10,6 +11,7 @@ export interface BaseViewModel {
 
 export interface HomeViewModel extends BaseViewModel {
   page: "home";
+  config: HomeConfig;
   copy: HomeCopy;
   clockGlyphs: ClockFlipGlyphViewModel[];
   theme: ClockTheme;

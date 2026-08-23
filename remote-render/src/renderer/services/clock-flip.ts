@@ -1,3 +1,4 @@
+import type {HomeLayout} from "../../config/schema.js";
 import type {ClockFlipGlyphGroup, ClockFlipGlyphViewModel} from "../models/view-model.js";
 import {buildHomeCopy} from "./home-copy.js";
 
@@ -20,20 +21,22 @@ export interface BuildClockFlipGlyphsOptions {
   progress?: number;
   timeColor?: string;
   secondsColor?: string;
+  layout?: HomeLayout;
 }
 
 export function buildClockFlipGlyphs(currentTime: Date, options: BuildClockFlipGlyphsOptions = {}): ClockFlipGlyphViewModel[] {
   const previousTime = new Date(currentTime.getTime() - 1000);
   const progress = options.progress ?? flipProgress(currentTime, options.durationMs ?? 450);
+  const metrics = clockMetrics(options.layout ?? "balanced");
   return [
     ...buildGlyphs({
       group: "time",
       current: buildHomeCopy(currentTime).timeText,
       previous: buildHomeCopy(previousTime).timeText,
       progress,
-      y: 48,
-      height: 60,
-      fontSize: 54,
+      y: metrics.timeY,
+      height: metrics.timeHeight,
+      fontSize: metrics.timeFontSize,
       color: options.timeColor ?? "#f0f8ee",
       layout: BIG_TIME_LAYOUT,
     }),
@@ -42,13 +45,30 @@ export function buildClockFlipGlyphs(currentTime: Date, options: BuildClockFlipG
       current: buildHomeCopy(currentTime).secondsText,
       previous: buildHomeCopy(previousTime).secondsText,
       progress,
-      y: 74,
-      height: 26,
-      fontSize: 20,
+      y: metrics.secondsY,
+      height: metrics.secondsHeight,
+      fontSize: metrics.secondsFontSize,
       color: options.secondsColor ?? "#80dac6",
       layout: SECONDS_LAYOUT,
     }),
   ];
+}
+
+function clockMetrics(layout: HomeLayout): {
+  timeY: number;
+  timeHeight: number;
+  timeFontSize: number;
+  secondsY: number;
+  secondsHeight: number;
+  secondsFontSize: number;
+} {
+  if (layout === "clock") {
+    return {timeY: 66, timeHeight: 66, timeFontSize: 58, secondsY: 94, secondsHeight: 28, secondsFontSize: 21};
+  }
+  if (layout === "weather") {
+    return {timeY: 38, timeHeight: 50, timeFontSize: 44, secondsY: 57, secondsHeight: 24, secondsFontSize: 18};
+  }
+  return {timeY: 48, timeHeight: 60, timeFontSize: 54, secondsY: 74, secondsHeight: 26, secondsFontSize: 20};
 }
 
 function buildGlyphs({

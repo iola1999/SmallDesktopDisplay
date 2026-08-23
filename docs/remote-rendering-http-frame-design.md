@@ -2,7 +2,7 @@
 
 ## Goal
 
-Turn the ESP-12E device into a thin network display. A Docker service renders
+Turn the ESP-12E device into a thin network display. A Node.js service renders
 the 240x240 screen image, receives button gestures from the device, and returns
 only the newest frame state. The device keeps WiFi, button input, EEPROM config,
 local hold feedback, brightness PWM, HTTP polling, and TFT output, while local
@@ -21,7 +21,8 @@ weather, NTP, page routing, and complex screen drawing stay out of the firmware.
   device last confirmed (full-frame resync only for cold clients or when the
   canvas history has been evicted).
 - Image format: RGB565 rectangles, either raw or RLE-compressed.
-- Rendering service: Dockerized Node.js/TypeScript service under `remote-render/`.
+- Rendering service: Node.js/TypeScript under `remote-render/`, run by launchd
+  on the current Mac and available as a Docker image for Linux hosts.
 - Device role: fetch binary frames, draw rectangles to TFT, POST button events,
   POST status, and execute local hardware commands.
 
@@ -43,6 +44,16 @@ POST /api/v1/devices/{device_id}/input
 POST /api/v1/devices/{device_id}/status
 GET  /api/v1/devices/{device_id}/commands?after=<command_id>
 GET  /api/v1/health
+
+GET   /api/v1/catalog
+GET   /api/v1/devices
+GET   /api/v1/status
+GET   /api/v1/devices/{device_id}/config
+PATCH /api/v1/devices/{device_id}/config
+GET   /api/v1/devices/{device_id}/preview.png
+POST  /api/v1/devices/{device_id}/preview
+POST  /api/v1/devices/{device_id}/prefs
+POST  /api/v1/devices/{device_id}/console-input
 ```
 
 `GET /frame` responses:
@@ -91,21 +102,70 @@ Current remote UI gesture mapping:
 - Settings/Detail: `double_press` goes back one level.
 
 The firmware only recognizes gestures and posts them; all page routing lives in
-the Docker service.
+the render service.
 
 ## Web console
 
-`GET /` (or `/console`) serves a LAN-only, no-auth control page: a live PNG
-preview (`GET /api/v1/devices/{id}/preview.png`, ~1 fps polling), theme / font /
-brightness controls (`POST /api/v1/devices/{id}/prefs`), simulated gestures
-(`POST /api/v1/devices/{id}/console-input` — deliberately bypasses the seq
-dedup so console taps can never poison the device's replay window), a device
-list (`GET /api/v1/devices`) and weather/server status (`GET /api/v1/status`).
-Theme and font choices persist to `STATE_DIR/device-prefs.json` (a compose
-volume), so container rebuilds no longer reset them; brightness stays owned by
-the device EEPROM via the command channel.
+`GET /` and `/console` serve a React/Vite control console from `dist/console`.
+The desktop layout has device navigation on the left, an editor in the center,
+and a fixed 240x240 preview on the right. Narrow viewports use a single column.
+The available sections are Devices, Home, Appearance, and Diagnostics. The UI
+uses neutral grays, one restrained teal accent, shallow shadows, Lucide icons,
+and short Motion transitions. `MotionConfig` follows the user's reduced-motion
+preference.
 
-Current Settings items:
+TanStack Query owns catalog, device, service-status, configuration, and preview
+requests. The query functions pass their `AbortSignal` to `fetch`. Device and
+service status refresh every 5 seconds, device configuration every 10 seconds,
+and the live PNG preview every second. Saving cancels the old configuration
+query before the mutation and again before publishing the successful result to
+the cache. Manual refresh is disabled during a save. The affected device and
+preview caches are invalidated afterward. Preview placeholder data is reused
+only for the same device, and background refreshes keep an existing preview at
+full opacity.
+
+Edits remain in a browser draft until Apply. Theme, font, home layout, home
+visibility flags, and brightness share the bottom Apply and Cancel controls.
+Brightness still travels through `POST /prefs` and is persisted by device
+EEPROM. A pending draft blocks accidental device switching with a keyboard-
+accessible confirmation dialog and registers a `beforeunload` warning. During
+save, device switching, configuration controls, and simulated gestures are
+disabled. On narrow screens, a pending draft fixes the Apply bar to the bottom
+of the viewport, and each switch uses the full settings row as its hit target.
+
+Configuration is stored in `STATE_DIR/remote-render-config.json` with
+`schemaVersion: 1` and one global `revision`. Each save writes a mode-`0600`
+temporary file and atomically renames it before publishing the new in-memory
+revision. The first legacy migration copies `device-prefs.json` to
+`device-prefs.json.migrated.bak` before publishing the new file. An invalid or
+unsupported configuration opens read-only, and `/api/v1/status` reports the
+reason.
+
+`GET /api/v1/devices/{device_id}/config` returns the revision in both JSON and a
+quoted ETag such as `"17"`. `PATCH` on the same path requires that ETag in
+`If-Match`: a missing header returns `428`, malformed syntax returns `422`, and
+a stale revision returns `409` with the current revision. The console keeps its
+local draft after a conflict. Reading the current version rebases the draft
+field by field, retaining locally edited fields and accepting remote changes to
+untouched fields.
+
+`POST /preview` renders a supplied draft into PNG with independent UI state. It
+does not write configuration, create an offline device entry, advance a live
+device's page or input sequence, or change its frame id. Simulated gestures use
+`POST /console-input`, which bypasses device input sequence de-duplication.
+
+The console remains LAN-accessible without authentication. Every response has a
+CSP with `frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, and
+`Referrer-Policy: no-referrer`. Write requests require JSON, accept at most
+16 KiB, and validate a supplied `Origin` against the request host.
+
+New device IDs entered in the firmware setup portal are trimmed and limited to
+1-23 ASCII letters, digits, dots, underscores, or hyphens. The Node.js HTTP and
+serial paths continue accepting non-empty historical IDs so existing devices
+and saved configuration remain readable. Configuration maps have null
+prototypes, including for historical names such as `__proto__`.
+
+Current on-device Settings items:
 
 - `Brightness`: local backlight PWM, changed through the command channel.
 - `Font`: server-side renderer font selection. It changes future frame pixels
@@ -115,12 +175,17 @@ Current Settings items:
   uptime.
 - `Renderer`: read-only transport/protocol summary for the remote frame link.
 - `About`: device id and remote display protocol summary.
-- `Theme`: server-side clock palette selection (Midnight / Sakura / Amber /
-  Mono), applied to the home clock, date, lunar line, and card background.
+- `Theme`: server-side clock palette selection (Midnight / Dusk / Sakura /
+  Amber / Mono), applied to the home clock, date, lunar line, and card background.
   `short_press` cycles and applies immediately, like `Font`.
 
 Settings holds only configuration and read-only diagnostics. Glanceable content
 (clock, weather) lives on the Home screen, not behind the Settings menu.
+
+The persisted Home configuration provides `balanced`, `clock`, and `weather`
+layout presets. Independent switches control the date, lunar line, current
+weather, today's range, and the tomorrow/day-after outlook. The explicit
+`balanced` defaults preserve the previous home canvas.
 
 The Home page is a calm single-screen clock + weather dashboard, organized on a
 centered axis: a top row with the Gregorian date + short weekday (left) and the
@@ -427,6 +492,14 @@ DEVICE_HELLO` (`{"device_id","proto"}`), `0x82 INPUT` and `0x83 STATUS` (same
 JSON bodies as the HTTP POSTs), `0x84 FRAME_ACK` (`{"frame_id"}`), `0x85
 COMMAND_ACK` (`{"id"}`).
 
+The host parses uplink JSON as an unknown value and drops malformed JSON,
+`null`, arrays, and primitive values before field access. STATUS requires an
+integer brightness in `0..100` and a non-negative integer uptime. Optional heap
+values must be non-negative integers, heap fragmentation must be in `0..100`,
+and WiFi RSSI must be in `-127..0`. Missing optional diagnostics stay missing,
+which lets the console distinguish an older firmware payload from a reported
+zero.
+
 The host side reuses `DeviceRegistry` unchanged: a pump loop calls
 `getFrameWithStats(deviceId, have, 1000)` exactly like an HTTP client, writes
 the frame, and waits for `FRAME_ACK` before advancing `have` (stop-and-wait,
@@ -437,20 +510,22 @@ queue changes — no polling anywhere on the serial path.
 
 ### Operations
 
-- Enable by uncommenting the `devices:` mapping in
-  `remote-render/docker-compose.yml` and starting with
-  `SERIAL_PORT=/dev/ttyUSB0 docker compose up -d`. `SERIAL_PORT` empty keeps
-  the transport off; the HTTP API always runs.
+- The current Mac runs the service as
+  `~/Library/LaunchAgents/com.sdd.remote-render.plist`. After a build, publish
+  with `launchctl kickstart -k gui/$UID/com.sdd.remote-render`.
+- Linux hosts can enable serial by mapping the device in
+  `remote-render/docker-compose.yml` and setting
+  `SERIAL_PORT=/dev/ttyUSB0`. An empty `SERIAL_PORT` leaves the HTTP API active.
 - The service reopens the port every 5s after USB unplug/errors.
-- Flashing firmware uses the same USB port: stop the container (or unplug)
-  before `pio run -t upload`, or esptool will fight the render service for
-  the port.
+- Flashing firmware uses the same USB port. On the current Mac, boot out the
+  launchd service before `pio run -t upload`, then bootstrap it again after the
+  upload. Stop the container first on a Linux Docker host.
 - Logging and the protocol share UART0 at 921600; use
   `pio device monitor -b 921600` for bare development. Firmware log lines
-  show up in the container log prefixed with `[device]` when the serial link
-  is active.
+  appear in the render-service log prefixed with `[device]` while serial is
+  active.
 
-## Docker Service Structure
+## Remote Render Service Structure
 
 ```text
 remote-render/
@@ -459,12 +534,27 @@ remote-render/
   package.json
   package-lock.json
   tsconfig.json
+  tsconfig.console.json
+  vite.config.ts
+  vitest.config.ts
+  console/
+    index.html
+    src/
+      App.tsx
+      api.ts
+      draft.ts
+      main.tsx
+      styles.css
+      types.ts
   src/
     main.ts
     protocol.ts
     server.ts
     state.ts
     ui-state.ts
+    config/
+      schema.ts
+      store.ts
     renderer/
       components/
         frame-background.tsx
@@ -522,10 +612,15 @@ Responsibilities:
 - `renderer/view.tsx`: top-level TSX view selection over the derived view model.
 - `state.ts`: track device frame ids, button sequence, dirty frames, and full-frame
   resync snapshots. It also schedules animation frames after navigation input.
+- `config/*`: validate versioned device configuration, migrate legacy
+  preferences, check revisions, and publish atomic file updates.
 - `ui-state.ts`: pure state machine for pages, selection, detail routing, and
   animation progress. Brightness and font details apply changes immediately on
   `short_press`.
-- `server.ts`: expose the Node HTTP routes.
+- `server.ts`: expose device and console APIs and serve the Vite output.
+- `console/src/*`: React control console. TanStack Query owns server state,
+  `draft.ts` owns local edits and field-level conflict rebasing, and Motion
+  handles restrained interaction feedback.
 - `tools/frame-preview.ts`: local HTTP frame client that decodes `SDD1` frames and
   writes PNG previews for debugging without photographing the physical display.
 
@@ -533,13 +628,20 @@ Docker uses `node:22-bookworm-slim` plus DejaVu, Noto CJK, LXGW WenKai Screen,
 and Maple Mono NF CN fonts. The font packages are intentional: without CJK
 fonts the Chinese clock text does not render correctly in the container.
 
-Local development commands:
+Build and verification commands:
 
 ```bash
 cd remote-render
 npm install
 npm test
+npm run typecheck
 npm run build
+```
+
+Linux Docker deployment:
+
+```bash
+cd remote-render
 REMOTE_RENDER_PORT=18080 docker compose up -d --build
 ```
 
@@ -615,7 +717,7 @@ The firmware main loop dispatches on the auto-detected link mode.
 WiFi mode:
 
 1. Connect WiFi using the existing setup portal path.
-2. Poll button events and POST gestures to the Docker service.
+2. Poll button events and POST gestures to the render service.
 3. Fetch `/commands?after=...` only when a frame response's `X-SDD-Cmd` header
    shows a newer command id, and execute local commands such as brightness PWM.
 4. POST local status periodically and after relevant state changes.
@@ -653,7 +755,16 @@ new page before the user lifts their finger.
 
 In scope:
 
-- Full-frame rendering from Docker.
+- Full-frame rendering from the Node.js service.
+- React/Vite Web console with responsive device, Home, Appearance, Diagnostics,
+  and fixed-preview areas.
+- TanStack Query polling and cache management, local configuration drafts, and
+  reduced-motion-aware interaction feedback.
+- Versioned per-device appearance and Home configuration with quoted ETag
+  concurrency control, atomic persistence, and legacy preference migration.
+- Three Home layout presets and independent date, lunar, and weather visibility
+  controls.
+- Side-effect-free draft PNG previews and simulated device gestures.
 - Per-second dirty rectangle refresh for the clock region, plus a short
   server-side digit flip animation for hour, minute, and second changes.
 - Home-page `double_press` full-frame refresh for manual resync.
@@ -669,7 +780,7 @@ In scope:
 - Interleaved tile-strip dirty frames for large page changes.
 - Server/device frame diagnostics for large updates, including server wait,
   server render, server total, and estimated client HTTP overhead.
-- Full-frame resync for cold clients, Docker service restarts, and stale partial
+- Full-frame resync for cold clients, render-service restarts, and stale partial
   bases.
 - Button POSTs.
 - Device command polling for `set_brightness`.
@@ -678,6 +789,8 @@ In scope:
 - Binary frame parsing with CRC.
 - Raw and RLE-compressed RGB565 rectangle drawing.
 - Basic `http://` service URL configuration through the setup portal.
+- Setup-portal validation for new device IDs, with historical ID compatibility
+  in the Node.js service.
 - Local PNG preview tooling for HTTP frames.
 
 Out of scope:
@@ -688,3 +801,5 @@ Out of scope:
 - Weather and local NTP in firmware.
 - Local firmware-owned settings pages, local page routing, and local page
   rendering.
+- Configurable content-page lists, music and lyrics sources, and weather-source
+  settings in the Web console.

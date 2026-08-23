@@ -1,23 +1,28 @@
 import {createRemoteRenderServer} from "./server.js";
 import {startWeatherPolling} from "./renderer/services/weather.js";
-import {createPrefsSaver, loadPrefs} from "./prefs-store.js";
+import {ConfigStore} from "./config/store.js";
 import {SerialTransport} from "./serial/serial-transport.js";
 import {DeviceRegistry} from "./state.js";
 
 const port = Number(process.env.PORT ?? "8080");
-// 设备偏好（主题/字体）落盘：容器重建后不再丢用户选择。
+// 版本化配置落盘；首次启动时会迁移旧的 device-prefs.json。
 const stateDir = process.env.STATE_DIR ?? "./data";
-const prefs = loadPrefs(stateDir);
-const savePrefs = createPrefsSaver(stateDir);
+const configStore = new ConfigStore(stateDir);
+const configDocument = configStore.getDocument();
 const registry = new DeviceRegistry({
-  initialPrefs: prefs,
+  initialConfigs: configDocument.devices,
   onPrefsChanged: (deviceId, changed) => {
-    prefs[deviceId] = changed;
-    savePrefs(prefs);
+    try {
+      configStore.updateDeviceAppearance(deviceId, changed);
+    } catch (error) {
+      console.warn("[Config] device preference save failed:", error instanceof Error ? error.message : error);
+    }
   },
 });
-console.log(`[RemoteRender] loaded prefs for ${Object.keys(prefs).length} device(s) from ${stateDir}`);
-const server = createRemoteRenderServer(registry);
+console.log(
+  `[RemoteRender] loaded config revision ${configStore.revision} for ${Object.keys(configDocument.devices).length} device(s) from ${stateDir}`,
+);
+const server = createRemoteRenderServer(registry, {configStore});
 
 await server.listen(port, "0.0.0.0");
 console.log(`[RemoteRender] listening on 0.0.0.0:${port}`);
@@ -70,8 +75,8 @@ async function startSerialTransport(path: string, baudRate: number): Promise<voi
   openPort();
 }
 
-// 容器停止时（docker stop 发送 SIGTERM）优雅关闭：停止接收新连接并让
-// 正在进行的 long-poll 请求自然结束，而不是被硬杀。重复信号直接退出。
+// 容器停止时（docker stop 发送 SIGTERM）优雅关闭：停止接收新连接，
+// 等待正在进行的 long-poll 请求自然结束。重复信号直接退出。
 let shuttingDown = false;
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, () => {

@@ -7,6 +7,7 @@ import {
   nextThemeKey,
   type DeviceUiState,
 } from "../../ui-state.js";
+import {DEFAULT_HOME_CONFIG, type HomeConfig} from "../../config/schema.js";
 import type {
   DetailRowViewModel,
   DetailViewModel,
@@ -24,6 +25,7 @@ export interface BuildDeviceViewModelInput {
   state: DeviceUiState;
   progress: number;
   clockFlipProgress?: number;
+  homeConfig?: HomeConfig;
 }
 
 export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceViewModel {
@@ -43,11 +45,14 @@ export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceVi
     return buildDetailViewModel(input, fontKey);
   }
   const theme = resolveClockTheme(resolveThemeKeyForView(input.state));
+  const homeConfig = input.homeConfig ?? DEFAULT_HOME_CONFIG;
   return {
     page: "home",
+    config: homeConfig,
     fontKey,
     copy: buildHomeCopy(input.currentTime),
     clockGlyphs: buildClockFlipGlyphs(input.currentTime, {
+      layout: homeConfig.layout,
       progress: input.clockFlipProgress,
       timeColor: theme.time,
       secondsColor: theme.seconds,

@@ -1,4 +1,5 @@
 import type {DeviceRegistry} from "../state.js";
+import {isValidDeviceId} from "../config/schema.js";
 import {
   EnvelopeParser,
   MSG_COMMAND,
@@ -131,17 +132,22 @@ export class SerialTransport {
   }
 
   private handleMessage(type: number, payload: Buffer): void {
-    let body: Record<string, unknown>;
+    let parsed: unknown;
     try {
-      body = payload.length === 0 ? {} : (JSON.parse(payload.toString("utf8")) as Record<string, unknown>);
+      parsed = payload.length === 0 ? {} : JSON.parse(payload.toString("utf8"));
     } catch {
       this.log("[Serial] dropped message with invalid JSON payload");
       return;
     }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      this.log("[Serial] dropped message with non-object JSON payload");
+      return;
+    }
+    const body = parsed as Record<string, unknown>;
 
     switch (type) {
       case MSG_DEVICE_HELLO: {
-        const deviceId = typeof body.device_id === "string" && body.device_id.length > 0 ? body.device_id : null;
+        const deviceId = typeof body.device_id === "string" && isValidDeviceId(body.device_id) ? body.device_id : null;
         if (deviceId === null) {
           this.log("[Serial] device hello without device_id");
           return;
@@ -212,13 +218,18 @@ export class SerialTransport {
         const uptime = body.uptime_ms;
         if (typeof brightness !== "number" || !Number.isInteger(brightness) || brightness < 0 || brightness > 100) return;
         if (typeof uptime !== "number" || !Number.isInteger(uptime) || uptime < 0) return;
+        const heapFree = optionalBoundedInt(body.heap_free, 0);
+        const heapMaxBlock = optionalBoundedInt(body.heap_max_block, 0);
+        const heapFragmentation = optionalBoundedInt(body.heap_fragmentation, 0, 100);
+        const wifiRssi = optionalBoundedInt(body.wifi_rssi, -127, 0);
+        if (heapFree === null || heapMaxBlock === null || heapFragmentation === null || wifiRssi === null) return;
         this.registry.recordStatus(this.deviceId, {
           brightness,
           uptimeMs: uptime,
-          heapFree: asNonNegativeInt(body.heap_free),
-          heapMaxBlock: asNonNegativeInt(body.heap_max_block),
-          heapFragmentation: Math.min(100, asNonNegativeInt(body.heap_fragmentation)),
-          wifiRssi: typeof body.wifi_rssi === "number" && Number.isInteger(body.wifi_rssi) ? body.wifi_rssi : 0,
+          heapFree,
+          heapMaxBlock,
+          heapFragmentation,
+          wifiRssi,
         });
         this.pushCommandIfAny();
         return;
@@ -308,6 +319,13 @@ export class SerialTransport {
   }
 }
 
-function asNonNegativeInt(value: unknown): number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
+function optionalBoundedInt(
+  value: unknown,
+  min: number,
+  max = Number.MAX_SAFE_INTEGER,
+): number | undefined | null {
+  if (value === undefined) return undefined;
+  return typeof value === "number" && Number.isInteger(value) && value >= min && value <= max
+    ? value
+    : null;
 }

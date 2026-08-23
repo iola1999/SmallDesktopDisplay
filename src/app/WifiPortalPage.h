@@ -17,6 +17,7 @@ struct WifiPortalNetwork
 
 std::string normalizeCityCodeInput(const std::string &input);
 std::string normalizeRemoteBaseUrlInput(const std::string &input);
+std::string normalizeDeviceIdInput(const std::string &input);
 std::string buildWifiPortalPage(const std::string &apSsid,
                                 const std::string &portalIp,
                                 const std::vector<WifiPortalNetwork> &networks,

@@ -1,3 +1,4 @@
+import type {HomeConfig} from "../../config/schema.js";
 import {DeviceUiState} from "../../ui-state.js";
 import {DeviceView} from "../view.js";
 import type {CanvasImage} from "../types.js";
@@ -12,6 +13,7 @@ export interface RenderDeviceCanvasOptions {
   uiState?: DeviceUiState;
   animationProgress?: number;
   clockFlipProgress?: number;
+  homeConfig?: HomeConfig;
 }
 
 export function renderDeviceCanvas(options: RenderDeviceCanvasOptions): CanvasImage {
@@ -25,6 +27,7 @@ export function renderDeviceCanvas(options: RenderDeviceCanvasOptions): CanvasIm
       state={state}
       progress={progress}
       clockFlipProgress={options.clockFlipProgress}
+      homeConfig={options.homeConfig}
     />,
     fontKey,
   );

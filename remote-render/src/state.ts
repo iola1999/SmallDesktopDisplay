@@ -24,6 +24,11 @@ import {
   isAnimationActive,
 } from "./ui-state.js";
 import type {DevicePrefs, PrefsMap} from "./prefs-store.js";
+import {
+  type DeviceConfig,
+  cloneDeviceConfig,
+  createDefaultDeviceConfig,
+} from "./config/schema.js";
 
 export class QueuedCommand {
   constructor(
@@ -48,6 +53,9 @@ export class DeviceState {
   frameId = 0;
   // 最近一次被访问的单调时刻（秒），用于淘汰长时间不活跃的设备条目。
   lastTouchedAt = 0;
+  // 只记录真实设备通过帧、输入、命令或状态通道发生的通信。
+  // 控制台预览和配置读取不会更新该时间。
+  lastDeviceCommunicationAt = -Infinity;
   buttonCount = 0;
   lastInputSeq = 0;
   lastInputUptimeMs = -1;
@@ -74,8 +82,12 @@ export class DeviceState {
   ui = new DeviceUiState();
   commandId = 0;
   latestCommand: QueuedCommand | null = null;
+  config: DeviceConfig;
+  reportedDiagnostics: ReportedDeviceDiagnostics | null = null;
 
-  constructor(public deviceId: string) {}
+  constructor(public deviceId: string, config = createDefaultDeviceConfig()) {
+    this.config = cloneDeviceConfig(config);
+  }
 
   get fullFrame(): Buffer {
     if (this.fullFrameCache === null) {
@@ -99,6 +111,14 @@ export interface RecordStatusInput {
   wifiRssi?: number;
 }
 
+export interface ReportedDeviceDiagnostics {
+  uptimeMs: number;
+  heapFree?: number;
+  heapMaxBlock?: number;
+  heapFragmentation?: number;
+  wifiRssi?: number;
+}
+
 interface DeviceRegistryOptions {
   monotonic?: () => number;
   frameIntervalSeconds?: number;
@@ -109,6 +129,7 @@ interface DeviceRegistryOptions {
   evictionSweepIntervalSeconds?: number;
   // 落盘的设备偏好（主题/字体）：新设备条目创建时应用；变化时经回调持久化。
   initialPrefs?: PrefsMap;
+  initialConfigs?: Record<string, DeviceConfig>;
   onPrefsChanged?: (deviceId: string, prefs: Required<DevicePrefs>) => void;
 }
 
@@ -123,6 +144,7 @@ export class DeviceRegistry {
   private evictionSweepIntervalSeconds: number;
   private lastEvictionSweepAt = -Infinity;
   private initialPrefs: PrefsMap;
+  private deviceConfigs: Record<string, DeviceConfig>;
   private onPrefsChanged?: (deviceId: string, prefs: Required<DevicePrefs>) => void;
 
   constructor(options: DeviceRegistryOptions = {}) {
@@ -135,7 +157,17 @@ export class DeviceRegistry {
     // 让 devices Map 无限增长。回来的真实设备会因 have>frameId 自动收到全屏帧重同步。
     this.deviceIdleTtlSeconds = options.deviceIdleTtlSeconds ?? 3600;
     this.evictionSweepIntervalSeconds = options.evictionSweepIntervalSeconds ?? 60;
-    this.initialPrefs = options.initialPrefs ?? {};
+    this.initialPrefs = Object.assign(Object.create(null), options.initialPrefs ?? {});
+    this.deviceConfigs = Object.create(null);
+    for (const [deviceId, config] of Object.entries(options.initialConfigs ?? {})) {
+      this.deviceConfigs[deviceId] = cloneDeviceConfig(config);
+    }
+    for (const [deviceId, prefs] of Object.entries(this.initialPrefs)) {
+      const config = this.deviceConfigs[deviceId] ?? createDefaultDeviceConfig();
+      if (prefs.themeKey && (THEME_OPTIONS as readonly string[]).includes(prefs.themeKey)) config.appearance.themeKey = prefs.themeKey;
+      if (prefs.fontKey && (FONT_OPTIONS as readonly string[]).includes(prefs.fontKey)) config.appearance.fontKey = prefs.fontKey;
+      this.deviceConfigs[deviceId] = config;
+    }
     this.onPrefsChanged = options.onPrefsChanged;
   }
 
@@ -148,7 +180,7 @@ export class DeviceRegistry {
     const deadline = this.monotonic() + Math.max(0, Math.min(waitMs, 5000)) / 1000;
     let waitSeconds = 0;
     let renderSeconds = 0;
-    let state = this.ensureDevice(deviceId);
+    let state = this.ensureDevice(deviceId, true);
     renderSeconds += this.renderIfDue(state);
     let frame = this.selectFrameForClient(state, have);
     if (frame !== null) {
@@ -165,7 +197,7 @@ export class DeviceRegistry {
       // 旧值 25ms 在 50ms 帧间隔上会造成最高半帧的相位噪声。
       await sleep(Math.min(remaining, 0.005));
       waitSeconds += Math.max(0, this.monotonic() - waitStarted);
-      state = this.ensureDevice(deviceId);
+      state = this.ensureDevice(deviceId, true);
       renderSeconds += this.renderIfDue(state);
       frame = this.selectFrameForClient(state, have);
       if (frame !== null) {
@@ -176,7 +208,7 @@ export class DeviceRegistry {
   }
 
   recordInput(deviceId: string, seq: number, event: InputEventName, uptimeMs = 0): boolean {
-    const state = this.ensureDevice(deviceId);
+    const state = this.ensureDevice(deviceId, true);
     if (!this.shouldAcceptInput(state, seq, uptimeMs)) {
       return false;
     }
@@ -196,7 +228,11 @@ export class DeviceRegistry {
   }
 
   // 控制台直接设定偏好：主题/字体立即生效并持久化；亮度走命令通道由设备落 EEPROM。
-  applyPrefs(deviceId: string, prefs: {themeKey?: string; fontKey?: string; brightness?: number}): Required<DevicePrefs> & {brightness: number} {
+  applyPrefs(
+    deviceId: string,
+    prefs: {themeKey?: string; fontKey?: string; brightness?: number},
+    options: {emitPrefsChanged?: boolean} = {},
+  ): Required<DevicePrefs> & {brightness: number} {
     const state = this.ensureDevice(deviceId);
     const before = prefsSnapshot(state);
     if (prefs.themeKey !== undefined && (THEME_OPTIONS as readonly string[]).includes(prefs.themeKey)) {
@@ -213,13 +249,37 @@ export class DeviceRegistry {
       state.ui.pendingBrightness = value;
       this.queueCommand(state, new DeviceCommand("set_brightness", value, true));
     }
-    this.emitPrefsIfChanged(state, before);
+    this.capturePrefs(state);
+    if (options.emitPrefsChanged !== false) this.emitPrefsIfChanged(state, before);
     this.render(state, true);
     return {themeKey: state.ui.themeKey, fontKey: state.ui.fontKey, brightness: state.ui.brightness};
   }
 
+  applyDeviceConfig(deviceId: string, config: DeviceConfig): void {
+    const next = cloneDeviceConfig(config);
+    this.deviceConfigs[deviceId] = next;
+    const state = this.devices.get(deviceId);
+    if (!state) return;
+    state.config = cloneDeviceConfig(next);
+    state.ui.themeKey = next.appearance.themeKey;
+    state.ui.pendingThemeKey = next.appearance.themeKey;
+    state.ui.fontKey = next.appearance.fontKey;
+    state.ui.pendingFontKey = next.appearance.fontKey;
+    this.render(state, true);
+  }
+
   // 控制台设备列表（只读，不创建条目）。
-  listDevices(): Array<{deviceId: string; page: string; themeKey: string; fontKey: string; brightness: number; frameId: number; idleSeconds: number}> {
+  listDevices(): Array<{
+    deviceId: string;
+    page: string;
+    themeKey: string;
+    fontKey: string;
+    brightness: number;
+    frameId: number;
+    idleSeconds: number;
+    lastCommunicationSeconds: number | null;
+    diagnostics: ReportedDeviceDiagnostics | null;
+  }> {
     const now = this.monotonic();
     return [...this.devices.values()].map((state) => ({
       deviceId: state.deviceId,
@@ -229,11 +289,15 @@ export class DeviceRegistry {
       brightness: state.ui.brightness,
       frameId: state.frameId,
       idleSeconds: Math.max(0, Math.round(now - state.lastTouchedAt)),
+      lastCommunicationSeconds: Number.isFinite(state.lastDeviceCommunicationAt)
+        ? Math.max(0, Math.round(now - state.lastDeviceCommunicationAt))
+        : null,
+      diagnostics: state.reportedDiagnostics === null ? null : {...state.reportedDiagnostics},
     }));
   }
 
   // 控制台预览：返回当前 canvas（ensureDevice 首渲染保证非空）。
-  // 真实设备在首页每秒自渲染，canvas 恒新鲜——预览绝不能替它推进帧序列，
+  // 真实设备在首页每秒自渲染，canvas 恒新鲜。预览绝不能替它推进帧序列，
   // 否则与设备轮询竞争 base，曾造成"控制台开着就整屏重同步风暴"。
   // 只有预览专用 id（无设备拉帧、canvas 已陈旧）才代为渲染。
   getPreviewImage(deviceId: string): CanvasImage {
@@ -244,6 +308,28 @@ export class DeviceRegistry {
     return state.canvas!;
   }
 
+  renderConfigPreview(deviceId: string, config: DeviceConfig): CanvasImage {
+    const existing = this.devices.get(deviceId);
+    const uiState = new DeviceUiState({
+      page: "home",
+      brightness: existing?.ui.brightness ?? 50,
+      pendingBrightness: existing?.ui.pendingBrightness ?? 50,
+      themeKey: config.appearance.themeKey,
+      pendingThemeKey: config.appearance.themeKey,
+      fontKey: config.appearance.fontKey,
+      pendingFontKey: config.appearance.fontKey,
+    });
+    return renderDeviceCanvas({
+      currentTime: this.now(),
+      deviceId,
+      buttonCount: existing?.buttonCount ?? 0,
+      uiState,
+      homeConfig: config.home,
+      animationProgress: 1,
+      clockFlipProgress: 1,
+    });
+  }
+
   private applyGesture(state: DeviceState, event: InputEventName, now: number): void {
     const previousPage = state.ui.page;
     const before = prefsSnapshot(state);
@@ -252,6 +338,7 @@ export class DeviceRegistry {
       this.queueCommand(state, command);
     }
     this.emitPrefsIfChanged(state, before);
+    this.capturePrefs(state);
 
     // 首页双击 = 强制整屏刷新
     if (previousPage === "home" && state.ui.page === "home" && event === "double_press") {
@@ -271,8 +358,15 @@ export class DeviceRegistry {
     this.onPrefsChanged(state.deviceId, {themeKey: state.ui.themeKey, fontKey: state.ui.fontKey});
   }
 
+  private capturePrefs(state: DeviceState): void {
+    const config = this.deviceConfigs[state.deviceId] ?? cloneDeviceConfig(state.config);
+    config.appearance = prefsSnapshot(state);
+    this.deviceConfigs[state.deviceId] = config;
+    state.config.appearance = {...config.appearance};
+  }
+
   getCommand(deviceId: string, after: number): QueuedCommand | null {
-    const state = this.ensureDevice(deviceId);
+    const state = this.ensureDevice(deviceId, true);
     if (state.latestCommand === null || state.latestCommand.id <= after) {
       return null;
     }
@@ -280,7 +374,7 @@ export class DeviceRegistry {
   }
 
   recordStatus(deviceId: string, input: RecordStatusInput): void {
-    const state = this.ensureDevice(deviceId);
+    const state = this.ensureDevice(deviceId, true);
     const brightnessChanged = state.ui.brightness !== input.brightness;
     state.ui.brightness = input.brightness;
     state.ui.pendingBrightness = input.brightness;
@@ -289,6 +383,13 @@ export class DeviceRegistry {
     state.ui.diagnostics.heapFragmentation = input.heapFragmentation ?? 0;
     state.ui.diagnostics.wifiRssi = input.wifiRssi ?? 0;
     state.ui.diagnostics.uptimeMs = input.uptimeMs;
+    state.reportedDiagnostics = {
+      uptimeMs: input.uptimeMs,
+      ...(input.heapFree === undefined ? {} : {heapFree: input.heapFree}),
+      ...(input.heapMaxBlock === undefined ? {} : {heapMaxBlock: input.heapMaxBlock}),
+      ...(input.heapFragmentation === undefined ? {} : {heapFragmentation: input.heapFragmentation}),
+      ...(input.wifiRssi === undefined ? {} : {wifiRssi: input.wifiRssi}),
+    };
     state.lastInputUptimeMs = Math.max(state.lastInputUptimeMs, input.uptimeMs);
     // 状态上报的数字只在少数页面可见。此前无条件渲染会在翻牌窗口里插一帧，
     // 让下一个动画 partial 的 base 跳过设备的 have，触发整屏重同步顿挫
@@ -301,24 +402,28 @@ export class DeviceRegistry {
     }
   }
 
-  private ensureDevice(deviceId: string): DeviceState {
+  private ensureDevice(deviceId: string, deviceCommunication = false): DeviceState {
     const now = this.monotonic();
     let state = this.devices.get(deviceId);
     if (!state) {
-      state = new DeviceState(deviceId);
+      const configured = this.deviceConfigs[deviceId] ?? createDefaultDeviceConfig();
+      state = new DeviceState(deviceId, configured);
       const stored = this.initialPrefs[deviceId];
-      if (stored?.themeKey && (THEME_OPTIONS as readonly string[]).includes(stored.themeKey)) {
-        state.ui.themeKey = stored.themeKey;
-        state.ui.pendingThemeKey = stored.themeKey;
+      const themeKey = stored?.themeKey ?? configured.appearance.themeKey;
+      if ((THEME_OPTIONS as readonly string[]).includes(themeKey)) {
+        state.ui.themeKey = themeKey;
+        state.ui.pendingThemeKey = themeKey;
       }
-      if (stored?.fontKey && (FONT_OPTIONS as readonly string[]).includes(stored.fontKey)) {
-        state.ui.fontKey = stored.fontKey;
-        state.ui.pendingFontKey = stored.fontKey;
+      const fontKey = stored?.fontKey ?? configured.appearance.fontKey;
+      if ((FONT_OPTIONS as readonly string[]).includes(fontKey)) {
+        state.ui.fontKey = fontKey;
+        state.ui.pendingFontKey = fontKey;
       }
       this.render(state, true);
       this.devices.set(deviceId, state);
     }
     state.lastTouchedAt = now;
+    if (deviceCommunication) state.lastDeviceCommunicationAt = now;
     this.evictIdleDevices(now);
     return state;
   }
@@ -437,6 +542,7 @@ export class DeviceRegistry {
       deviceId: state.deviceId,
       buttonCount: state.buttonCount,
       uiState: state.ui,
+      homeConfig: state.config.home,
       animationProgress: currentAnimationProgress(state.ui, now),
       clockFlipProgress,
     });
