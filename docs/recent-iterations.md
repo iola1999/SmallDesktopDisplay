@@ -1,11 +1,12 @@
-# Recent Iterations
+# Recent Iterations Through 2026-06-29
 
-This file records the current remote-rendering line of work. It intentionally
-omits old pre-remote firmware plans for local weather, NTP, AppCore-driven
-settings pages, and local UI motion because those modules were removed when the
-project moved to the thin-client architecture.
+This file is a historical archive of the remote-rendering work recorded through
+2026-06-29. Commands, deployment details, and baselines below preserve their
+original context. Use `AGENTS.md` for current build and launchd operations, and
+use `docs/remote-rendering-http-frame-design.md` for the current transport and
+runtime design. New work is tracked under `.agents/notes/`.
 
-## Current Baseline
+## Baseline Recorded on 2026-06-29
 
 - The `esp12e` firmware is a lightweight ESP8266 network-display client.
 - The device owns WiFi setup, button gesture detection, local hold-progress
