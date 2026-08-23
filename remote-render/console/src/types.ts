@@ -62,6 +62,20 @@ export interface DeviceConfigDocument {
   etag: string;
 }
 
+export interface ConfigHistoryEntry {
+  revision: number;
+  createdAt: string;
+  config: DeviceConfig;
+}
+
+export interface ConfigHistoryResponse {
+  schemaVersion: number;
+  deviceId: string;
+  currentRevision: number;
+  currentConfig: DeviceConfig;
+  entries: ConfigHistoryEntry[];
+}
+
 export interface DeviceSummary {
   deviceId: string;
   page: string;

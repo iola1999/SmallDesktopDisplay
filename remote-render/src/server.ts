@@ -13,9 +13,11 @@ import {
   parseDeviceConfigPatch,
 } from "./config/schema.js";
 import {
+  ConfigHistoryRevisionNotFoundError,
   ConfigRevisionConflictError,
   ConfigStore,
   ConfigStoreReadOnlyError,
+  configHistoryResponse,
   configResponse,
 } from "./config/store.js";
 import {encodeCanvasImagePng} from "./renderer/rendering/png.js";
@@ -68,6 +70,10 @@ export function createRemoteRenderServer(
       if (error instanceof ConfigRevisionConflictError) {
         response.setHeader("etag", revisionEtag(error.currentRevision));
         sendJson(response, 409, {detail: "revision conflict", currentRevision: error.currentRevision});
+        return;
+      }
+      if (error instanceof ConfigHistoryRevisionNotFoundError) {
+        sendJson(response, 404, {detail: "config history revision not found", revision: error.revision});
         return;
       }
       if (error instanceof ConfigValidationError) {
@@ -183,6 +189,41 @@ async function handleRequest(
       sendJson(response, 200, configResponse(configStore, deviceId));
       return;
     }
+  }
+
+  const configHistoryMatch = url.pathname.match(/^\/api\/v1\/devices\/([^/]+)\/config\/history$/);
+  if (request.method === "GET" && configHistoryMatch) {
+    const deviceId = decodeDeviceId(configHistoryMatch[1]);
+    const body = configHistoryResponse(configStore, deviceId);
+    response.setHeader("etag", revisionEtag(body.currentRevision));
+    sendJson(response, 200, body);
+    return;
+  }
+
+  const configPublishMatch = url.pathname.match(/^\/api\/v1\/devices\/([^/]+)\/config\/publish$/);
+  if (request.method === "POST" && configPublishMatch) {
+    const deviceId = decodeDeviceId(configPublishMatch[1]);
+    const expectedRevision = parseIfMatch(request.headers["if-match"]);
+    await readJson(request);
+    configStore.publishDeviceConfig(deviceId, expectedRevision);
+    response.setHeader("etag", revisionEtag(configStore.revision));
+    sendJson(response, 200, configResponse(configStore, deviceId));
+    return;
+  }
+
+  const configRollbackMatch = url.pathname.match(/^\/api\/v1\/devices\/([^/]+)\/config\/rollback$/);
+  if (request.method === "POST" && configRollbackMatch) {
+    const deviceId = decodeDeviceId(configRollbackMatch[1]);
+    const expectedRevision = parseIfMatch(request.headers["if-match"]);
+    const payload = await readJson(request);
+    if (!isInt(payload.revision, 0)) {
+      throw new HttpError(422, "revision must be a non-negative integer");
+    }
+    const config = configStore.rollbackDeviceConfig(deviceId, payload.revision, expectedRevision);
+    registry.applyDeviceConfig(deviceId, config);
+    response.setHeader("etag", revisionEtag(configStore.revision));
+    sendJson(response, 200, configResponse(configStore, deviceId));
+    return;
   }
 
   const draftPreviewMatch = url.pathname.match(/^\/api\/v1\/devices\/([^/]+)\/preview$/);

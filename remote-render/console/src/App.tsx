@@ -9,6 +9,7 @@ import {
   Check,
   Clock3,
   CloudSun,
+  History,
   Home,
   LayoutDashboard,
   LoaderCircle,
@@ -20,8 +21,10 @@ import {
   Save,
   Server,
   SunMedium,
+  Upload,
   Wifi,
   WifiOff,
+  X,
 } from "lucide-react";
 import {AnimatePresence, motion} from "motion/react";
 import {useEffect, useReducer, useRef, useState, type Dispatch, type ReactNode} from "react";
@@ -29,11 +32,14 @@ import {useEffect, useReducer, useRef, useState, type Dispatch, type ReactNode} 
 import {
   ApiError,
   getCatalog,
+  getConfigHistory,
   getDeviceConfig,
   getDevices,
   getLivePreview,
   getServiceStatus,
+  publishDeviceConfig,
   renderDraftPreview,
+  rollbackDeviceConfig,
   saveDeviceConfig,
   sendGesture,
   setBrightness,
@@ -41,8 +47,11 @@ import {
 import {draftReducer, initialDraftState} from "./draft";
 import type {
   Catalog,
+  ConfigHistoryEntry,
   ConsoleSection,
   DeviceConfig,
+  DeviceConfigDocument,
+  DevicesResponse,
   DeviceSummary,
   GestureName,
   HomeLayout,
@@ -117,18 +126,17 @@ interface BrightnessDraft {
   dirty: boolean;
 }
 
-type OperationResult<T> = {ok: true; value: T} | {ok: false; error: unknown} | null;
-
-interface SaveRequest {
+interface ConfigSaveRequest {
   deviceId: string;
-  config?: {value: DeviceConfig; etag: string};
-  brightness?: number;
+  config: DeviceConfig;
+  etag: string;
+  signature: string;
 }
 
-interface SaveResult {
-  request: SaveRequest;
-  config: OperationResult<Awaited<ReturnType<typeof saveDeviceConfig>>>;
-  brightness: OperationResult<void>;
+interface ConfigVersionRequest {
+  deviceId: string;
+  etag: string;
+  config: DeviceConfig;
 }
 
 const EMPTY_BRIGHTNESS_DRAFT: BrightnessDraft = {
@@ -148,14 +156,6 @@ function brightnessDraftFor(device?: DeviceSummary): BrightnessDraft {
   };
 }
 
-async function settle<T>(promise: Promise<T>): Promise<OperationResult<T>> {
-  try {
-    return {ok: true, value: await promise};
-  } catch (error) {
-    return {ok: false, error};
-  }
-}
-
 function communicationLabel(device: DeviceSummary): string {
   const seconds = lastSeenSeconds(device);
   return seconds === null ? "尚未通信" : `${humanAge(seconds)}通信`;
@@ -164,6 +164,21 @@ function communicationLabel(device: DeviceSummary): string {
 function errorMessage(error: unknown): string {
   if (error instanceof TypeError) return "无法连接渲染服务";
   return error instanceof Error ? error.message : "请求失败";
+}
+
+const historyDateFormatter = new Intl.DateTimeFormat("zh-CN", {
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+function latestConfigDocument(
+  current: DeviceConfigDocument | undefined,
+  incoming: DeviceConfigDocument,
+): DeviceConfigDocument {
+  return !current || incoming.revision >= current.revision ? incoming : current;
 }
 
 function useObjectUrl(blob: Blob | undefined): string | null {
@@ -187,10 +202,16 @@ export function App() {
     () => localStorage.getItem(DEVICE_STORAGE_KEY) ?? "",
   );
   const [pendingDeviceId, setPendingDeviceId] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [draft, dispatch] = useReducer(draftReducer, initialDraftState);
   const [brightnessDraft, setBrightnessDraft] = useState<BrightnessDraft>(EMPTY_BRIGHTNESS_DRAFT);
+  const [configSyncError, setConfigSyncError] = useState<string | null>(null);
+  const [brightnessSyncError, setBrightnessSyncError] = useState<string | null>(null);
+  const [failedConfigSignature, setFailedConfigSignature] = useState<string | null>(null);
+  const [failedBrightnessValue, setFailedBrightnessValue] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const observedConfigRevision = useRef<number | null>(null);
+  const conflictAttempts = useRef(0);
 
   const catalogQuery = useQuery({
     queryKey: ["catalog"],
@@ -214,6 +235,11 @@ export function App() {
     enabled: selectedDeviceId.length > 0,
     refetchInterval: 10_000,
   });
+  const historyQuery = useQuery({
+    queryKey: ["config-history", selectedDeviceId],
+    queryFn: ({signal}) => getConfigHistory(selectedDeviceId, signal),
+    enabled: historyOpen && selectedDeviceId.length > 0,
+  });
 
   const devices = devicesQuery.data?.devices ?? [];
   const selectedDevice = devices.find((device) => device.deviceId === selectedDeviceId);
@@ -225,26 +251,27 @@ export function App() {
     brightnessDraft.deviceId === selectedDeviceId
       ? brightnessDraft.value
       : (selectedDevice?.brightness ?? 0);
-  const hasUnsavedChanges = draft.dirty || brightnessDirty;
+  const activeConfigSignature = activeConfig ? JSON.stringify(activeConfig) : "";
+  const hasLocalChanges = draft.dirty || brightnessDirty;
 
   useEffect(() => {
     if (devicesQuery.isPending || devicesQuery.isError) return;
     if (devices.length === 0) {
-      if (selectedDeviceId && !hasUnsavedChanges) {
+      if (selectedDeviceId && !hasLocalChanges) {
         setSelectedDeviceId("");
         dispatch({type: "clear"});
         setBrightnessDraft(EMPTY_BRIGHTNESS_DRAFT);
       }
       return;
     }
-    if (!devices.some((device) => device.deviceId === selectedDeviceId) && !hasUnsavedChanges) {
+    if (!devices.some((device) => device.deviceId === selectedDeviceId) && !hasLocalChanges) {
       const nextDeviceId = devices[0].deviceId;
       setSelectedDeviceId(nextDeviceId);
       localStorage.setItem(DEVICE_STORAGE_KEY, nextDeviceId);
       dispatch({type: "clear"});
       setBrightnessDraft(EMPTY_BRIGHTNESS_DRAFT);
     }
-  }, [devices, devicesQuery.isError, devicesQuery.isPending, hasUnsavedChanges, selectedDeviceId]);
+  }, [devices, devicesQuery.isError, devicesQuery.isPending, hasLocalChanges, selectedDeviceId]);
 
   useEffect(() => {
     if (configQuery.data) dispatch({type: "hydrate", document: configQuery.data});
@@ -265,6 +292,7 @@ export function App() {
     });
     if (selectedDeviceId) {
       void queryClient.invalidateQueries({queryKey: ["device-config", selectedDeviceId]});
+      void queryClient.invalidateQueries({queryKey: ["config-history", selectedDeviceId]});
     }
   }, [queryClient, selectedDeviceId, statusQuery.data?.config?.revision]);
 
@@ -282,143 +310,295 @@ export function App() {
   }, [selectedDevice?.brightness, selectedDevice?.deviceId, selectedDeviceId]);
 
   useEffect(() => {
-    if (!hasUnsavedChanges) return;
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 2200);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  const configMutation = useMutation({
+    mutationFn: (input: ConfigSaveRequest) =>
+      saveDeviceConfig(input.deviceId, input.config, input.etag),
+    onMutate: async (input: ConfigSaveRequest) => {
+      await queryClient.cancelQueries({queryKey: ["device-config", input.deviceId]});
+    },
+    onSuccess: async (document, input) => {
+      conflictAttempts.current = 0;
+      setConfigSyncError(null);
+      setFailedConfigSignature(null);
+      queryClient.setQueryData<DeviceConfigDocument>(
+        ["device-config", document.deviceId],
+        (current) => (!current || document.revision >= current.revision ? document : current),
+      );
+      if (document.deviceId === selectedDeviceId) {
+        dispatch({type: "saved", document, sentConfig: input.config});
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({queryKey: ["devices"]}),
+        queryClient.invalidateQueries({queryKey: ["status"]}),
+        queryClient.invalidateQueries({queryKey: ["preview", "live", input.deviceId]}),
+        queryClient.invalidateQueries({queryKey: ["config-history", input.deviceId]}),
+      ]);
+    },
+    onError: async (error, input) => {
+      if (error instanceof ApiError && error.status === 409 && conflictAttempts.current < 3) {
+        conflictAttempts.current += 1;
+        try {
+          const document = await getDeviceConfig(input.deviceId);
+          queryClient.setQueryData<DeviceConfigDocument>(
+            ["device-config", input.deviceId],
+            (current) => latestConfigDocument(current, document),
+          );
+          if (input.deviceId === selectedDeviceId) dispatch({type: "rebase", document});
+          setConfigSyncError(null);
+          setFailedConfigSignature(null);
+          return;
+        } catch (reloadError) {
+          setConfigSyncError(errorMessage(reloadError));
+        }
+      } else {
+        setConfigSyncError(
+          conflictAttempts.current >= 3 ? "配置持续发生变化，请稍后重试" : errorMessage(error),
+        );
+      }
+      setFailedConfigSignature(input.signature);
+    },
+  });
+
+  const brightnessMutation = useMutation({
+    mutationFn: ({deviceId, value}: {deviceId: string; value: number}) =>
+      setBrightness(deviceId, value),
+    onSuccess: async (_, input) => {
+      setBrightnessSyncError(null);
+      setFailedBrightnessValue(null);
+      setBrightnessDraft((current) => {
+        if (current.deviceId !== input.deviceId) return current;
+        return {
+          ...current,
+          baseline: input.value,
+          dirty: current.value !== input.value,
+        };
+      });
+      queryClient.setQueryData<DevicesResponse>(["devices"], (current) =>
+        current
+          ? {
+              ...current,
+              devices: current.devices.map((device) =>
+                device.deviceId === input.deviceId
+                  ? {...device, brightness: input.value}
+                  : device,
+              ),
+            }
+          : current,
+      );
+      await queryClient.invalidateQueries({queryKey: ["devices"]});
+    },
+    onError: (error, input) => {
+      setBrightnessSyncError(errorMessage(error));
+      setFailedBrightnessValue(input.value);
+    },
+  });
+
+  const publishMutation = useMutation({
+    mutationFn: (input: ConfigVersionRequest) =>
+      publishDeviceConfig(input.deviceId, input.etag),
+    onSuccess: async (document, input) => {
+      queryClient.setQueryData<DeviceConfigDocument>(
+        ["device-config", document.deviceId],
+        (current) => latestConfigDocument(current, document),
+      );
+      if (document.deviceId === selectedDeviceId) {
+        dispatch({type: "saved", document, sentConfig: input.config});
+      }
+      setToast(`已发布修订 ${document.revision}`);
+      await Promise.all([
+        queryClient.invalidateQueries({queryKey: ["config-history", input.deviceId]}),
+        queryClient.invalidateQueries({queryKey: ["status"]}),
+      ]);
+    },
+    onError: async (error, input) => {
+      setToast(errorMessage(error));
+      if (error instanceof ApiError && error.status === 409) {
+        try {
+          const document = await getDeviceConfig(input.deviceId);
+          queryClient.setQueryData<DeviceConfigDocument>(
+            ["device-config", input.deviceId],
+            (current) => latestConfigDocument(current, document),
+          );
+          if (input.deviceId === selectedDeviceId) dispatch({type: "hydrate", document});
+        } catch (reloadError) {
+          setToast(`读取最新配置失败：${errorMessage(reloadError)}`);
+        }
+      }
+    },
+  });
+
+  const rollbackMutation = useMutation({
+    mutationFn: ({deviceId, revision, etag}: {deviceId: string; revision: number; etag: string}) =>
+      rollbackDeviceConfig(deviceId, revision, etag),
+    onSuccess: async (document, input) => {
+      queryClient.setQueryData<DeviceConfigDocument>(
+        ["device-config", document.deviceId],
+        (current) => latestConfigDocument(current, document),
+      );
+      if (document.deviceId === selectedDeviceId) dispatch({type: "hydrate", document});
+      setConfigSyncError(null);
+      setFailedConfigSignature(null);
+      setToast(`已回退到发布版本 #${input.revision}`);
+      await Promise.all([
+        queryClient.invalidateQueries({queryKey: ["config-history", document.deviceId]}),
+        queryClient.invalidateQueries({queryKey: ["devices"]}),
+        queryClient.invalidateQueries({queryKey: ["status"]}),
+        queryClient.invalidateQueries({queryKey: ["preview", "live", document.deviceId]}),
+      ]);
+    },
+    onError: async (error, input) => {
+      setToast(errorMessage(error));
+      if (error instanceof ApiError && error.status === 409) {
+        try {
+          const document = await getDeviceConfig(input.deviceId);
+          queryClient.setQueryData<DeviceConfigDocument>(
+            ["device-config", input.deviceId],
+            (current) => latestConfigDocument(current, document),
+          );
+          if (input.deviceId === selectedDeviceId) dispatch({type: "hydrate", document});
+        } catch (reloadError) {
+          setToast(`读取最新配置失败：${errorMessage(reloadError)}`);
+        }
+      }
+    },
+  });
+
+  const configVersionPending = publishMutation.isPending || rollbackMutation.isPending;
+
+  useEffect(() => {
+    if (draft.dirty || configSyncError === null) return;
+    conflictAttempts.current = 0;
+    setConfigSyncError(null);
+    setFailedConfigSignature(null);
+  }, [configSyncError, draft.dirty]);
+
+  useEffect(() => {
+    if (brightnessDirty || brightnessSyncError === null) return;
+    setBrightnessSyncError(null);
+    setFailedBrightnessValue(null);
+  }, [brightnessDirty, brightnessSyncError]);
+
+  useEffect(() => {
+    if (
+      !selectedDeviceId ||
+      !draft.dirty ||
+      !draft.document ||
+      !activeConfig ||
+      configMutation.isPending ||
+      configVersionPending ||
+      activeConfigSignature === failedConfigSignature
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      configMutation.mutate({
+        deviceId: selectedDeviceId,
+        config: activeConfig,
+        etag: draft.document!.etag,
+        signature: activeConfigSignature,
+      });
+    }, 160);
+    return () => window.clearTimeout(timer);
+  }, [
+    activeConfig,
+    activeConfigSignature,
+    configMutation.isPending,
+    configVersionPending,
+    draft.dirty,
+    draft.document,
+    failedConfigSignature,
+    selectedDeviceId,
+  ]);
+
+  useEffect(() => {
+    if (
+      !selectedDeviceId ||
+      !brightnessDirty ||
+      brightnessMutation.isPending ||
+      brightnessValue === failedBrightnessValue
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      brightnessMutation.mutate({deviceId: selectedDeviceId, value: brightnessValue});
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [
+    brightnessDirty,
+    brightnessMutation.isPending,
+    brightnessValue,
+    failedBrightnessValue,
+    selectedDeviceId,
+  ]);
+
+  const hasPendingSync =
+    hasLocalChanges ||
+    configMutation.isPending ||
+    brightnessMutation.isPending ||
+    configVersionPending;
+  const syncError = configSyncError ?? brightnessSyncError;
+
+  useEffect(() => {
+    if (!hasPendingSync && !syncError) return;
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [hasUnsavedChanges]);
-
-  useEffect(() => {
-    if (!toast) return;
-    const timer = window.setTimeout(() => setToast(null), 2200);
-    return () => window.clearTimeout(timer);
-  }, [toast]);
-
-  const saveMutation = useMutation({
-    onMutate: async (input: SaveRequest) => {
-      await queryClient.cancelQueries({queryKey: ["device-config", input.deviceId]});
-    },
-    mutationFn: async (input: SaveRequest): Promise<SaveResult> => {
-      const [config, brightness] = await Promise.all([
-        input.config
-          ? settle(saveDeviceConfig(input.deviceId, input.config.value, input.config.etag))
-          : Promise.resolve(null),
-        input.brightness === undefined
-          ? Promise.resolve(null)
-          : settle(setBrightness(input.deviceId, input.brightness)),
-      ]);
-      return {request: input, config, brightness};
-    },
-    onSuccess: async (result) => {
-      const failures: unknown[] = [];
-      let configSaved = false;
-      let brightnessSent = false;
-
-      if (result.config?.ok) {
-        const document = result.config.value;
-        await queryClient.cancelQueries({queryKey: ["device-config", document.deviceId]});
-        queryClient.removeQueries({
-          queryKey: ["device-config"],
-          predicate: (query) => query.queryKey[1] !== document.deviceId,
-        });
-        queryClient.setQueryData(["device-config", document.deviceId], document);
-        if (document.deviceId === selectedDeviceId) dispatch({type: "saved", document});
-        configSaved = true;
-      } else if (result.config && !result.config.ok) {
-        if (result.config.error instanceof ApiError && result.config.error.status === 409) {
-          if (result.request.deviceId === selectedDeviceId) dispatch({type: "conflict", value: true});
-        } else {
-          failures.push(result.config.error);
-        }
-      }
-
-      if (result.brightness?.ok) {
-        const sentValue = result.request.brightness!;
-        setBrightnessDraft((current) => {
-          if (current.deviceId !== result.request.deviceId) return current;
-          return {
-            ...current,
-            baseline: sentValue,
-            dirty: current.value !== sentValue,
-          };
-        });
-        brightnessSent = true;
-      } else if (result.brightness && !result.brightness.ok) {
-        failures.push(result.brightness.error);
-      }
-
-      if (failures.length > 0) {
-        setToast(errorMessage(failures[0]));
-      } else if (configSaved && brightnessSent) {
-        setToast("修改已应用");
-      } else if (configSaved) {
-        setToast("配置已应用");
-      } else if (brightnessSent) {
-        setToast("亮度指令已发送");
-      }
-
-      const invalidations: Array<Promise<unknown>> = [];
-      if (configSaved || brightnessSent) {
-        invalidations.push(queryClient.invalidateQueries({queryKey: ["devices"]}));
-      }
-      if (configSaved) {
-        invalidations.push(
-          queryClient.invalidateQueries({queryKey: ["preview", "live", result.request.deviceId]}),
-        );
-      }
-      await Promise.all(invalidations);
-    },
-  });
-
-  const applyDraft = () => {
-    if (!selectedDeviceId || !hasUnsavedChanges || saveMutation.isPending) return;
-    const config =
-      draft.dirty && draft.document && activeConfig
-        ? {value: activeConfig, etag: draft.document.etag}
-        : undefined;
-    const brightness = brightnessDirty ? brightnessDraft.value : undefined;
-    if (!config && brightness === undefined) return;
-    saveMutation.mutate({deviceId: selectedDeviceId, config, brightness});
-  };
-
-  const cancelDraft = () => {
-    dispatch({type: "reset"});
-    setBrightnessDraft(brightnessDraftFor(selectedDevice));
-  };
-
-  const reloadAfterConflict = async () => {
-    const result = await configQuery.refetch();
-    if (!result.isSuccess || !result.data) {
-      setToast(errorMessage(result.error));
-      return;
-    }
-    dispatch({type: "rebase", document: result.data});
-    setToast("已读取最新配置，本地修改仍保留");
-  };
+  }, [hasPendingSync, syncError]);
 
   const changeDevice = (deviceId: string) => {
-    if (saveMutation.isPending) return;
     setSelectedDeviceId(deviceId);
     localStorage.setItem(DEVICE_STORAGE_KEY, deviceId);
     dispatch({type: "clear"});
     setBrightnessDraft(EMPTY_BRIGHTNESS_DRAFT);
+    setConfigSyncError(null);
+    setBrightnessSyncError(null);
+    setFailedConfigSignature(null);
+    setFailedBrightnessValue(null);
     setPendingDeviceId(null);
+    setHistoryOpen(false);
   };
 
   const requestDeviceChange = (deviceId: string) => {
-    if (deviceId === selectedDeviceId || saveMutation.isPending) return;
-    if (hasUnsavedChanges) {
+    if (deviceId === selectedDeviceId) return;
+    if (hasPendingSync || syncError) {
       setPendingDeviceId(deviceId);
+      if (syncError) setToast("当前修改同步失败，请先重试");
       return;
     }
     changeDevice(deviceId);
   };
 
+  useEffect(() => {
+    if (!pendingDeviceId || hasPendingSync || syncError) return;
+    changeDevice(pendingDeviceId);
+  }, [hasPendingSync, pendingDeviceId, syncError]);
+
+  const retrySync = () => {
+    conflictAttempts.current = 0;
+    setConfigSyncError(null);
+    setBrightnessSyncError(null);
+    setFailedConfigSignature(null);
+    setFailedBrightnessValue(null);
+  };
+
+  const publishCurrentConfig = () => {
+    if (!selectedDeviceId || !draft.document || !activeConfig || hasPendingSync || syncError) return;
+    publishMutation.mutate({
+      deviceId: selectedDeviceId,
+      etag: draft.document.etag,
+      config: activeConfig,
+    });
+  };
+
   const refreshAll = async () => {
-    if (saveMutation.isPending) return;
     const results = await Promise.all([
       catalogQuery.refetch(),
       devicesQuery.refetch(),
@@ -436,30 +616,64 @@ export function App() {
       <Sidebar
         devices={devices}
         devicesLoading={devicesQuery.isPending}
-        deviceSwitchingDisabled={saveMutation.isPending}
+        deviceSwitchingDisabled={configVersionPending}
         selectedDeviceId={selectedDeviceId}
         section={section}
         onDeviceChange={requestDeviceChange}
         onSectionChange={setSection}
       />
 
-      <main className={`editor-pane ${hasUnsavedChanges ? "has-draft" : ""}`}>
+      <main className="editor-pane">
         <div className="editor-inner">
           <header className="page-header">
-            <div>
+            <div className="page-header-copy">
               <div className="title-line">
                 <h1>{SECTION_TITLES[section]}</h1>
-                {hasUnsavedChanges ? <span className="draft-badge">草稿</span> : null}
               </div>
             </div>
-            <IconButton
-              label="刷新控制台数据"
-              onClick={refreshAll}
-              disabled={saveMutation.isPending}
-              busy={catalogQuery.isFetching || devicesQuery.isFetching || statusQuery.isFetching}
-            >
-              <RefreshCw size={16} />
-            </IconButton>
+            <div className="page-actions">
+              <SyncStatus
+                pending={hasPendingSync}
+                error={syncError}
+                queuedDevice={pendingDeviceId}
+              />
+              <button
+                type="button"
+                className="button secondary compact"
+                disabled={!selectedDeviceId}
+                aria-expanded={historyOpen}
+                onClick={() => setHistoryOpen(true)}
+              >
+                <History size={14} />
+                历史
+              </button>
+              <button
+                type="button"
+                className="button primary compact"
+                disabled={
+                  !selectedDeviceId ||
+                  !activeConfig ||
+                  hasPendingSync ||
+                  Boolean(syncError) ||
+                  configVersionPending
+                }
+                onClick={publishCurrentConfig}
+              >
+                {publishMutation.isPending ? (
+                  <LoaderCircle className="spin" size={14} />
+                ) : (
+                  <Upload size={14} />
+                )}
+                {publishMutation.isPending ? "发布中" : "发布"}
+              </button>
+              <IconButton
+                label="刷新控制台数据"
+                onClick={refreshAll}
+                busy={catalogQuery.isFetching || devicesQuery.isFetching || statusQuery.isFetching}
+              >
+                <RefreshCw size={16} />
+              </IconButton>
+            </div>
           </header>
 
           {dataError ? (
@@ -468,7 +682,7 @@ export function App() {
           {statusQuery.data?.config?.writable === false ? (
             <ConfigWarningBanner message={statusQuery.data.config.error ?? "配置存储当前只读"} />
           ) : null}
-          {draft.conflict ? <ConflictBanner onReload={reloadAfterConflict} /> : null}
+          {syncError ? <SyncErrorBanner message={syncError} onRetry={retrySync} /> : null}
 
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
@@ -482,7 +696,7 @@ export function App() {
               {section === "devices" ? (
                 <DevicesPanel
                   devices={devices}
-                  disabled={saveMutation.isPending}
+                  disabled={configVersionPending}
                   loading={devicesQuery.isPending}
                   selectedDeviceId={selectedDeviceId}
                   onSelect={requestDeviceChange}
@@ -492,7 +706,9 @@ export function App() {
                 <HomePanel
                   catalog={catalogQuery.data}
                   config={activeConfig}
-                  controlsDisabled={saveMutation.isPending}
+                  controlsDisabled={
+                    statusQuery.data?.config?.writable === false || configVersionPending
+                  }
                   loading={configQuery.isPending || catalogQuery.isPending}
                   hasDevice={Boolean(selectedDeviceId)}
                   dispatch={dispatch}
@@ -505,10 +721,14 @@ export function App() {
                   device={selectedDevice}
                   brightness={brightnessValue}
                   brightnessDirty={brightnessDirty}
-                  controlsDisabled={saveMutation.isPending}
+                  configControlsDisabled={
+                    statusQuery.data?.config?.writable === false || configVersionPending
+                  }
                   loading={configQuery.isPending || catalogQuery.isPending}
                   dispatch={dispatch}
-                  onBrightnessChange={(value) =>
+                  onBrightnessChange={(value) => {
+                    setBrightnessSyncError(null);
+                    setFailedBrightnessValue(null);
                     setBrightnessDraft((current) => ({
                       deviceId: selectedDeviceId,
                       baseline:
@@ -521,8 +741,8 @@ export function App() {
                         (current.deviceId === selectedDeviceId
                           ? current.baseline
                           : (selectedDevice?.brightness ?? value)),
-                    }))
-                  }
+                    }));
+                  }}
                 />
               ) : null}
               {section === "diagnostics" ? (
@@ -536,29 +756,35 @@ export function App() {
             </motion.div>
           </AnimatePresence>
         </div>
-
-        <ActionBar
-          dirty={hasUnsavedChanges}
-          disabled={(draft.dirty && !activeConfig) || draft.conflict}
-          saving={saveMutation.isPending}
-          onCancel={cancelDraft}
-          onApply={applyDraft}
-        />
       </main>
 
       <PreviewPanel
         device={selectedDevice}
         config={activeConfig}
         dirty={draft.dirty}
-        interactionDisabled={saveMutation.isPending}
+        interactionDisabled={configVersionPending}
         onFeedback={setToast}
       />
 
       <AnimatePresence>
-        {pendingDeviceId ? (
-          <DiscardDialog
-            onCancel={() => setPendingDeviceId(null)}
-            onDiscard={() => changeDevice(pendingDeviceId)}
+        {historyOpen ? (
+          <VersionHistoryDrawer
+            currentRevision={historyQuery.data?.currentRevision ?? null}
+            entries={historyQuery.data?.entries ?? []}
+            error={historyQuery.error}
+            loading={historyQuery.isPending}
+            rollingBackRevision={rollbackMutation.isPending ? rollbackMutation.variables?.revision : undefined}
+            rollbackDisabled={hasPendingSync || Boolean(syncError)}
+            onClose={() => setHistoryOpen(false)}
+            onRefresh={() => historyQuery.refetch()}
+            onRollback={(revision) => {
+              if (!selectedDeviceId || !draft.document) return;
+              rollbackMutation.mutate({
+                deviceId: selectedDeviceId,
+                revision,
+                etag: draft.document.etag,
+              });
+            }}
           />
         ) : null}
       </AnimatePresence>
@@ -726,8 +952,8 @@ function HomePanel({
   if (loading || !catalog || !config) return <PanelSkeleton rows={6} />;
 
   return (
-    <>
-      <section className="settings-section" aria-labelledby="layout-title">
+    <div className="panel-flex home-panel">
+      <section className="settings-section wide" aria-labelledby="layout-title">
         <SectionHeading id="layout-title" title="布局" detail="240 × 240" />
         <div className="segmented layout-segments" role="group" aria-label="首页布局">
           {catalog.homeLayouts.map((layout) => {
@@ -754,7 +980,7 @@ function HomePanel({
         </div>
       </section>
 
-      <section className="settings-section" aria-labelledby="header-title">
+      <section className="settings-section date-section" aria-labelledby="header-title">
         <SectionHeading id="header-title" title="日期" />
         <div className="toggle-list">
           {HOME_FLAG_LABELS.header.map((item) => (
@@ -771,7 +997,7 @@ function HomePanel({
         </div>
       </section>
 
-      <section className="settings-section" aria-labelledby="weather-title">
+      <section className="settings-section weather-section" aria-labelledby="weather-title">
         <SectionHeading id="weather-title" title="天气" />
         <div className="toggle-list">
           {HOME_FLAG_LABELS.weather.map((item) => (
@@ -787,7 +1013,7 @@ function HomePanel({
           ))}
         </div>
       </section>
-    </>
+    </div>
   );
 }
 
@@ -797,7 +1023,7 @@ function AppearancePanel({
   device,
   brightness,
   brightnessDirty,
-  controlsDisabled,
+  configControlsDisabled,
   loading,
   dispatch,
   onBrightnessChange,
@@ -807,7 +1033,7 @@ function AppearancePanel({
   device?: DeviceSummary;
   brightness: number;
   brightnessDirty: boolean;
-  controlsDisabled: boolean;
+  configControlsDisabled: boolean;
   loading: boolean;
   dispatch: Dispatch<Parameters<typeof draftReducer>[1]>;
   onBrightnessChange(value: number): void;
@@ -818,7 +1044,7 @@ function AppearancePanel({
   if (loading || !catalog || !config) return <PanelSkeleton rows={6} />;
 
   return (
-    <>
+    <div className="panel-flex appearance-panel">
       <section className="settings-section" aria-labelledby="theme-title">
         <SectionHeading id="theme-title" title="主题" />
         <div className="option-grid" role="group" aria-label="屏幕主题">
@@ -830,7 +1056,7 @@ function AppearancePanel({
                 type="button"
                 aria-pressed={selected}
                 className={`theme-option ${selected ? "selected" : ""}`}
-                disabled={controlsDisabled}
+                disabled={configControlsDisabled}
                 onClick={() => dispatch({type: "set-theme", value: theme.key})}
               >
                 <span className="theme-swatch" style={{backgroundColor: theme.color}} />
@@ -851,7 +1077,7 @@ function AppearancePanel({
               type="button"
               aria-pressed={config.appearance.fontKey === font.key}
               className={config.appearance.fontKey === font.key ? "selected" : ""}
-              disabled={controlsDisabled}
+              disabled={configControlsDisabled}
               onClick={() => dispatch({type: "set-font", value: font.key})}
             >
               {font.label}
@@ -864,7 +1090,7 @@ function AppearancePanel({
         <SectionHeading
           id="brightness-title"
           title="亮度"
-          detail={brightnessDirty ? "等待应用" : "保存在设备中"}
+          detail={brightnessDirty ? "正在同步" : "设备已同步"}
         />
         <div className="brightness-control">
           <SunMedium size={17} />
@@ -875,13 +1101,12 @@ function AppearancePanel({
             step={catalog.brightness.step}
             value={brightness}
             aria-label="屏幕亮度"
-            disabled={controlsDisabled}
             onChange={(event) => onBrightnessChange(Number(event.target.value))}
           />
           <output>{brightness}%</output>
         </div>
       </section>
-    </>
+    </div>
   );
 }
 
@@ -914,7 +1139,7 @@ function DiagnosticsPanel({
       : "未报告";
 
   return (
-    <>
+    <div className="panel-flex diagnostics-panel">
       <section className="settings-section" aria-labelledby="service-title">
         <SectionHeading id="service-title" title="渲染服务" />
         <dl className="diagnostic-list">
@@ -991,7 +1216,7 @@ function DiagnosticsPanel({
           <div className="inline-empty">请选择设备</div>
         )}
       </section>
-    </>
+    </div>
   );
 }
 
@@ -1060,7 +1285,14 @@ function PreviewPanel({
             animate={{opacity: previewUrl || !activeQuery.isFetching ? 1 : 0.76}}
             transition={{duration: 0.12}}
           >
-            {previewUrl ? <img src={previewUrl} alt={`${device.deviceId} 屏幕预览`} /> : null}
+            {previewUrl ? (
+              <img
+                src={previewUrl}
+                alt={`${device.deviceId} 屏幕预览`}
+                width={240}
+                height={240}
+              />
+            ) : null}
             {!previewUrl && activeQuery.isPending ? <PreviewPlaceholder /> : null}
             {activeQuery.isError ? (
               <div className="preview-error">
@@ -1129,36 +1361,33 @@ function PreviewPanel({
   );
 }
 
-function ActionBar({
-  dirty,
-  disabled,
-  saving,
-  onCancel,
-  onApply,
+function SyncStatus({
+  pending,
+  error,
+  queuedDevice,
 }: {
-  dirty: boolean;
-  disabled: boolean;
-  saving: boolean;
-  onCancel(): void;
-  onApply(): void;
+  pending: boolean;
+  error: string | null;
+  queuedDevice: string | null;
 }) {
+  const label = error
+    ? "同步失败"
+    : queuedDevice
+      ? "同步后切换"
+      : pending
+        ? "正在同步"
+        : "实时生效";
   return (
-    <div className={`action-bar ${dirty ? "visible" : ""}`} aria-live="polite">
-      <span className="action-status">
-        {dirty ? <span className="unsaved-dot" /> : <Check size={15} />}
-        {dirty ? "有未应用的修改" : "配置已同步"}
-      </span>
-      <div className="action-buttons">
-        <button type="button" className="button secondary" disabled={!dirty || saving} onClick={onCancel}>
-          <RotateCcw size={15} />
-          取消
-        </button>
-        <button type="button" className="button primary" disabled={!dirty || disabled || saving} onClick={onApply}>
-          {saving ? <LoaderCircle className="spin" size={15} /> : <Save size={15} />}
-          {saving ? "应用中" : "应用"}
-        </button>
-      </div>
-    </div>
+    <span className={`sync-status ${error ? "error" : pending ? "pending" : ""}`} role="status">
+      {error ? (
+        <AlertTriangle size={13} />
+      ) : pending ? (
+        <LoaderCircle className="spin" size={13} />
+      ) : (
+        <Check size={13} />
+      )}
+      {label}
+    </span>
   );
 }
 
@@ -1203,7 +1432,7 @@ function ToggleRow({
       disabled={disabled}
       onClick={() => onChange(!checked)}
     >
-      <span>
+      <span className="toggle-label">
         <strong>{label}</strong>
       </span>
       <span className={`switch ${checked ? "checked" : ""}`} aria-hidden="true">
@@ -1292,13 +1521,13 @@ function ConfigWarningBanner({message}: {message: string}) {
   );
 }
 
-function ConflictBanner({onReload}: {onReload(): void}) {
+function SyncErrorBanner({message, onRetry}: {message: string; onRetry(): void}) {
   return (
     <div className="alert warning" role="alert">
       <AlertTriangle size={17} />
-      <span>配置已有更新。读取最新版本时会保留本地修改。</span>
-      <button type="button" onClick={onReload}>
-        读取最新版本
+      <span>自动同步失败：{message}</span>
+      <button type="button" onClick={onRetry}>
+        重试
       </button>
     </div>
   );
@@ -1341,14 +1570,33 @@ function PreviewPlaceholder() {
   );
 }
 
-function DiscardDialog({onCancel, onDiscard}: {onCancel(): void; onDiscard(): void}) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const onCancelRef = useRef(onCancel);
-  onCancelRef.current = onCancel;
+function VersionHistoryDrawer({
+  currentRevision,
+  entries,
+  error,
+  loading,
+  rollingBackRevision,
+  rollbackDisabled,
+  onClose,
+  onRefresh,
+  onRollback,
+}: {
+  currentRevision: number | null;
+  entries: ConfigHistoryEntry[];
+  error: unknown;
+  loading: boolean;
+  rollingBackRevision?: number;
+  rollbackDisabled: boolean;
+  onClose(): void;
+  onRefresh(): void;
+  onRollback(revision: number): void;
+}) {
+  const dialogRef = useRef<HTMLElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousBodyOverflow = document.body.style.overflow;
     const background = Array.from(
       document.querySelectorAll<HTMLElement>(".sidebar, .editor-pane, .preview-pane"),
     );
@@ -1356,15 +1604,14 @@ function DiscardDialog({onCancel, onDiscard}: {onCancel(): void; onDiscard(): vo
     background.forEach((element) => {
       element.inert = true;
     });
-    document.body.style.overflow = "hidden";
 
     const focusFrame = window.requestAnimationFrame(() => {
-      dialogRef.current?.querySelector<HTMLElement>("button")?.focus();
+      dialogRef.current?.querySelector<HTMLElement>(".history-close")?.focus();
     });
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onCancelRef.current();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab" || !dialogRef.current) return;
@@ -1394,36 +1641,98 @@ function DiscardDialog({onCancel, onDiscard}: {onCancel(): void; onDiscard(): vo
       background.forEach((element, index) => {
         element.inert = previousInert[index];
       });
-      document.body.style.overflow = previousBodyOverflow;
       if (previousFocus?.isConnected) previousFocus.focus();
     };
   }, []);
 
   return (
-    <motion.div className="dialog-backdrop" initial={{opacity: 0}} animate={{opacity: 1}} exit={{opacity: 0}}>
-      <motion.div
-        className="dialog"
+    <motion.div className="history-layer" initial={{opacity: 0}} animate={{opacity: 1}} exit={{opacity: 0}}>
+      <button className="history-scrim" type="button" aria-label="关闭历史版本" onClick={onClose} />
+      <motion.aside
+        className="history-drawer"
         ref={dialogRef}
-        role="alertdialog"
+        role="dialog"
         aria-modal="true"
-        aria-labelledby="discard-title"
-        aria-describedby="discard-description"
-        initial={{opacity: 0, y: 6}}
-        animate={{opacity: 1, y: 0}}
-        exit={{opacity: 0, y: 4}}
+        aria-labelledby="history-title"
+        initial={{x: 20}}
+        animate={{x: 0}}
+        exit={{x: 20}}
+        transition={{duration: 0.16, ease: "easeOut"}}
       >
-        <AlertTriangle size={20} />
-        <h2 id="discard-title">放弃当前修改？</h2>
-        <p id="discard-description">切换设备会清除当前的本地修改。</p>
-        <div className="dialog-actions">
-          <button type="button" className="button secondary" autoFocus onClick={onCancel}>
-            继续编辑
+        <header className="history-header">
+          <div>
+            <h2 id="history-title">历史版本</h2>
+            <span>{entries.length} 个发布版本</span>
+          </div>
+          <button
+            type="button"
+            className="icon-button history-close"
+            aria-label="关闭历史版本"
+            onClick={onClose}
+          >
+            <X size={16} />
           </button>
-          <button type="button" className="button primary" onClick={onDiscard}>
-            放弃并切换
-          </button>
+        </header>
+
+        <div className="history-list">
+          {loading ? <PanelSkeleton rows={5} /> : null}
+          {!loading && error ? (
+            <div className="history-state">
+              <AlertTriangle size={18} />
+              <span>{errorMessage(error)}</span>
+              <button type="button" className="button secondary compact" onClick={onRefresh}>
+                <RefreshCw size={14} />
+                重试
+              </button>
+            </div>
+          ) : null}
+          {!loading && !error && entries.length === 0 ? (
+            <div className="history-state">
+              <History size={20} />
+              <span>暂无发布版本</span>
+            </div>
+          ) : null}
+          {!loading && !error
+            ? entries.map((entry) => {
+                const isCurrent = entry.revision === currentRevision;
+                const busy = rollingBackRevision === entry.revision;
+                return (
+                  <article className="history-entry" key={entry.revision}>
+                    <div className="history-entry-main">
+                      <div className="history-entry-title">
+                        <strong>#{entry.revision}</strong>
+                        <span className="published">发布版本</span>
+                      </div>
+                      <time dateTime={entry.createdAt}>
+                        {historyDateFormatter.format(new Date(entry.createdAt))}
+                      </time>
+                      <span className="history-summary">
+                        {entry.config.home.layout} · {entry.config.appearance.themeKey}
+                      </span>
+                    </div>
+                    {isCurrent ? (
+                      <span className="current-version">当前</span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="history-rollback"
+                        disabled={rollbackDisabled || rollingBackRevision !== undefined}
+                        onClick={() => onRollback(entry.revision)}
+                      >
+                        {busy ? (
+                          <LoaderCircle className="spin" size={14} />
+                        ) : (
+                          <RotateCcw size={14} />
+                        )}
+                        {busy ? "回退中" : "回退"}
+                      </button>
+                    )}
+                  </article>
+                );
+              })
+            : null}
         </div>
-      </motion.div>
+      </motion.aside>
     </motion.div>
   );
 }

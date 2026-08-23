@@ -51,6 +51,22 @@ describe("draftReducer", () => {
     expect(state.document?.etag).toBe('"2"');
   });
 
+  test("ignores an older rebase result for the current device", () => {
+    let state = draftReducer(initialDraftState, {type: "hydrate", document: document(3)});
+    state = draftReducer(state, {type: "set-layout", value: "weather"});
+    state = draftReducer(state, {type: "conflict", value: true});
+    const late = document(2);
+    late.config.home.header.showDate = false;
+
+    const next = draftReducer(state, {type: "rebase", document: late});
+
+    expect(next).toBe(state);
+    expect(next.document?.revision).toBe(3);
+    expect(next.config?.home.layout).toBe("weather");
+    expect(next.config?.home.header.showDate).toBe(true);
+    expect(next.conflict).toBe(true);
+  });
+
   test("cancel returns to the latest server baseline", () => {
     let state = draftReducer(initialDraftState, {type: "hydrate", document: document(0)});
     state = draftReducer(state, {type: "set-theme", value: "amber"});
@@ -83,8 +99,67 @@ describe("draftReducer", () => {
     const late = document(4);
     late.deviceId = "desk-old";
 
-    state = draftReducer(state, {type: "saved", document: late});
+    state = draftReducer(state, {type: "saved", document: late, sentConfig: late.config});
 
     expect(state.document).toBe(current);
+  });
+
+  test("ignores an older save result for the current device", () => {
+    const current = document(3);
+    let state = draftReducer(initialDraftState, {type: "hydrate", document: current});
+    state = draftReducer(state, {type: "set-theme", value: "daylight"});
+    const late = document(2);
+    late.config.appearance.themeKey = "amber";
+
+    const next = draftReducer(state, {type: "saved", document: late, sentConfig: late.config});
+
+    expect(next).toBe(state);
+    expect(next.document).toBe(current);
+    expect(next.config?.appearance.themeKey).toBe("daylight");
+  });
+
+  test("keeps a newer edit made while a save is pending", () => {
+    let state = draftReducer(initialDraftState, {type: "hydrate", document: document(0)});
+    state = draftReducer(state, {type: "set-theme", value: "amber"});
+    const sentConfig = state.config!;
+    state = draftReducer(state, {type: "set-theme", value: "daylight"});
+    const saved = document(1);
+    saved.config.appearance.themeKey = "amber";
+
+    state = draftReducer(state, {type: "saved", document: saved, sentConfig});
+
+    expect(state.document).toBe(saved);
+    expect(state.config?.appearance.themeKey).toBe("daylight");
+    expect(state.dirty).toBe(true);
+    expect(state.conflict).toBe(false);
+  });
+
+  test("keeps an edit back to the previous baseline while a save is pending", () => {
+    let state = draftReducer(initialDraftState, {type: "hydrate", document: document(0)});
+    state = draftReducer(state, {type: "set-theme", value: "amber"});
+    const sentConfig = state.config!;
+    state = draftReducer(state, {type: "set-theme", value: "midnight"});
+    const saved = document(1);
+    saved.config.appearance.themeKey = "amber";
+
+    state = draftReducer(state, {type: "saved", document: saved, sentConfig});
+
+    expect(state.document).toBe(saved);
+    expect(state.config?.appearance.themeKey).toBe("midnight");
+    expect(state.dirty).toBe(true);
+    expect(state.conflict).toBe(false);
+  });
+
+  test("ignores an older hydrate result for the current device", () => {
+    const current = document(3);
+    let state = draftReducer(initialDraftState, {type: "hydrate", document: current});
+    state = draftReducer(state, {type: "set-theme", value: "amber"});
+    const late = document(2);
+
+    const next = draftReducer(state, {type: "hydrate", document: late});
+
+    expect(next).toBe(state);
+    expect(next.document).toBe(current);
+    expect(next.config?.appearance.themeKey).toBe("amber");
   });
 });

@@ -4,6 +4,7 @@ import path from "node:path";
 
 import {describe, expect, test} from "vitest";
 
+import {ConfigStore} from "./config/store.js";
 import {createRemoteRenderServer, type RemoteRenderServer} from "./server.js";
 import {DeviceRegistry} from "./state.js";
 
@@ -231,6 +232,123 @@ describe("console foundation API", () => {
       expect(body.revision).toBe(1);
       expect(body.config.appearance.themeKey).toBe("dusk");
     });
+  });
+
+  test("publishes explicit revisions and rolls back through device history", async () => {
+    await withServer(async (baseUrl) => {
+      expect((await patchConfig(baseUrl, "desk-history-api", 0, {appearance: {themeKey: "amber"}})).status).toBe(200);
+      expect((await patchConfig(baseUrl, "desk-history-api", 1, {appearance: {themeKey: "sakura"}})).status).toBe(200);
+
+      const beforePublish = await fetch(`${baseUrl}/api/v1/devices/desk-history-api/config/history`);
+      expect(beforePublish.status).toBe(200);
+      expect(beforePublish.headers.get("etag")).toBe('"2"');
+      await expect(beforePublish.json()).resolves.toMatchObject({
+        schemaVersion: 1,
+        deviceId: "desk-history-api",
+        currentRevision: 2,
+        currentConfig: {appearance: {themeKey: "sakura"}},
+        entries: [],
+      });
+
+      const missingMatch = await fetch(`${baseUrl}/api/v1/devices/desk-history-api/config/publish`, {
+        method: "POST",
+        headers: {"content-type": "application/json"},
+        body: "{}",
+      });
+      expect(missingMatch.status).toBe(428);
+
+      const publish = await fetch(`${baseUrl}/api/v1/devices/desk-history-api/config/publish`, {
+        method: "POST",
+        headers: {"content-type": "application/json", "if-match": '"2"'},
+        body: "{}",
+      });
+      expect(publish.status).toBe(200);
+      expect(publish.headers.get("etag")).toBe('"3"');
+      await expect(publish.json()).resolves.toMatchObject({
+        revision: 3,
+        config: {appearance: {themeKey: "sakura"}},
+      });
+
+      const patchAfterPublish = await patchConfig(baseUrl, "desk-history-api", 3, {
+        appearance: {themeKey: "amber"},
+      });
+      expect(patchAfterPublish.status).toBe(200);
+      expect(patchAfterPublish.headers.get("etag")).toBe('"4"');
+
+      const unpublishedRevision = await fetch(`${baseUrl}/api/v1/devices/desk-history-api/config/rollback`, {
+        method: "POST",
+        headers: {"content-type": "application/json", "if-match": '"4"'},
+        body: JSON.stringify({revision: 1}),
+      });
+      expect(unpublishedRevision.status).toBe(404);
+
+      const rollback = await fetch(`${baseUrl}/api/v1/devices/desk-history-api/config/rollback`, {
+        method: "POST",
+        headers: {"content-type": "application/json", "if-match": '"4"'},
+        body: JSON.stringify({revision: 3}),
+      });
+      expect(rollback.status).toBe(200);
+      expect(rollback.headers.get("etag")).toBe('"5"');
+      await expect(rollback.json()).resolves.toMatchObject({
+        revision: 5,
+        config: {appearance: {themeKey: "sakura"}},
+      });
+
+      const history = await fetch(`${baseUrl}/api/v1/devices/desk-history-api/config/history`);
+      await expect(history.json()).resolves.toMatchObject({
+        currentRevision: 5,
+        currentConfig: {appearance: {themeKey: "sakura"}},
+        entries: [{revision: 3, config: {appearance: {themeKey: "sakura"}}}],
+      });
+
+      const missingRevision = await fetch(`${baseUrl}/api/v1/devices/desk-history-api/config/rollback`, {
+        method: "POST",
+        headers: {"content-type": "application/json", "if-match": '"5"'},
+        body: JSON.stringify({revision: 99}),
+      });
+      expect(missingRevision.status).toBe(404);
+      await expect(missingRevision.json()).resolves.toEqual({
+        detail: "config history revision not found",
+        revision: 99,
+      });
+
+      const stalePublish = await fetch(`${baseUrl}/api/v1/devices/desk-history-api/config/publish`, {
+        method: "POST",
+        headers: {"content-type": "application/json", "if-match": '"3"'},
+        body: "{}",
+      });
+      expect(stalePublish.status).toBe(409);
+      expect(stalePublish.headers.get("etag")).toBe('"5"');
+    });
+  });
+
+  test("returns the current device config without other devices' published versions", async () => {
+    const configStore = new ConfigStore();
+    configStore.patchDeviceConfig("desk-pruned-current", {appearance: {themeKey: "amber"}}, 0);
+    for (let revision = 1; revision < 26; revision += 1) {
+      configStore.publishDeviceConfig("desk-history-noise", revision);
+    }
+    expect(configStore.listDeviceHistory("desk-pruned-current")).toEqual([]);
+
+    await withServer(
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/v1/devices/desk-pruned-current/config/history`);
+        expect(response.status).toBe(200);
+        expect(response.headers.get("etag")).toBe('"26"');
+        await expect(response.json()).resolves.toEqual({
+          schemaVersion: 1,
+          deviceId: "desk-pruned-current",
+          currentRevision: 26,
+          currentConfig: {
+            ...DEFAULT_CONFIG,
+            appearance: {...DEFAULT_CONFIG.appearance, themeKey: "amber"},
+          },
+          entries: [],
+        });
+      },
+      new DeviceRegistry(),
+      {configStore},
+    );
   });
 
   test("rejects malformed If-Match values without changing the revision", async () => {

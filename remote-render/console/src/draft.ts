@@ -16,7 +16,7 @@ export type DraftAction =
   | {type: "set-layout"; value: HomeLayout}
   | {type: "set-home-flag"; group: "header" | "weather"; key: string; value: boolean}
   | {type: "reset"}
-  | {type: "saved"; document: DeviceConfigDocument}
+  | {type: "saved"; document: DeviceConfigDocument; sentConfig: DeviceConfig}
   | {type: "conflict"; value: boolean};
 
 export const initialDraftState: DraftState = {
@@ -97,7 +97,9 @@ export function draftReducer(state: DraftState, action: DraftAction): DraftState
       return initialDraftState;
     case "hydrate": {
       const sameDevice = state.document?.deviceId === action.document.deviceId;
-      if (sameDevice && state.document?.revision === action.document.revision) return state;
+      if (sameDevice && state.document && state.document.revision >= action.document.revision) {
+        return state;
+      }
       if (sameDevice && state.document && state.config && state.dirty) {
         const config = rebaseConfig(state.document.config, state.config, action.document.config);
         const dirty = !sameConfig(config, action.document.config);
@@ -109,6 +111,7 @@ export function draftReducer(state: DraftState, action: DraftAction): DraftState
       if (!state.document || !state.config || state.document.deviceId !== action.document.deviceId) {
         return {document: action.document, config: action.document.config, dirty: false, conflict: false};
       }
+      if (action.document.revision < state.document.revision) return state;
       const config = rebaseConfig(state.document.config, state.config, action.document.config);
       return {
         document: action.document,
@@ -150,9 +153,20 @@ export function draftReducer(state: DraftState, action: DraftAction): DraftState
     case "reset":
       if (!state.document) return state;
       return {...state, config: state.document.config, dirty: false, conflict: false};
-    case "saved":
+    case "saved": {
       if (state.document && state.document.deviceId !== action.document.deviceId) return state;
-      return {document: action.document, config: action.document.config, dirty: false, conflict: false};
+      if (state.document && action.document.revision < state.document.revision) return state;
+      if (!state.config) {
+        return {document: action.document, config: action.document.config, dirty: false, conflict: false};
+      }
+      const config = rebaseConfig(action.sentConfig, state.config, action.document.config);
+      return {
+        document: action.document,
+        config,
+        dirty: !sameConfig(config, action.document.config),
+        conflict: false,
+      };
+    }
     case "conflict":
       return {...state, conflict: action.value};
   }

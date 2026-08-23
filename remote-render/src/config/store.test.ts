@@ -7,8 +7,11 @@ import {describe, expect, test, vi} from "vitest";
 import {createDefaultDeviceConfig} from "./schema.js";
 import {
   CONFIG_FILE_NAME,
+  CONFIG_HISTORY_DIR_NAME,
+  CONFIG_HISTORY_LIMIT,
   LEGACY_PREFS_BACKUP_FILE_NAME,
   LEGACY_PREFS_FILE_NAME,
+  ConfigHistoryRevisionNotFoundError,
   ConfigStore,
   ConfigStoreReadOnlyError,
 } from "./store.js";
@@ -80,6 +83,7 @@ describe("ConfigStore", () => {
       expect(store.revision).toBe(2);
       expect(readJsonFile(configPath)).toEqual(store.getDocument());
       expect(readdirSync(dir)).toEqual([CONFIG_FILE_NAME]);
+      expect(store.listDeviceHistory("desk-persist")).toEqual([]);
 
       const reloaded = new ConfigStore(dir);
       expect(reloaded.revision).toBe(2);
@@ -94,6 +98,7 @@ describe("ConfigStore", () => {
       expect(saved.revision).toBe(3);
       expect(saved.devices).toHaveProperty("desk-persist");
       expect(readdirSync(dir)).toEqual([CONFIG_FILE_NAME]);
+      expect(reloaded.listDeviceHistory("desk-persist")).toEqual([]);
     } finally {
       rmSync(dir, {recursive: true, force: true});
     }
@@ -118,6 +123,7 @@ describe("ConfigStore", () => {
       expect(store.readOnlyReason).toContain("config save failed");
       expect(readJsonFile(configPath)).toEqual(store.getDocument());
       expect(store.getDeviceConfig("desk-write-failure").home.layout).toBe("balanced");
+      expect(existsSync(path.join(dir, CONFIG_HISTORY_DIR_NAME))).toBe(false);
     } finally {
       warn.mockRestore();
       rmSync(dir, {recursive: true, force: true});
@@ -202,6 +208,251 @@ describe("ConfigStore", () => {
       expect(readFileSync(configPath, "utf8")).toBe(contents);
     } finally {
       warn.mockRestore();
+      rmSync(dir, {recursive: true, force: true});
+    }
+  });
+
+  test("stores only published versions and rolls one device back without changing others", () => {
+    const dir = createTempDir();
+
+    try {
+      const store = new ConfigStore(dir);
+      store.patchDeviceConfig("desk-history", {appearance: {themeKey: "amber"}}, 0);
+      store.patchDeviceConfig("desk-other", {appearance: {themeKey: "dusk"}}, 1);
+      expect(store.listDeviceHistory("desk-history")).toEqual([]);
+
+      store.publishDeviceConfig("desk-history", 2);
+      expect(store.revision).toBe(3);
+      expect(store.listDeviceHistory("desk-history")).toMatchObject([
+        {revision: 3, config: {appearance: {themeKey: "amber"}}},
+      ]);
+
+      const historyDir = path.join(dir, CONFIG_HISTORY_DIR_NAME);
+      const firstHistoryFiles = readdirSync(historyDir);
+      expect(firstHistoryFiles).toHaveLength(1);
+      expect(statSync(historyDir).mode & 0o777).toBe(0o700);
+      expect(statSync(path.join(historyDir, firstHistoryFiles[0])).mode & 0o777).toBe(0o600);
+
+      store.patchDeviceConfig("desk-history", {appearance: {themeKey: "sakura"}}, 3);
+      expect(store.listDeviceHistory("desk-history").map((entry) => entry.revision)).toEqual([3]);
+      store.publishDeviceConfig("desk-history", 4);
+      expect(store.listDeviceHistory("desk-history")).toMatchObject([
+        {revision: 5, config: {appearance: {themeKey: "sakura"}}},
+        {revision: 3, config: {appearance: {themeKey: "amber"}}},
+      ]);
+
+      store.rollbackDeviceConfig("desk-history", 3, 5);
+      expect(store.revision).toBe(6);
+      expect(store.getDeviceConfig("desk-history").appearance.themeKey).toBe("amber");
+      expect(store.getDeviceConfig("desk-other").appearance.themeKey).toBe("dusk");
+      expect(store.listDeviceHistory("desk-history").map((entry) => entry.revision)).toEqual([5, 3]);
+      expect(() => store.rollbackDeviceConfig("desk-history", 4, 6)).toThrow(ConfigHistoryRevisionNotFoundError);
+
+      const reloaded = new ConfigStore(dir);
+      expect(reloaded.revision).toBe(6);
+      expect(reloaded.getDeviceConfig("desk-history").appearance.themeKey).toBe("amber");
+      expect(reloaded.listDeviceHistory("desk-history").map((entry) => entry.revision)).toEqual([5, 3]);
+    } finally {
+      rmSync(dir, {recursive: true, force: true});
+    }
+  });
+
+  test("starts a new published history after its directory is removed", () => {
+    const dir = createTempDir();
+
+    try {
+      const store = new ConfigStore(dir);
+      store.patchDeviceConfig("desk-history-missing", {appearance: {themeKey: "amber"}}, 0);
+      store.publishDeviceConfig("desk-history-missing", 1);
+      rmSync(path.join(dir, CONFIG_HISTORY_DIR_NAME), {recursive: true});
+
+      const reloaded = new ConfigStore(dir);
+      expect(reloaded.listDeviceHistory("desk-history-missing")).toEqual([]);
+      reloaded.patchDeviceConfig("desk-history-missing", {appearance: {themeKey: "sakura"}}, 2);
+      expect(reloaded.listDeviceHistory("desk-history-missing")).toEqual([]);
+      reloaded.publishDeviceConfig("desk-history-missing", 3);
+      expect(reloaded.listDeviceHistory("desk-history-missing")).toMatchObject([
+        {revision: 4, config: {appearance: {themeKey: "sakura"}}},
+      ]);
+      expect(readdirSync(path.join(dir, CONFIG_HISTORY_DIR_NAME))).toHaveLength(1);
+    } finally {
+      rmSync(dir, {recursive: true, force: true});
+    }
+  });
+
+  test("keeps repeated patches with unchanged values idempotent", () => {
+    const store = new ConfigStore();
+
+    store.patchDeviceConfig("desk-history-noop", {appearance: {themeKey: "amber"}}, 0);
+    store.patchDeviceConfig("desk-history-noop", {appearance: {themeKey: "amber"}}, 1);
+
+    expect(store.revision).toBe(1);
+    expect(store.listDeviceHistory("desk-history-noop")).toEqual([]);
+  });
+
+  test("returns a detached current config and published history from one store read", () => {
+    const store = new ConfigStore();
+    store.patchDeviceConfig("desk-history-view", {appearance: {themeKey: "amber"}}, 0);
+    store.publishDeviceConfig("desk-history-view", 1);
+
+    const view = store.getDeviceHistory("desk-history-view");
+    store.patchDeviceConfig("desk-history-view", {appearance: {themeKey: "sakura"}}, 2);
+
+    expect(view).toMatchObject({
+      currentRevision: 2,
+      currentConfig: {appearance: {themeKey: "amber"}},
+      entries: [{revision: 2, config: {appearance: {themeKey: "amber"}}}],
+    });
+    expect(store.getDeviceHistory("desk-history-view")).toMatchObject({
+      currentRevision: 3,
+      currentConfig: {appearance: {themeKey: "sakura"}},
+      entries: [{revision: 2, config: {appearance: {themeKey: "amber"}}}],
+    });
+  });
+
+  test("opens damaged published history read-only and reports the failure", () => {
+    const dir = createTempDir();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    try {
+      const store = new ConfigStore(dir);
+      store.patchDeviceConfig("desk-history-damaged", {appearance: {themeKey: "amber"}}, 0);
+      store.publishDeviceConfig("desk-history-damaged", 1);
+      const historyDir = path.join(dir, CONFIG_HISTORY_DIR_NAME);
+      const latest = readdirSync(historyDir).sort().at(-1)!;
+      writeFileSync(path.join(historyDir, latest), "{bad json");
+
+      const reloaded = new ConfigStore(dir);
+      expect(reloaded.revision).toBe(2);
+      expect(reloaded.readOnlyReason).toContain("config history cannot be read");
+      expect(() => reloaded.listDeviceHistory("desk-history-damaged")).toThrow(ConfigStoreReadOnlyError);
+      expect(() => reloaded.publishDeviceConfig("desk-history-damaged", 2)).toThrow(ConfigStoreReadOnlyError);
+    } finally {
+      warn.mockRestore();
+      rmSync(dir, {recursive: true, force: true});
+    }
+  });
+
+  test("removes legacy unpublished snapshots and keeps the published version", () => {
+    const dir = createTempDir();
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    try {
+      const store = new ConfigStore(dir);
+      const baselineDocument = store.getDocument();
+      store.patchDeviceConfig("desk-history-migration", {appearance: {themeKey: "amber"}}, 0);
+      const patchDocument = store.getDocument();
+      store.publishDeviceConfig("desk-history-migration", 1);
+      store.patchDeviceConfig("desk-history-migration", {appearance: {themeKey: "sakura"}}, 2);
+      const rollbackDocument = store.getDocument();
+      const historyDir = path.join(dir, CONFIG_HISTORY_DIR_NAME);
+      const legacySnapshots = [
+        {revision: 0, operation: "baseline", deviceId: null, document: baselineDocument},
+        {revision: 1, operation: "patch", deviceId: "desk-history-migration", document: patchDocument},
+        {
+          revision: 3,
+          operation: "rollback",
+          deviceId: "desk-history-migration",
+          sourceRevision: 2,
+          document: rollbackDocument,
+        },
+      ];
+      for (const snapshot of legacySnapshots) {
+        writeFileSync(
+          path.join(historyDir, `${String(snapshot.revision).padStart(16, "0")}.json`),
+          JSON.stringify({
+            historySchemaVersion: 1,
+            createdAt: new Date(`2026-08-23T00:00:0${snapshot.revision}.000Z`).toISOString(),
+            ...snapshot,
+          }),
+        );
+      }
+
+      const reloaded = new ConfigStore(dir);
+      expect(reloaded.readOnlyReason).toBeNull();
+      expect(reloaded.revision).toBe(3);
+      expect(reloaded.getDeviceConfig("desk-history-migration").appearance.themeKey).toBe("sakura");
+      expect(reloaded.listDeviceHistory("desk-history-migration")).toMatchObject([
+        {revision: 2, config: {appearance: {themeKey: "amber"}}},
+      ]);
+      expect(readdirSync(historyDir)).toEqual(["0000000000000002.json"]);
+
+      reloaded.rollbackDeviceConfig("desk-history-migration", 2, 3);
+      expect(reloaded.revision).toBe(4);
+      expect(reloaded.getDeviceConfig("desk-history-migration").appearance.themeKey).toBe("amber");
+      expect(reloaded.listDeviceHistory("desk-history-migration").map((entry) => entry.revision)).toEqual([2]);
+      expect(readdirSync(historyDir)).toEqual(["0000000000000002.json"]);
+    } finally {
+      log.mockRestore();
+      rmSync(dir, {recursive: true, force: true});
+    }
+  });
+
+  test("removes a new history snapshot when publishing cannot save the config", () => {
+    const dir = createTempDir();
+    const configPath = path.join(dir, CONFIG_FILE_NAME);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    try {
+      const store = new ConfigStore(dir);
+      store.patchDeviceConfig("desk-publish-failure", {appearance: {themeKey: "amber"}}, 0);
+      mkdirSync(`${configPath}.${process.pid}.tmp`);
+
+      expect(() => store.publishDeviceConfig("desk-publish-failure", 1)).toThrow(ConfigStoreReadOnlyError);
+      expect(store.revision).toBe(1);
+      expect(store.listDeviceHistory("desk-publish-failure")).toEqual([]);
+      expect((readJsonFile(configPath) as {revision: number}).revision).toBe(1);
+      expect(readdirSync(path.join(dir, CONFIG_HISTORY_DIR_NAME))).toEqual([]);
+    } finally {
+      warn.mockRestore();
+      rmSync(dir, {recursive: true, force: true});
+    }
+  });
+
+  test("keeps the current config when a published snapshot cannot be written", () => {
+    const dir = createTempDir();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    try {
+      const store = new ConfigStore(dir);
+      store.patchDeviceConfig("desk-history-write-failure", {appearance: {themeKey: "amber"}}, 0);
+      const historyDir = path.join(dir, CONFIG_HISTORY_DIR_NAME);
+      mkdirSync(historyDir);
+      const snapshotPath = path.join(historyDir, "0000000000000002.json");
+      mkdirSync(`${snapshotPath}.${process.pid}.tmp`);
+
+      expect(() => store.publishDeviceConfig("desk-history-write-failure", 1)).toThrow(ConfigStoreReadOnlyError);
+      expect(store.revision).toBe(1);
+      expect(store.getDeviceConfig("desk-history-write-failure").appearance.themeKey).toBe("amber");
+      expect(store.listDeviceHistory("desk-history-write-failure")).toEqual([]);
+      expect(existsSync(snapshotPath)).toBe(false);
+    } finally {
+      warn.mockRestore();
+      rmSync(dir, {recursive: true, force: true});
+    }
+  });
+
+  test("retains the latest published versions", () => {
+    const dir = createTempDir();
+
+    try {
+      const store = new ConfigStore(dir);
+      for (let revision = 0; revision < CONFIG_HISTORY_LIMIT + 5; revision += 1) {
+        store.publishDeviceConfig("desk-history-limit", revision);
+      }
+
+      const entries = store.listDeviceHistory("desk-history-limit");
+      expect(entries).toHaveLength(CONFIG_HISTORY_LIMIT);
+      expect(entries[0].revision).toBe(CONFIG_HISTORY_LIMIT + 5);
+      expect(entries.at(-1)?.revision).toBe(6);
+      expect(readdirSync(path.join(dir, CONFIG_HISTORY_DIR_NAME))).toHaveLength(CONFIG_HISTORY_LIMIT);
+
+      const reloaded = new ConfigStore(dir);
+      expect(reloaded.readOnlyReason).toBeNull();
+      expect(reloaded.listDeviceHistory("desk-history-limit").map((entry) => entry.revision)).toEqual(
+        entries.map((entry) => entry.revision),
+      );
+    } finally {
       rmSync(dir, {recursive: true, force: true});
     }
   });

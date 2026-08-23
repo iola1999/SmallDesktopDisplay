@@ -1,5 +1,6 @@
 import type {
   Catalog,
+  ConfigHistoryResponse,
   DeviceConfig,
   DeviceConfigDocument,
   DevicesResponse,
@@ -62,6 +63,48 @@ export async function saveDeviceConfig(
     headers: {"content-type": "application/json", "if-match": etag},
     body: JSON.stringify(config),
   });
+  const document = (await response.json()) as Omit<DeviceConfigDocument, "etag">;
+  return {...document, etag: responseEtag(response, document.revision)};
+}
+
+export async function getConfigHistory(
+  deviceId: string,
+  signal?: AbortSignal,
+): Promise<ConfigHistoryResponse> {
+  return (
+    await request(`/api/v1/devices/${encodeURIComponent(deviceId)}/config/history`, {signal})
+  ).json() as Promise<ConfigHistoryResponse>;
+}
+
+export async function publishDeviceConfig(
+  deviceId: string,
+  etag: string,
+): Promise<DeviceConfigDocument> {
+  const response = await request(
+    `/api/v1/devices/${encodeURIComponent(deviceId)}/config/publish`,
+    {
+      method: "POST",
+      headers: {"content-type": "application/json", "if-match": etag},
+      body: "{}",
+    },
+  );
+  const document = (await response.json()) as Omit<DeviceConfigDocument, "etag">;
+  return {...document, etag: responseEtag(response, document.revision)};
+}
+
+export async function rollbackDeviceConfig(
+  deviceId: string,
+  revision: number,
+  etag: string,
+): Promise<DeviceConfigDocument> {
+  const response = await request(
+    `/api/v1/devices/${encodeURIComponent(deviceId)}/config/rollback`,
+    {
+      method: "POST",
+      headers: {"content-type": "application/json", "if-match": etag},
+      body: JSON.stringify({revision}),
+    },
+  );
   const document = (await response.json()) as Omit<DeviceConfigDocument, "etag">;
   return {...document, etag: responseEtag(response, document.revision)};
 }
