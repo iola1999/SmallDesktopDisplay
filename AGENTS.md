@@ -39,6 +39,8 @@ OrbStack（Linux 虚拟机），无法把 USB 串口透传进容器。原生部�
 cd remote-render && npm run build && launchctl kickstart -k gui/$UID/com.sdd.remote-render
 ```
 
+当前部署验证见[2026-11-12 服务部署与固件刷写](.agents/notes/implemented/process/2026-11-12-服务部署与固件刷写.md)。USB 接口变化后先核对 `SERIAL_PORT` 与设备节点。
+
 当前 Mac 不要运行 `docker compose up`。容器已手动停止，再次启动会和原生进程争用 18080 端口。
 烧录固件前必须先 `launchctl bootout gui/$UID/com.sdd.remote-render` 释放串口，
 烧完 `launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.sdd.remote-render.plist`。
