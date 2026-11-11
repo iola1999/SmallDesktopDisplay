@@ -9,6 +9,7 @@ import {
   setWeatherSnapshotForTest,
   startWeatherPolling,
   tempColor,
+  WEATHER_MAX_AGE_MS,
   wmoLabel,
 } from "./weather.js";
 
@@ -27,6 +28,7 @@ const SAMPLE = {
     precipitation_probability_max: [20, 100, 80],
   },
 };
+const NOW = new Date("2026-06-29T06:30:00+08:00");
 
 afterEach(() => setWeatherSnapshotForTest(null));
 
@@ -64,7 +66,7 @@ describe("weather service", () => {
   });
 
   test("builds a view with current condition, 12h extremes, and a 3-day outlook", () => {
-    const view = buildWeatherView({fetchedAtMs: 0, hours: parseOpenMeteo(SAMPLE), days: parseOpenMeteoDays(SAMPLE)});
+    const view = buildWeatherView({fetchedAtMs: NOW.getTime(), hours: parseOpenMeteo(SAMPLE), days: parseOpenMeteoDays(SAMPLE)}, NOW);
     expect(view).not.toBeNull();
     expect(view!.location).toBe("萧山");
     expect(view!.current).toMatchObject({temp: 24, label: "阴", icon: "overcast"});
@@ -77,8 +79,48 @@ describe("weather service", () => {
   });
 
   test("buildWeatherView returns null without data", () => {
-    expect(buildWeatherView(null)).toBeNull();
-    expect(buildWeatherView({fetchedAtMs: 0, hours: [], days: []})).toBeNull();
+    expect(buildWeatherView(null, NOW)).toBeNull();
+    expect(buildWeatherView({fetchedAtMs: NOW.getTime(), hours: [], days: []}, NOW)).toBeNull();
+  });
+
+  test("advances the current hour without refetching and drops past hourly values", () => {
+    const view = buildWeatherView(
+      {fetchedAtMs: NOW.getTime(), hours: parseOpenMeteo(SAMPLE), days: parseOpenMeteoDays(SAMPLE)},
+      new Date("2026-06-29T07:05:00+08:00"),
+    );
+    expect(view?.current).toMatchObject({temp: 26, label: "毛毛雨"});
+    expect(view?.hours.map((hour) => hour.hourLabel)).toEqual(["07", "08"]);
+    expect(view?.tempLow).toBe(26);
+  });
+
+  test("expires a snapshot only after two refresh periods", () => {
+    const snapshot = {fetchedAtMs: NOW.getTime(), hours: parseOpenMeteo(SAMPLE), days: parseOpenMeteoDays(SAMPLE)};
+    expect(buildWeatherView(snapshot, new Date(NOW.getTime() + WEATHER_MAX_AGE_MS))).not.toBeNull();
+    expect(buildWeatherView(snapshot, new Date(NOW.getTime() + WEATHER_MAX_AGE_MS + 1))).toBeNull();
+  });
+
+  test("keeps dated forecasts without substituting a future hour for current weather", () => {
+    const view = buildWeatherView(
+      {fetchedAtMs: NOW.getTime(), hours: parseOpenMeteo(SAMPLE).slice(1), days: parseOpenMeteoDays(SAMPLE)},
+      NOW,
+    );
+    expect(view?.current).toBeUndefined();
+    expect(view?.days[0]).toMatchObject({dayOffset: 0, label: "今天", tempMax: 31});
+  });
+
+  test("relabels by the Shanghai date across midnight and preserves missing-day positions", () => {
+    const view = buildWeatherView({
+      fetchedAtMs: new Date("2026-06-29T23:45:00+08:00").getTime(),
+      hours: [{time: "2026-06-30T00:00", temp: 24, code: 3, precip: 10}],
+      days: [
+        ...parseOpenMeteoDays(SAMPLE).slice(0, 2),
+        {date: "2026-07-02", code: 0, tempMax: 33, tempMin: 25, precip: 0},
+      ],
+    }, new Date("2026-06-29T16:05:00Z"));
+    expect(view?.days.map((day) => [day.dayOffset, day.label, day.tempMax])).toEqual([
+      [0, "今天", 30],
+      [2, "后天", 33],
+    ]);
   });
 
   test("polling retries quickly while the snapshot is empty, then relaxes to the slow interval", async () => {

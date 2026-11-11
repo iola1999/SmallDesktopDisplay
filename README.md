@@ -38,7 +38,7 @@ Build the firmware:
 pio run -e esp12e
 ```
 
-The current Mac sends frames over serial. Stop the launchd service before uploading, then restore it afterward:
+The Mac service uses serial when `SERIAL_PORT` matches the connected device. Stop the launchd service before uploading, then restore it afterward:
 
 ```bash
 launchctl bootout gui/$UID/com.sdd.remote-render
@@ -68,7 +68,7 @@ Firmware defaults live in `src/AppConfig.h`. The remote render service address c
 
 After the device joins WiFi, open its assigned LAN IP address from the same network to reach the configuration portal. If the device has not joined WiFi yet, connect a phone or computer to the `SDD-Setup` access point created by the device, then finish WiFi and remote-render address setup from the portal.
 
-TFT pin mapping comes from the `TFT_eSPI` library's own `User_Setup.h` and is not maintained in this repository.
+TFT pins, panel driver, and SPI frequency are configured in [include/TFT_eSPI_SDD_ST7789.h](include/TFT_eSPI_SDD_ST7789.h). [platformio.ini](platformio.ini) selects this file with `USER_SETUP_LOADED` and a forced include.
 
 ## Documentation
 

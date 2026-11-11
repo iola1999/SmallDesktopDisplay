@@ -30,6 +30,7 @@ TEST_CASE("wifi portal page renders nearby ssids and remote render settings")
   CHECK(html.find("value='Office-5G'") != std::string::npos);
   CHECK(html.find("value='http://192.168.1.20:8080'") != std::string::npos);
   CHECK(html.find("value='desk-01'") != std::string::npos);
+  CHECK(html.find("name='clearPassword' type='checkbox'") != std::string::npos);
 }
 
 TEST_CASE("wifi portal page reuses the same form for LAN access")
@@ -74,4 +75,30 @@ TEST_CASE("wifi portal device ids match EEPROM and transport constraints")
   CHECK(app::normalizeDeviceIdInput("desk/01") == "");
   CHECK(app::normalizeDeviceIdInput("\"desk\"") == "");
   CHECK(app::normalizeDeviceIdInput("desk-\xC3\xA9") == "");
+}
+
+TEST_CASE("wifi portal keeps the saved password when only other settings change")
+{
+  CHECK(app::resolveWifiPortalPassword("Office", " existing password ", "Office", "", false) ==
+        " existing password ");
+}
+
+TEST_CASE("wifi portal preserves password whitespace for an explicit replacement")
+{
+  CHECK(app::resolveWifiPortalPassword("Office", "old-password", "Office", " new password ", false) ==
+        " new password ");
+  CHECK(app::resolveWifiPortalPassword("Office", "old-password", "Home", "        ", false) == "        ");
+}
+
+TEST_CASE("wifi portal changes networks without reusing another networks password")
+{
+  CHECK(app::resolveWifiPortalPassword("Office", "office-password", "Home", "home-password", false) ==
+        "home-password");
+  CHECK(app::resolveWifiPortalPassword("Office", "office-password", "Open", "", false).empty());
+}
+
+TEST_CASE("wifi portal can explicitly clear the password for the current network")
+{
+  CHECK(app::resolveWifiPortalPassword("Office", "office-password", "Office", "", true).empty());
+  CHECK(app::resolveWifiPortalPassword("Office", "office-password", "Office", "ignored-password", true).empty());
 }

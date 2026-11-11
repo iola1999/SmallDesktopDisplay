@@ -116,10 +116,15 @@ function paintLayout(ctx: SKRSContext2D, node: LayoutNode, parentX: number, pare
   }
   if (node.host.type === "sdd-text") {
     const textValue = collectText(node.host);
-    const fontSize = node.style.fontSize ?? 16;
+    let fontSize = node.style.fontSize ?? 16;
     ctx.font = `${fontSize}px ${currentFontFamily}`;
     ctx.fillStyle = node.style.color ?? "#ffffff";
-    const metrics = ctx.measureText(textValue);
+    let metrics = ctx.measureText(textValue);
+    if (node.style.textFit === "shrink" && metrics.width > node.width && node.width > 0) {
+      fontSize *= node.width / metrics.width;
+      ctx.font = `${fontSize}px ${currentFontFamily}`;
+      metrics = ctx.measureText(textValue);
+    }
     let textX = x;
     if (node.style.alignItems === "center") {
       textX = x + Math.max(0, (node.width - metrics.width) / 2);

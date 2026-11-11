@@ -66,6 +66,7 @@ void begin()
 {
   s_button.begin(app_config::kPinButton);
   s_button.setLongClickTime(app_config::kButtonLongPressMs);
+  s_button.setDoubleClickTime(app_config::kButtonDoubleClickMs);
   s_button.setPressedHandler(onPressed);
   s_button.setReleasedHandler(onReleased);
   s_button.setClickHandler(onClick);

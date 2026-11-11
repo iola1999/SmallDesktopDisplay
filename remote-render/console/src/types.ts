@@ -104,6 +104,7 @@ export interface DevicesResponse {
 export interface ServiceStatus {
   weather?: {
     hasData: boolean;
+    stale?: boolean;
     location?: string;
     ageSeconds?: number;
   };

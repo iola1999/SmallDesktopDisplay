@@ -122,6 +122,23 @@ std::string normalizeDeviceIdInput(const std::string &input)
   return valid ? trimmed : "";
 }
 
+std::string resolveWifiPortalPassword(const std::string &savedSsid,
+                                     const std::string &savedPassword,
+                                     const std::string &submittedSsid,
+                                     const std::string &submittedPassword,
+                                     bool clearPassword)
+{
+  if (clearPassword)
+  {
+    return "";
+  }
+  if (submittedPassword.empty() && submittedSsid == savedSsid)
+  {
+    return savedPassword;
+  }
+  return submittedPassword;
+}
+
 std::string buildWifiPortalPage(const std::string &apSsid,
                                 const std::string &portalIp,
                                 const std::vector<WifiPortalNetwork> &networks,
@@ -183,6 +200,10 @@ std::string buildWifiPortalPage(const std::string &apSsid,
        << "<p><label>SSID<br><input id='ssid' name='ssid' maxlength='31' style='width:100%;padding:10px' value='"
        << escapeHtml(selectedSsid) << "'></label></p>"
        << "<p><label>Password<br><input name='psk' type='password' maxlength='63' style='width:100%;padding:10px'></label></p>"
+       << "<p>Leave blank to keep the saved password for the same WiFi network. "
+          "For a different network, a blank password means an open network.</p>"
+       << "<p><label><input name='clearPassword' type='checkbox' value='1'> "
+          "Clear saved password (open network)</label></p>"
        << "<p><label>Render server<br><input name='RemoteBaseUrl' maxlength='95' style='width:100%;padding:10px' placeholder='http://192.168.1.20:8080' value='"
        << escapeHtml(remoteBaseUrl) << "'></label></p>"
        << "<p><label>Device ID<br><input name='DeviceId' maxlength='23' pattern='[A-Za-z0-9._-]{1,23}' style='width:100%;padding:10px' value='"

@@ -1,8 +1,9 @@
-import type {DeviceRegistry} from "../state.js";
+import {encodeRenderedFrame, type DeviceRegistry} from "../state.js";
 import {isValidDeviceId} from "../config/schema.js";
 import {
   EnvelopeParser,
   MSG_COMMAND,
+  MSG_COMMAND_ACK,
   MSG_DEVICE_HELLO,
   MSG_FRAME,
   MSG_FRAME_ACK,
@@ -30,6 +31,10 @@ export interface SerialTransportOptions {
   ackTimeoutMs?: number;
   // 命令通道的兜底扫描间隔（正常靠 ack/input/status 事件触发）。
   commandCheckIntervalMs?: number;
+  // 同一命令最多发送三次，重连后重新尝试尚未确认的命令。
+  commandRetryIntervalMs?: number;
+  // 静态页面通过空差分帧保活，不触发页面渲染或设备重新握手。
+  heartbeatIntervalMs?: number;
   // 帧泵长轮询 registry 的停靠时长。
   framePollWaitMs?: number;
 }
@@ -45,6 +50,8 @@ export class SerialTransport {
   private readonly helloIntervalMs: number;
   private readonly ackTimeoutMs: number;
   private readonly commandCheckIntervalMs: number;
+  private readonly commandRetryIntervalMs: number;
+  private readonly heartbeatIntervalMs: number;
   private readonly framePollWaitMs: number;
 
   private readonly parser = new EnvelopeParser();
@@ -53,7 +60,9 @@ export class SerialTransport {
   private linkUp = false;
   private pumping = false;
   private stopped = false;
-  private lastCommandSent = 0;
+  private lastCommandAcked = 0;
+  private pendingCommand: {id: number; attempts: number; lastSentAt: number} | null = null;
+  private lastFrameSentAt = 0;
   private ackWaiter: {resolve: (frameId: number | null) => void; timer: NodeJS.Timeout} | null = null;
   private helloTimer: NodeJS.Timeout | null = null;
   private commandTimer: NodeJS.Timeout | null = null;
@@ -65,6 +74,8 @@ export class SerialTransport {
     this.helloIntervalMs = options.helloIntervalMs ?? 2000;
     this.ackTimeoutMs = options.ackTimeoutMs ?? 2000;
     this.commandCheckIntervalMs = options.commandCheckIntervalMs ?? 250;
+    this.commandRetryIntervalMs = options.commandRetryIntervalMs ?? 1000;
+    this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? 2000;
     // 250ms 停靠：设备重建链路（HELLO 令 have 归零）后，最多等一次停靠
     // 就能用新 have 推全屏帧，缩短开机/恢复时的旧画面窗口。
     this.framePollWaitMs = options.framePollWaitMs ?? 250;
@@ -152,6 +163,12 @@ export class SerialTransport {
           this.log("[Serial] device hello without device_id");
           return;
         }
+        if (this.deviceId !== deviceId) {
+          this.lastCommandAcked = 0;
+          this.pendingCommand = null;
+        } else if (this.pendingCommand !== null) {
+          this.pendingCommand.attempts = 0;
+        }
         this.deviceId = deviceId;
         // 每次 HELLO 都视为设备侧重新建链（开机/横幅恢复/宿主机重启探测），
         // have 归零让第一帧走全屏，清掉设备屏幕上任何本地状态文本。
@@ -190,6 +207,17 @@ export class SerialTransport {
         this.log(`[Serial] orphan ack frame_id=${String(frameId)} (no waiter), adopting`);
         if (frameId !== null && frameId >= 0) {
           this.have = frameId;
+        }
+        return;
+      }
+
+      case MSG_COMMAND_ACK: {
+        // 当前协议只携带命令编号，ACK 按最近一次 HELLO 的设备归属处理。
+        // 仅接受当前待确认命令的编号，丢弃旧命令或无对应命令的 ACK。
+        if (this.linkUp && this.pendingCommand !== null && body.id === this.pendingCommand.id) {
+          this.lastCommandAcked = this.pendingCommand.id;
+          this.pendingCommand = null;
+          this.pushCommandIfAny();
         }
         return;
       }
@@ -236,13 +264,11 @@ export class SerialTransport {
       }
 
       default:
-        // COMMAND_ACK 等：目前只用于日志观测。
         return;
     }
   }
 
-  // 帧泵：停等推送。registry 的调度逻辑（翻牌 20fps、雨滴秒中帧、每秒刷新）
-  // 原样生效——串口只是替代了 HTTP 长轮询这一层传输。
+  // 按帧 ACK 推进发送；静态页面的空差分保活复用同一等待流程。
   private async pump(): Promise<void> {
     if (this.pumping) {
       return;
@@ -251,14 +277,23 @@ export class SerialTransport {
     this.log(`[Serial] pump start have=${this.have}`);
     try {
       while (this.linkUp && !this.stopped && this.deviceId !== null) {
-        const result = await this.registry.getFrameWithStats(this.deviceId, this.have, this.framePollWaitMs);
+        const deviceId = this.deviceId;
+        const have = this.have;
+        const result = await this.registry.getFrameWithStats(deviceId, have, this.framePollWaitMs);
         if (!this.linkUp || this.stopped) {
           break;
         }
-        if (result.frame === null) {
+        if (deviceId !== this.deviceId || have !== this.have) {
           continue;
         }
-        this.safeWrite(encodeEnvelope(MSG_FRAME, result.frame));
+        let frame = result.frame;
+        if (frame === null) {
+          if (have === 0 || performance.now() - this.lastFrameSentAt < this.heartbeatIntervalMs) continue;
+          // 固件接受当前帧编号的空差分；收到 ACK 后仍持有相同画面。
+          frame = encodeRenderedFrame({frameId: have, baseFrameId: have, fullFrame: false, rects: []});
+        }
+        this.lastFrameSentAt = performance.now();
+        this.safeWrite(encodeEnvelope(MSG_FRAME, frame));
         const acked = await this.waitForAck();
         if (!this.linkUp || this.stopped) {
           break;
@@ -299,14 +334,23 @@ export class SerialTransport {
     if (!this.linkUp || this.stopped || this.deviceId === null) {
       return;
     }
-    const command = this.registry.getCommand(this.deviceId, this.lastCommandSent);
+    const command = this.registry.getCommand(this.deviceId, this.lastCommandAcked);
     if (command === null) {
       return;
     }
-    this.lastCommandSent = command.id;
+    if (this.pendingCommand?.id !== command.id) {
+      this.pendingCommand = {id: command.id, attempts: 0, lastSentAt: 0};
+    }
+    const pending = this.pendingCommand;
+    if (pending.attempts >= 3 ||
+      (pending.attempts > 0 && performance.now() - pending.lastSentAt < this.commandRetryIntervalMs)) {
+      return;
+    }
+    pending.attempts += 1;
+    pending.lastSentAt = performance.now();
     const body = JSON.stringify({id: command.id, type: command.type, value: command.value, persist: command.persist});
     this.safeWrite(encodeEnvelope(MSG_COMMAND, Buffer.from(body)));
-    this.log(`[Serial] pushed command id=${command.id} ${command.type}=${command.value}`);
+    this.log(`[Serial] pushed command id=${command.id} ${command.type}=${command.value} attempt=${pending.attempts}/3`);
   }
 
   private safeWrite(data: Buffer): void {

@@ -212,7 +212,6 @@ void startLanConfigServer(app::AppConfigData &config)
   if (WiFi.status() != WL_CONNECTED)
   {
     stopPortalServer();
-    s_config = nullptr;
     return;
   }
 
@@ -249,7 +248,6 @@ void handlePortalSave()
   String remoteBaseUrlInput = s_server.arg("RemoteBaseUrl");
   String deviceId = s_server.arg("DeviceId");
   ssid.trim();
-  psk.trim();
   remoteBaseUrlInput.trim();
   deviceId.trim();
 
@@ -275,8 +273,10 @@ void handlePortalSave()
     return;
   }
 
+  s_config->wifiPsk = app::resolveWifiPortalPassword(s_config->wifiSsid, s_config->wifiPsk,
+                                                   ssid.c_str(), psk.c_str(),
+                                                   s_server.arg("clearPassword") == "1");
   s_config->wifiSsid = ssid.c_str();
-  s_config->wifiPsk = psk.c_str();
   s_config->remoteBaseUrl = normalizedRemoteBaseUrl;
   s_config->remoteDeviceId = normalizedDeviceId;
   storage::saveConfig(*s_config);
@@ -314,6 +314,7 @@ void startWebConfig(app::AppConfigData &config)
 bool connect(app::AppConfigData &config, WifiConnectMode mode)
 {
   const bool blockingUi = (mode == WifiConnectMode::ForegroundBlocking);
+  s_config = &config;
 
   if (WiFi.status() == WL_CONNECTED)
   {
@@ -395,6 +396,11 @@ void stopPortal()
 
 void tick()
 {
+  // 自动重连后重新开放配置页；AP 配网继续使用自己的地址与 DNS 服务。
+  if (s_config != nullptr && !portalUsesAccessPoint() && WiFi.status() == WL_CONNECTED)
+  {
+    startLanConfigServer(*s_config);
+  }
   if (s_portalMode == ConfigPortalMode::None)
   {
     return;
@@ -403,7 +409,6 @@ void tick()
   if (s_portalMode == ConfigPortalMode::LocalNetwork && WiFi.status() != WL_CONNECTED)
   {
     stopPortalServer();
-    s_config = nullptr;
     return;
   }
 

@@ -1090,7 +1090,7 @@ function AppearancePanel({
         <SectionHeading
           id="brightness-title"
           title="亮度"
-          detail={brightnessDirty ? "正在同步" : "设备已同步"}
+          detail={brightnessDirty ? "正在提交" : "调整后自动发送"}
         />
         <div className="brightness-control">
           <SunMedium size={17} />
@@ -1125,9 +1125,11 @@ function DiagnosticsPanel({
   const weather = status?.weather;
   const weatherValue = statusError
     ? "状态不可用"
-    : weather?.hasData
-      ? `${weather.location ?? "天气"} · ${humanAge(weather.ageSeconds ?? 0)}更新`
-      : "等待天气数据";
+    : weather?.stale
+      ? "天气数据已过期"
+      : weather?.hasData
+        ? `${weather.location ?? "天气"} · ${humanAge(weather.ageSeconds ?? 0)}更新`
+        : "等待天气数据";
   const diagnostics = device?.diagnostics;
   const configStatus = status?.config;
   const configValue = statusError
@@ -1153,7 +1155,7 @@ function DiagnosticsPanel({
             icon={CloudSun}
             label="天气"
             value={weatherValue}
-            good={!statusError && Boolean(weather?.hasData)}
+            good={!statusError && Boolean(weather?.hasData) && !weather?.stale}
           />
           <DiagnosticRow
             icon={Monitor}
@@ -1257,7 +1259,7 @@ function PreviewPanel({
   const gestureMutation = useMutation({
     mutationFn: (event: GestureName) => sendGesture(deviceId, event),
     onSuccess: async () => {
-      onFeedback("设备输入已发送");
+      onFeedback("模拟操作已提交");
       await queryClient.invalidateQueries({queryKey: ["preview", "live", deviceId]});
     },
     onError: (error) => onFeedback(errorMessage(error)),
@@ -1273,7 +1275,7 @@ function PreviewPanel({
         {device ? (
           <span className={`preview-mode ${dirty ? "draft" : ""}`}>
             <span />
-            {dirty ? "草稿" : "实时"}
+            {dirty ? "草稿" : "服务预览"}
           </span>
         ) : null}
       </div>
@@ -1376,7 +1378,7 @@ function SyncStatus({
       ? "同步后切换"
       : pending
         ? "正在同步"
-        : "实时生效";
+        : "服务已同步";
   return (
     <span className={`sync-status ${error ? "error" : pending ? "pending" : ""}`} role="status">
       {error ? (

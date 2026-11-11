@@ -172,6 +172,68 @@ describe("device registry", () => {
     });
   });
 
+  test("home brightness changes queue commands without changing the frame or canvas", async () => {
+    const registry = new DeviceRegistry({now: () => new Date("2026-05-01T12:00:00.800+08:00")});
+    const first = await registry.getFrame("desk-home-brightness", 0, 0);
+    const state = registry.devices.get("desk-home-brightness")!;
+    const canvas = state.canvas;
+
+    registry.applyPrefs(state.deviceId, {brightness: 75});
+
+    const result = await registry.getFrameWithStats(state.deviceId, first!.readUInt32LE(8), 0);
+    expect(result.frame).toBeNull();
+    expect(result.commandId).toBe(1);
+    expect(state.canvas).toBe(canvas);
+    expect(registry.getCommand(state.deviceId, 0)).toMatchObject({value: 75, persist: true});
+  });
+
+  test.each(["settings", "detail"] as const)("brightness changes update visible values on %s with a partial frame", async (page) => {
+    const registry = new DeviceRegistry({now: () => new Date("2026-05-01T12:00:00.800+08:00")});
+    await registry.getFrame("desk-visible-brightness", 0, 0);
+    const state = registry.devices.get("desk-visible-brightness")!;
+    state.ui.page = page;
+    state.ui.detailIndex = 0;
+    registry.applyPrefs(state.deviceId, {brightness: 60});
+    const before = decodeFrame((await registry.getFrame(state.deviceId, 0, 0))!);
+    let rgba = applyFrameToRgba(Buffer.alloc(0), 240, before);
+
+    registry.applyPrefs(state.deviceId, {brightness: 80});
+    const updated = decodeFrame((await registry.getFrame(state.deviceId, before.frameId, 0))!);
+    expect(updated.fullFrame).toBe(false);
+    expect(updated.rects.length).toBeGreaterThan(0);
+    rgba = applyFrameToRgba(rgba, 240, updated);
+    expect(rgba).toEqual(applyFrameToRgba(Buffer.alloc(0), 240, decodeFrame(state.fullFrame)));
+    expect(state.ui.pendingBrightness).toBe(80);
+  });
+
+  test.each(["settings", "detail"] as const)("settled %s stays unchanged across time and preview requests", async (page) => {
+    let now = 0;
+    const baseTime = new Date("2026-05-01T12:00:00.000+08:00").getTime();
+    const registry = new DeviceRegistry({monotonic: () => now, now: () => new Date(baseTime + now * 1000)});
+    const deviceId = "desk-static-page";
+    await registry.getFrame(deviceId, 0, 0);
+    registry.applyConsoleGesture(deviceId, "long_press");
+    if (page === "detail") registry.applyConsoleGesture(deviceId, "long_press");
+    now = 0.5;
+    const settled = await registry.getFrame(deviceId, 0, 0);
+    const state = registry.devices.get(deviceId)!;
+    const canvas = state.canvas;
+    now = 15;
+
+    const idle = await registry.getFrameWithStats(deviceId, settled!.readUInt32LE(8), 0);
+    expect(idle.frame).toBeNull();
+    expect(registry.getPreviewImage(deviceId)).toBe(canvas);
+    expect(state.frameId).toBe(settled!.readUInt32LE(8));
+    expect(registry.listDevices()[0].lastCommunicationSeconds).toBe(0);
+
+    registry.applyConsoleGesture(deviceId, "short_press");
+    const changed = await registry.getFrame(deviceId, state.frameId - 1, 0);
+    expect(changed).not.toBeNull();
+    now += 0.5;
+    const final = await registry.getFrame(deviceId, changed!.readUInt32LE(8), 0);
+    expect(decodeFrame(final!).fullFrame).toBe(true);
+  });
+
   test("records client diagnostics from status sync", async () => {
     const registry = new DeviceRegistry();
 
@@ -255,6 +317,28 @@ describe("device registry", () => {
 
     const updated = await registry.getFrame(deviceId, have, 0);
     expect(updated).not.toBeNull();
+  });
+
+  test("diagnostics preserve zero and missing values and redraw only changed visible fields", async () => {
+    const registry = new DeviceRegistry();
+    const deviceId = "desk-diagnostics-changes";
+    await registry.getFrame(deviceId, 0, 0);
+    const state = registry.devices.get(deviceId)!;
+    state.ui.page = "detail";
+    state.ui.detailIndex = 2;
+    registry.recordStatus(deviceId, {brightness: 50, uptimeMs: 1000, heapFragmentation: 0});
+    const first = state.frameId;
+    expect(state.ui.diagnostics.heapFragmentation).toBe(0);
+    expect(state.ui.diagnostics.heapFree).toBeUndefined();
+
+    registry.recordStatus(deviceId, {brightness: 80, uptimeMs: 2000, heapFragmentation: 0});
+    expect(state.frameId).toBe(first);
+    expect(state.ui.diagnostics.uptimeMs).toBe(2000);
+
+    registry.recordStatus(deviceId, {brightness: 80, uptimeMs: 3000});
+    expect(state.frameId).toBe(first + 1);
+    expect(state.ui.diagnostics.heapFragmentation).toBeUndefined();
+    expect(state.reportedDiagnostics).toEqual({uptimeMs: 3000});
   });
 
   test("skipped frames get a catch-up partial against the device's canvas instead of a full resync", async () => {

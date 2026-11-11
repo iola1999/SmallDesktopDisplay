@@ -36,10 +36,10 @@ export class DeviceCommand {
 }
 
 export class DeviceDiagnostics {
-  heapFree = 0;
-  heapMaxBlock = 0;
-  heapFragmentation = 0;
-  wifiRssi = 0;
+  heapFree?: number;
+  heapMaxBlock?: number;
+  heapFragmentation?: number;
+  wifiRssi?: number;
   uptimeMs = 0;
 }
 

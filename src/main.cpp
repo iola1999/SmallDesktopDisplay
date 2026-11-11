@@ -49,7 +49,6 @@ uint32_t g_serialProbeSentMs = 0;
 uint32_t g_lastWifiSerialProbeMs = 0;
 uint8_t g_serialProbesLeft = app_config::kSerialProbeAttempts;
 bool g_statusSyncPending = true;
-bool g_frameErrorShown = false;
 app::HoldInteractionState g_holdInteraction;
 uint32_t g_holdStartedMs = 0;
 uint16_t g_holdLastPixels = UINT16_MAX;
@@ -61,6 +60,8 @@ constexpr uint16_t kHoldBarHeight = 5;
 
 void drawStatus(const char *line1, const char *line2, const char *line3 = nullptr)
 {
+  // 本地提示覆盖远程画面后，HTTP 恢复必须先取得完整帧。
+  g_haveFrameId = 0;
   display::tft.fillScreen(app_config::kColorBg);
   display::tft.setTextDatum(CC_DATUM);
   const int titleY = line3 == nullptr ? 96 : 78;
@@ -231,18 +232,6 @@ void processButtonEvents(uint32_t nowMs)
   }
 }
 
-// 离线提示画的是整屏 banner。服务端恢复后，如果设备已经持有最新帧，轮询只会
-// 拿到 204 或零矩形的 partial 帧，都不会覆盖 banner。这里在恢复后的第一次成功
-// 轮询把 have 归零，强制下次请求整屏帧覆盖掉离线提示（仅恢复时多取一帧）。
-void clearFrameErrorIfRecovered()
-{
-  if (g_frameErrorShown)
-  {
-    g_frameErrorShown = false;
-    g_haveFrameId = 0;
-  }
-}
-
 bool pollFrame(uint32_t nowMs)
 {
   if (nowMs - g_lastFramePollMs < app_config::kRemoteFramePollMs)
@@ -259,7 +248,6 @@ bool pollFrame(uint32_t nowMs)
   if (result == remote::FrameFetchResult::Updated)
   {
     g_haveFrameId = nextFrameId;
-    clearFrameErrorIfRecovered();
     // 排空模式：刚拿到新帧说明服务端可能正在出动画（20fps > 轮询节拍），
     // 让下一轮 loop() 立即再轮询，直到拿到 204 才回到 50ms 节流。
     // 这样动画帧的到达间隔跟随服务端渲染节拍，而不是被轮询相位放大成 50-90ms 抖动。
@@ -268,14 +256,14 @@ bool pollFrame(uint32_t nowMs)
   }
   if (result == remote::FrameFetchResult::NotModified)
   {
-    clearFrameErrorIfRecovered();
     return true;
   }
 
+  // 流式读取失败前可能已经写屏，旧帧编号无法再描述实际画面。
+  g_haveFrameId = 0;
   if (result == remote::FrameFetchResult::Failed && nowMs - g_lastErrorDrawMs > 3000U)
   {
     g_lastErrorDrawMs = nowMs;
-    g_frameErrorShown = true;
     const std::string ipLine = currentDeviceIpStatusLine();
     drawStatus("Render server offline", g_config.remoteBaseUrl.c_str(), ipLine.c_str());
   }

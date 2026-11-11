@@ -41,6 +41,7 @@ export interface Style {
   borderRadius?: number;
   fontSize?: number;
   fontFamily?: string;
+  textFit?: "shrink"; // 文字超过 width 才缩小字号，保留完整内容
   opacity?: number;
   overflow?: "hidden" | "visible";
 }

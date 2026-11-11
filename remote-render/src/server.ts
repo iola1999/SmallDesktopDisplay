@@ -21,7 +21,7 @@ import {
   configResponse,
 } from "./config/store.js";
 import {encodeCanvasImagePng} from "./renderer/rendering/png.js";
-import {WEATHER_LOCATION_LABEL, getWeatherSnapshot} from "./renderer/services/weather.js";
+import {WEATHER_LOCATION_LABEL, WEATHER_MAX_AGE_MS, getWeatherSnapshot} from "./renderer/services/weather.js";
 import {DeviceRegistry} from "./state.js";
 import {FONT_OPTIONS, THEME_OPTIONS, type InputEventName} from "./ui-state.js";
 
@@ -158,7 +158,12 @@ async function handleRequest(
     const snapshot = getWeatherSnapshot();
     sendJson(response, 200, {
       weather: snapshot
-        ? {hasData: true, location: WEATHER_LOCATION_LABEL, ageSeconds: Math.max(0, Math.round((Date.now() - snapshot.fetchedAtMs) / 1000))}
+        ? {
+            hasData: true,
+            stale: Date.now() - snapshot.fetchedAtMs > WEATHER_MAX_AGE_MS,
+            location: WEATHER_LOCATION_LABEL,
+            ageSeconds: Math.max(0, Math.round((Date.now() - snapshot.fetchedAtMs) / 1000)),
+          }
         : {hasData: false, location: WEATHER_LOCATION_LABEL},
       deviceCount: registry.devices.size,
       config: {

@@ -58,7 +58,7 @@ export function buildDeviceViewModel(input: BuildDeviceViewModelInput): DeviceVi
       secondsColor: theme.seconds,
     }),
     theme,
-    weather: buildWeatherView(getWeatherSnapshot()) ?? undefined,
+    weather: buildWeatherView(getWeatherSnapshot(), input.currentTime) ?? undefined,
   };
 }
 
@@ -130,18 +130,18 @@ function buildRowsDetail(
       title: "Device",
       subtitle: "client diagnostics",
       rows: [
-        ["Heap", input.state.diagnostics.heapFree ? formatKb(input.state.diagnostics.heapFree) : "waiting"],
-        ["Block", input.state.diagnostics.heapMaxBlock ? formatKb(input.state.diagnostics.heapMaxBlock) : "waiting"],
-        ["Frag", input.state.diagnostics.heapFragmentation ? `${input.state.diagnostics.heapFragmentation}%` : "waiting"],
-        ["RSSI", input.state.diagnostics.wifiRssi ? `${input.state.diagnostics.wifiRssi} dBm` : "waiting"],
+        ["Heap", input.state.diagnostics.heapFree === undefined ? "waiting" : formatKb(input.state.diagnostics.heapFree)],
+        ["Block", input.state.diagnostics.heapMaxBlock === undefined ? "waiting" : formatKb(input.state.diagnostics.heapMaxBlock)],
+        ["Frag", input.state.diagnostics.heapFragmentation === undefined ? "waiting" : `${input.state.diagnostics.heapFragmentation}%`],
+        ["RSSI", input.state.diagnostics.wifiRssi === undefined ? "waiting" : `${input.state.diagnostics.wifiRssi} dBm`],
       ].map(([label, value]) => ({label, value})),
     };
   }
   if (item === "Renderer") {
     return {
       title: "Renderer",
-      subtitle: "remote frame link",
-      rows: toRows([["Mode", "HTTP keep-alive"], ["Poll", "50 ms"], ["Wait", "10 ms"], ["Frames", "SDD1 diff"]]),
+      subtitle: "remote frame format",
+      rows: toRows([["Protocol", "SDD1"], ["Pixels", "RGB565"], ["Size", "240 x 240"], ["Frames", "full / diff"]]),
     };
   }
   if (item === "About") {
@@ -173,7 +173,7 @@ function buildRowsDetail(
         ["Current", THEME_LABELS[input.state.themeKey] ?? "Theme"],
         ["Next", THEME_LABELS[nextThemeKey(input.state.themeKey)] ?? "Theme"],
         ["Scope", "clock palette"],
-        ["Apply", "long press"],
+        ["Apply", "short press"],
       ]),
     };
   }

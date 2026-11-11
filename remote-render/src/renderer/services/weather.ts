@@ -9,6 +9,7 @@ export const WEATHER_LOCATION_LABEL = "萧山";
 
 const FORECAST_HOURS = 12;
 const DEFAULT_REFRESH_MS = 30 * 60 * 1000; // 30 分钟
+export const WEATHER_MAX_AGE_MS = 2 * DEFAULT_REFRESH_MS;
 // 还没有任何缓存时（典型：容器刚启动首拉超时）用短间隔重试，
 // 否则一次网络抖动会让屏幕空 30 分钟天气。
 const DEFAULT_EMPTY_RETRY_MS = 30 * 1000;
@@ -46,6 +47,7 @@ export interface WeatherHourView {
 }
 
 export interface WeatherDayView {
+  dayOffset: number; // 距上海当前日期的天数，0 为今天
   label: string; // "明天" / "后天"
   icon: WeatherIconKind;
   tempMax: number;
@@ -55,12 +57,12 @@ export interface WeatherDayView {
 
 export interface WeatherView {
   location: string;
-  current: {temp: number; label: string; code: number; icon: WeatherIconKind};
-  maxPrecip: number;
-  tempLow: number;
-  tempHigh: number;
+  current?: {temp: number; label: string; code: number; icon: WeatherIconKind};
+  maxPrecip?: number;
+  tempLow?: number;
+  tempHigh?: number;
   hours: WeatherHourView[];
-  days: WeatherDayView[]; // [今天, 明天, 后天]
+  days: WeatherDayView[];
 }
 
 const FORECAST_DAYS = 3;
@@ -195,17 +197,34 @@ export function parseOpenMeteoDays(payload: unknown): WeatherDay[] {
 
 const DAY_LABELS = ["今天", "明天", "后天"];
 
-export function buildWeatherView(input: WeatherSnapshot | null): WeatherView | null {
-  if (!input || input.hours.length === 0) return null;
-  const hours = input.hours;
+export function buildWeatherView(input: WeatherSnapshot | null, currentTime: Date): WeatherView | null {
+  if (!input || currentTime.getTime() - input.fetchedAtMs > WEATHER_MAX_AGE_MS) return null;
+  // API 时间不带偏移，固定为 Asia/Shanghai；按相同日期与小时匹配，独立于宿主机时区。
+  const localTime = new Date(currentTime.getTime() + 8 * 60 * 60 * 1000).toISOString();
+  const currentHour = localTime.slice(0, 13);
+  const todayMs = Date.parse(`${localTime.slice(0, 10)}T00:00:00Z`);
+  const hours = input.hours.filter((hour) => hour.time.slice(0, 13) >= currentHour);
   const temps = hours.map((hour) => hour.temp);
-  const current = hours[0];
+  const current = hours.find((hour) => hour.time.slice(0, 13) === currentHour);
+  const days = input.days.flatMap((day): WeatherDayView[] => {
+    const dayOffset = (Date.parse(`${day.date}T00:00:00Z`) - todayMs) / (24 * 60 * 60 * 1000);
+    if (!Number.isInteger(dayOffset) || dayOffset < 0 || dayOffset >= FORECAST_DAYS) return [];
+    return [{
+      dayOffset,
+      label: DAY_LABELS[dayOffset],
+      icon: weatherIconKind(day.code),
+      tempMax: day.tempMax,
+      tempMin: day.tempMin,
+      precip: day.precip,
+    }];
+  });
+  if (!current && days.length === 0) return null;
   return {
     location: WEATHER_LOCATION_LABEL,
-    current: {temp: current.temp, label: wmoLabel(current.code), code: current.code, icon: weatherIconKind(current.code)},
-    maxPrecip: Math.max(...hours.map((hour) => hour.precip)),
-    tempLow: Math.min(...temps),
-    tempHigh: Math.max(...temps),
+    current: current ? {temp: current.temp, label: wmoLabel(current.code), code: current.code, icon: weatherIconKind(current.code)} : undefined,
+    maxPrecip: hours.length ? Math.max(...hours.map((hour) => hour.precip)) : undefined,
+    tempLow: hours.length ? Math.min(...temps) : undefined,
+    tempHigh: hours.length ? Math.max(...temps) : undefined,
     hours: hours.map((hour) => ({
       hourLabel: hourLabel(hour.time),
       temp: hour.temp,
@@ -213,13 +232,7 @@ export function buildWeatherView(input: WeatherSnapshot | null): WeatherView | n
       label: wmoLabel(hour.code),
       icon: weatherIconKind(hour.code),
     })),
-    days: (input.days ?? []).map((day, index) => ({
-      label: DAY_LABELS[index] ?? day.date.slice(5),
-      icon: weatherIconKind(day.code),
-      tempMax: day.tempMax,
-      tempMin: day.tempMin,
-      precip: day.precip,
-    })),
+    days,
   };
 }
 

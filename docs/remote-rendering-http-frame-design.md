@@ -196,9 +196,19 @@ and today's high/low (right) at near-equal sizes on a shared baseline — no
 高/低 captions, the warm/blue colour split carries that meaning. A bottom row
 shows 明天 and 后天 as two generous columns (label + icon over high/low). Nothing beyond 后天 is shown. Highs are colour-coded
 cool→warm; lows use one muted blue-gray. Weather is fetched server-side from
-Open-Meteo for Hangzhou Xiaoshan and cached; failures are silent and never block
-the clock, and the weather elements simply do not render until the first
-forecast arrives.
+Open-Meteo for Hangzhou Xiaoshan and cached. Fetch failures preserve the cache
+and do not block the clock. Snapshots older than one hour are hidden on the
+home screen. The renderer selects the current hour and labels daily forecasts
+by their actual dates in Asia/Shanghai. A missing current hour hides the current
+condition while valid daily forecasts remain available. Missing days keep their
+actual day labels and column positions. `/api/v1/status` retains `hasData` for
+cache presence and reports `stale` for expiration; the console marks expired
+weather separately.
+
+The date and lunar text use separate rows for holiday copy. Temperature fields
+shrink text to their available width, including negative values. Settings show
+zero-valued diagnostics explicitly and use `waiting` only for missing fields.
+The Renderer detail describes the frame format, pixel format, and dimensions.
 
 The digital-rain backdrop (the last survivor of the removed ambient-game
 carousel) was removed on 2026-07-04 at the user's request — it read as visual
@@ -236,7 +246,11 @@ effect, not pixels. The current command response is JSON:
 The service emits `set_brightness` immediately when the Brightness detail value
 changes. The device applies it locally through PWM, stores the value in EEPROM
 when `persist=true`, then advances its local `after` id so the command is not
-applied repeatedly.
+applied repeatedly. A brightness-only change on the home page does not generate
+a new frame. Settings and brightness details update the visible value using a
+partial frame. A successful console brightness request means the service has
+accepted the command; it does not confirm hardware application. The console
+labels its image as a service preview.
 
 The device also POSTs local status after startup, after applying brightness, and
 periodically while connected:
@@ -292,7 +306,13 @@ It does not make the ESP8266 catch up through stale frames.
 7. If no newer frame appears, the server returns `204`.
 8. If a dirty update is unsafe or insufficient, the server returns a full frame.
 9. The device updates local `have` only after the frame is fully read, validated,
-   and drawn.
+   and drawn. A failed HTTP fetch resets `have` to zero. Serial body or envelope
+   validation failure after drawing also reports `frame_id=0`, because the
+   screen may contain pixels from the rejected frame. The next frame is full.
+
+Static Settings and Detail pages render after input, configuration, or visible
+status changes. Animation frames continue until completion. Time passing alone
+does not produce a new frame on these pages.
 
 ## Binary Frame Format
 
@@ -463,9 +483,10 @@ The device picks the transport automatically:
    switches to serial on the fly. In passive mode frame/command envelopes are
    drained but never drawn, so two transports can never paint the panel at
    the same time.
-3. Serial mode watches downlink liveness: the home screen renders at least
-   one frame per second, so 10s of silence (`kSerialLinkIdleMs`) means the
-   link is gone. The firmware re-probes with `HELLO` a few times, then falls
+3. Serial mode watches downlink liveness. The home screen updates each second;
+   static pages receive an empty partial frame after two seconds without a
+   sent frame. Ten seconds of silence (`kSerialLinkIdleMs`) means the link is
+   gone. The firmware re-probes with `HELLO` a few times, then falls
    back to WiFi when credentials exist, or keeps waiting on serial (with a
    status screen) when they do not. Every link (re)establishment starts from
    `have=0`, so recovery is always a clean full frame.
@@ -500,13 +521,22 @@ and WiFi RSSI must be in `-127..0`. Missing optional diagnostics stay missing,
 which lets the console distinguish an older firmware payload from a reported
 zero.
 
-The host side reuses `DeviceRegistry` unchanged: a pump loop calls
-`getFrameWithStats(deviceId, have, 1000)` exactly like an HTTP client, writes
+The host uses `DeviceRegistry` for frame scheduling: a pump loop calls
+`getFrameWithStats(deviceId, have, 250)`, writes
 the frame, and waits for `FRAME_ACK` before advancing `have` (stop-and-wait,
-so at most one frame is in flight and the device's 4KB RX buffer bounds
-everything). A failed/corrupt frame is acked with the old `have`, which the
-registry heals with a catch-up partial. Commands are pushed the moment the
-queue changes — no polling anywhere on the serial path.
+so at most one frame is in flight). An in-flight frame may exceed the 4KB RX
+buffer, so receiving still needs to make progress while bytes arrive. A body
+or envelope validation failure after drawing is acknowledged with `frame_id=0`
+to request a full frame. Empty keepalive frames have zero rectangles and use
+the current id for both `frame_id` and `base_frame_id`; their ACK retains that id.
+
+Commands are checked after input, status, and ACK events, with a 250ms timer
+checking for new or pending commands. A command is retried after one second
+without confirmation, up to three sends. A matching `COMMAND_ACK` stops retries;
+a new command replaces the pending command. A repeated HELLO restarts attempts
+for the same device's unconfirmed command. Switching devices resets command
+tracking. `COMMAND_ACK` contains only an id and is attributed to the device
+from the latest HELLO; equal ids from different devices cannot be distinguished.
 
 ### Operations
 
@@ -741,7 +771,15 @@ Common to both modes:
 
 The local status/error screen now also includes the device IP when connected, so
 the setup page can be reached from another LAN device without opening serial
-monitor.
+monitor. Drawing a local full-screen status message resets the HTTP frame id
+so recovery requests a full frame. WiFi disconnection stops the LAN configuration
+server; reconnecting starts it again using the current LAN address.
+
+The setup form keeps the saved password if the SSID is unchanged and the password
+field is empty. A different SSID with an empty password selects an open network.
+The explicit clear-password option takes precedence, and submitted password
+spaces are preserved. The button library uses the configured 250ms double-click
+window.
 
 Hold progress is intentionally local. The remote renderer does not draw any
 progress-bar-like navigation accent. The device uses press lifecycle events to

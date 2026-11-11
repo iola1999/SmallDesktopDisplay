@@ -38,7 +38,7 @@ launchctl kickstart -k gui/$UID/com.sdd.remote-render
 pio run -e esp12e
 ```
 
-当前 Mac 使用串口传帧，烧写前先停止 launchd 服务，烧写后再恢复：
+Mac 服务的 `SERIAL_PORT` 与当前设备节点一致后使用串口传帧。烧写前先停止 launchd 服务，烧写后再恢复：
 
 ```bash
 launchctl bootout gui/$UID/com.sdd.remote-render
@@ -68,7 +68,7 @@ pio run -e esp12e
 
 如果设备已经连上 WiFi，可以在同一局域网内访问设备当前获取到的 IP 地址进入配网页。如果设备还没有连上 WiFi，可以用手机或电脑连接设备发出的 `SDD-Setup` WiFi 热点，再进入配网页完成 WiFi 和远端渲染地址配置。
 
-TFT 引脚映射来自 `TFT_eSPI` 库自己的 `User_Setup.h`，不在本仓库中维护。
+TFT 引脚、屏幕驱动与 SPI 频率配置在 [include/TFT_eSPI_SDD_ST7789.h](include/TFT_eSPI_SDD_ST7789.h)。[platformio.ini](platformio.ini) 通过 `USER_SETUP_LOADED` 和强制 include 使用该文件。
 
 ## 文档
 

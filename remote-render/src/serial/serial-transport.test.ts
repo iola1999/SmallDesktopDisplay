@@ -5,6 +5,7 @@ import {
   ENVELOPE_HEADER_SIZE,
   EnvelopeParser,
   MSG_COMMAND,
+  MSG_COMMAND_ACK,
   MSG_DEVICE_HELLO,
   MSG_FRAME,
   MSG_FRAME_ACK,
@@ -14,10 +15,12 @@ import {
   encodeEnvelope,
 } from "./envelope.js";
 import {SerialTransport, type SerialPortLike} from "./serial-transport.js";
+import {decodeFrame} from "../tools/frame-preview.js";
 
 // 宿主机视角的假串口：记录下行写入，可注入上行字节。
 class FakePort implements SerialPortLike {
   written: Buffer[] = [];
+  ackFrames = false;
   private handlers: {data: Array<(chunk: Buffer) => void>; close: Array<() => void>; error: Array<(error: Error) => void>} = {
     data: [],
     close: [],
@@ -26,6 +29,10 @@ class FakePort implements SerialPortLike {
 
   write(data: Buffer): boolean {
     this.written.push(Buffer.from(data));
+    if (this.ackFrames && data[2] === MSG_FRAME) {
+      const frameId = data.readUInt32LE(ENVELOPE_HEADER_SIZE + 8);
+      queueMicrotask(() => this.emitData(frameAck(frameId)));
+    }
     return true;
   }
 
@@ -66,6 +73,28 @@ function frameAck(frameId: number): Buffer {
   return encodeEnvelope(MSG_FRAME_ACK, Buffer.from(JSON.stringify({frame_id: frameId})));
 }
 
+function commandAck(id: number): Buffer {
+  return encodeEnvelope(MSG_COMMAND_ACK, Buffer.from(JSON.stringify({id})));
+}
+
+function commandIds(port: FakePort): number[] {
+  return port.decodeWritten()
+    .filter((message) => message.type === MSG_COMMAND)
+    .map((message) => JSON.parse(message.payload.toString("utf8")).id);
+}
+
+function commandTestTransport(): {registry: DeviceRegistry; port: FakePort; transport: SerialTransport} {
+  const registry = new DeviceRegistry({now: () => new Date("2026-05-01T12:00:00.800+08:00")});
+  const port = new FakePort();
+  port.ackFrames = true;
+  const transport = new SerialTransport({
+    registry, port, log: () => {}, framePollWaitMs: 10, ackTimeoutMs: 500,
+    commandCheckIntervalMs: 5, commandRetryIntervalMs: 20, heartbeatIntervalMs: 20,
+  });
+  transport.start();
+  return {registry, port, transport};
+}
+
 async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
   await vi.waitFor(
     () => {
@@ -78,6 +107,89 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void
 }
 
 describe("serial transport", () => {
+  test("unacknowledged commands have bounded retries and resume after hello", async () => {
+    const {registry, port, transport} = commandTestTransport();
+    try {
+      registry.applyPrefs("desk-retry", {brightness: 75});
+      port.emitData(deviceHello("desk-retry"));
+      await waitFor(() => commandIds(port).length === 3);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(commandIds(port)).toEqual([1, 1, 1]);
+
+      port.emitData(deviceHello("desk-retry"));
+      expect(commandIds(port)).toEqual([1, 1, 1, 1]);
+      port.emitData(commandAck(1));
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(commandIds(port)).toEqual([1, 1, 1, 1]);
+      expect(transport.isLinkUp()).toBe(true);
+    } finally {
+      transport.stop();
+    }
+  });
+
+  test("stale command acknowledgements cannot confirm a newer command", async () => {
+    const {registry, port, transport} = commandTestTransport();
+    try {
+      registry.applyPrefs("desk-ack", {brightness: 60});
+      port.emitData(deviceHello("desk-ack"));
+      port.emitData(commandAck(1));
+      registry.applyPrefs("desk-ack", {brightness: 80});
+      await waitFor(() => commandIds(port).includes(2));
+      port.emitData(commandAck(1));
+      port.emitData(commandAck(999));
+      await waitFor(() => commandIds(port).filter((id) => id === 2).length === 2);
+      port.emitData(commandAck(2));
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(commandIds(port)).toEqual([1, 2, 2]);
+    } finally {
+      transport.stop();
+    }
+  });
+
+  test("changing the hello device resets command acknowledgement state", async () => {
+    const {registry, port, transport} = commandTestTransport();
+    try {
+      registry.applyPrefs("desk-a", {brightness: 60});
+      registry.applyPrefs("desk-b", {brightness: 80});
+      port.emitData(deviceHello("desk-a"));
+      port.emitData(commandAck(1));
+      port.emitData(deviceHello("desk-b"));
+      expect(commandIds(port)).toEqual([1, 1]);
+      const commands = port.decodeWritten().filter((message) => message.type === MSG_COMMAND);
+      expect(commands.map((message) => JSON.parse(message.payload.toString("utf8")).value)).toEqual([60, 80]);
+      port.emitData(commandAck(1));
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(commandIds(port)).toEqual([1, 1]);
+    } finally {
+      transport.stop();
+    }
+  });
+
+  test("idle pages receive empty heartbeat frames without advancing their render state", async () => {
+    const {registry, port, transport} = commandTestTransport();
+    try {
+      registry.applyPrefs("desk-idle", {themeKey: "mono"});
+      const state = registry.devices.get("desk-idle")!;
+      state.ui.page = "settings";
+      registry.applyPrefs("desk-idle", {brightness: 60});
+      const frameId = state.frameId;
+      const canvas = state.canvas;
+      port.emitData(deviceHello("desk-idle"));
+      port.emitData(commandAck(1));
+      await waitFor(() => port.decodeWritten().filter((message) => message.type === MSG_FRAME).length >= 3);
+      const frames = port.decodeWritten().filter((message) => message.type === MSG_FRAME).map((message) => decodeFrame(message.payload));
+      expect(frames[0].fullFrame).toBe(true);
+      for (const frame of frames.slice(1)) {
+        expect(frame).toMatchObject({frameId, baseFrameId: frameId, fullFrame: false, rects: []});
+      }
+      expect(state.frameId).toBe(frameId);
+      expect(state.canvas).toBe(canvas);
+      expect(transport.isLinkUp()).toBe(true);
+    } finally {
+      transport.stop();
+    }
+  });
+
   test("device hello brings the link up and pushes a full frame; ack advances have", async () => {
     const registry = new DeviceRegistry();
     const port = new FakePort();

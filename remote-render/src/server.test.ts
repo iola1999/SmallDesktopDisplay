@@ -1,5 +1,6 @@
 import {afterEach, beforeEach, describe, expect, test} from "vitest";
 
+import {WEATHER_MAX_AGE_MS, setWeatherSnapshotForTest} from "./renderer/services/weather.js";
 import {createRemoteRenderServer, type RemoteRenderServer} from "./server.js";
 
 describe("Node HTTP API", () => {
@@ -17,6 +18,7 @@ describe("Node HTTP API", () => {
   });
 
   afterEach(async () => {
+    setWeatherSnapshotForTest(null);
     await server.close();
   });
 
@@ -39,6 +41,17 @@ describe("Node HTTP API", () => {
     const second = await fetch(`${baseUrl}/api/v1/devices/desk-01/frame?have=${frameId}&wait_ms=1`);
     expect(second.status).toBe(204);
     expect(second.headers.get("x-sdd-cmd")).toBe("0");
+  });
+
+  test("reports cached weather expiration without discarding its update age", async () => {
+    setWeatherSnapshotForTest({fetchedAtMs: Date.now(), hours: [], days: []});
+    const fresh = await fetch(`${baseUrl}/api/v1/status`).then((response) => response.json());
+    expect(fresh.weather).toMatchObject({hasData: true, stale: false});
+
+    setWeatherSnapshotForTest({fetchedAtMs: Date.now() - WEATHER_MAX_AGE_MS - 1000, hours: [], days: []});
+    const expired = await fetch(`${baseUrl}/api/v1/status`).then((response) => response.json());
+    expect(expired.weather).toMatchObject({hasData: true, stale: true});
+    expect(expired.weather.ageSeconds).toBeGreaterThan(WEATHER_MAX_AGE_MS / 1000);
   });
 
   test("validates status payload fields like the previous API contract", async () => {

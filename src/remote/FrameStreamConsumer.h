@@ -23,7 +23,7 @@ public:
   }
 
   // 消费 header 描述的全部 rect 并校验 CRC。失败时屏幕可能已被部分绘制，
-  // 调用方应保持 have 不变，等待服务端整屏/补差重同步。
+  // 调用方应把 have 归零，通过完整帧重新同步。
   bool consumeBody(ByteSource &source, const FrameHeader &header, app::FrameDiagnostics &diagnostics,
                    uint32_t timeoutMs);
 

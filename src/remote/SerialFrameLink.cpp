@@ -133,8 +133,9 @@ bool SerialFrameLink::handleFrame(const SerialEnvelopeHeader &envelope, SerialTi
   if (!consumer_.consumeBody(source, header, diagnostics, app_config::kSerialReadTimeoutMs) ||
       source.consumedBytes() != envelope.length || source.finishCrc() != envelope.crc32)
   {
-    // 屏幕可能已被部分绘制；保持 have 不变并回报，宿主机会推差分/全屏纠正。
+    // 屏幕可能已被部分绘制，必须通过完整帧恢复全部像素。
     Serial.println(F("[SerialFrame] invalid frame body"));
+    haveFrameId_ = 0;
     sendFrameAck();
     return false;
   }

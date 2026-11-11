@@ -1,7 +1,7 @@
 export const SCREEN_WIDTH = 240;
 export const SCREEN_HEIGHT = 240;
-// 安静首屏分区：顶部（日期+农历）/ 时钟带 / 下方天气区（当前条+逐小时+两日）。
-export const HEADER_REGION: RectTuple = [0, 8, SCREEN_WIDTH, 44];
+// 节日标题分为两行，顶部差分从第 0 行开始，包含文字抗锯齿像素。
+export const HEADER_REGION: RectTuple = [0, 0, SCREEN_WIDTH, 44];
 export const TIME_REGION: RectTuple = [0, 44, SCREEN_WIDTH, 112];
 // 边框移除后底部内容（明后天高低温）下探到 ~229，diff 区域覆盖到屏幕底缘。
 export const FORECAST_REGION: RectTuple = [0, 112, SCREEN_WIDTH, 240];

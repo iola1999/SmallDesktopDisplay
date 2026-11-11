@@ -235,6 +235,7 @@ export class DeviceRegistry {
   ): Required<DevicePrefs> & {brightness: number} {
     const state = this.ensureDevice(deviceId);
     const before = prefsSnapshot(state);
+    const previousBrightness = state.ui.brightness;
     if (prefs.themeKey !== undefined && (THEME_OPTIONS as readonly string[]).includes(prefs.themeKey)) {
       state.ui.themeKey = prefs.themeKey;
       state.ui.pendingThemeKey = prefs.themeKey;
@@ -251,7 +252,12 @@ export class DeviceRegistry {
     }
     this.capturePrefs(state);
     if (options.emitPrefsChanged !== false) this.emitPrefsIfChanged(state, before);
-    this.render(state, true);
+    const appearanceChanged = before.themeKey !== state.ui.themeKey || before.fontKey !== state.ui.fontKey;
+    if (appearanceChanged) {
+      this.render(state, true);
+    } else if (previousBrightness !== state.ui.brightness && this.isBrightnessVisible(state)) {
+      this.render(state, false);
+    }
     return {themeKey: state.ui.themeKey, fontKey: state.ui.fontKey, brightness: state.ui.brightness};
   }
 
@@ -376,12 +382,17 @@ export class DeviceRegistry {
   recordStatus(deviceId: string, input: RecordStatusInput): void {
     const state = this.ensureDevice(deviceId, true);
     const brightnessChanged = state.ui.brightness !== input.brightness;
+    const diagnosticsChanged =
+      state.ui.diagnostics.heapFree !== input.heapFree ||
+      state.ui.diagnostics.heapMaxBlock !== input.heapMaxBlock ||
+      state.ui.diagnostics.heapFragmentation !== input.heapFragmentation ||
+      state.ui.diagnostics.wifiRssi !== input.wifiRssi;
     state.ui.brightness = input.brightness;
     state.ui.pendingBrightness = input.brightness;
-    state.ui.diagnostics.heapFree = input.heapFree ?? 0;
-    state.ui.diagnostics.heapMaxBlock = input.heapMaxBlock ?? 0;
-    state.ui.diagnostics.heapFragmentation = input.heapFragmentation ?? 0;
-    state.ui.diagnostics.wifiRssi = input.wifiRssi ?? 0;
+    state.ui.diagnostics.heapFree = input.heapFree;
+    state.ui.diagnostics.heapMaxBlock = input.heapMaxBlock;
+    state.ui.diagnostics.heapFragmentation = input.heapFragmentation;
+    state.ui.diagnostics.wifiRssi = input.wifiRssi;
     state.ui.diagnostics.uptimeMs = input.uptimeMs;
     state.reportedDiagnostics = {
       uptimeMs: input.uptimeMs,
@@ -391,15 +402,16 @@ export class DeviceRegistry {
       ...(input.wifiRssi === undefined ? {} : {wifiRssi: input.wifiRssi}),
     };
     state.lastInputUptimeMs = Math.max(state.lastInputUptimeMs, input.uptimeMs);
-    // 状态上报的数字只在少数页面可见。此前无条件渲染会在翻牌窗口里插一帧，
-    // 让下一个动画 partial 的 base 跳过设备的 have，触发整屏重同步顿挫
-    // （固件每 10s 上报一次，约一半概率落在翻牌窗内）。现在仅当页面真的
-    // 展示这些数字时才重渲染；诊断值本身总是先写入 ui 状态。
+    // 运行时间不在诊断详情中显示；只更新页面实际使用且发生变化的字段。
     const detailItem = state.ui.page === "detail" ? SETTINGS_ITEMS[state.ui.detailIndex % SETTINGS_ITEMS.length] : null;
-    const brightnessVisible = state.ui.page === "settings" || detailItem === "Brightness";
-    if (detailItem === "Device" || (brightnessChanged && brightnessVisible)) {
+    if ((detailItem === "Device" && diagnosticsChanged) || (brightnessChanged && this.isBrightnessVisible(state))) {
       this.render(state, false);
     }
+  }
+
+  private isBrightnessVisible(state: DeviceState): boolean {
+    return state.ui.page === "settings" ||
+      (state.ui.page === "detail" && SETTINGS_ITEMS[state.ui.detailIndex % SETTINGS_ITEMS.length] === "Brightness");
   }
 
   private ensureDevice(deviceId: string, deviceCommunication = false): DeviceState {
@@ -455,6 +467,8 @@ export class DeviceRegistry {
       state.lastAnimationFrameAt = -1;
       return this.render(state, true);
     }
+    // 设置和详情页由输入、配置及状态变化触发更新，时间经过不会改变页面内容。
+    if (state.ui.page !== "home") return 0;
 
     // 秒相位一律取墙钟：翻牌的字符内容（前一秒/当前秒）由 Date 推导；若窗口
     // 判定用进程单调秒，两者存在进程启动时随机的相位差 δ，曾造成秒中渲染以
@@ -462,7 +476,7 @@ export class DeviceRegistry {
     const wallMs = this.now().getTime();
     const intervalMs = this.frameIntervalSeconds * 1000;
     const currentSecond = Math.floor(wallMs / intervalMs);
-    if (state.ui.page === "home" && currentSecond === state.lastClockAnimationSecond) {
+    if (currentSecond === state.lastClockAnimationSecond) {
       const elapsed = (wallMs - currentSecond * intervalMs) / 1000;
       if (elapsed < this.clockFlipAnimationSeconds && now - state.lastClockAnimationFrameAt >= this.animationFrameIntervalSeconds) {
         state.lastClockAnimationFrameAt = now;
@@ -476,13 +490,9 @@ export class DeviceRegistry {
     if (currentSecond <= state.lastRenderSecond) {
       return 0;
     }
-    if (state.ui.page === "home") {
-      state.lastClockAnimationSecond = currentSecond;
-      state.lastClockAnimationFrameAt = now;
-      // 安静首页每秒刷新：顶部（日期+农历）、时钟带、下方天气区。
-      return this.render(state, false, [HEADER_REGION, TIME_REGION, FORECAST_REGION]);
-    }
-    return this.render(state, false, [TIME_REGION]);
+    state.lastClockAnimationSecond = currentSecond;
+    state.lastClockAnimationFrameAt = now;
+    return this.render(state, false, [HEADER_REGION, TIME_REGION, FORECAST_REGION]);
   }
 
   private selectFrameForClient(state: DeviceState, have: number): Buffer | null {

@@ -30,7 +30,7 @@ ESP-12E 模块桌面小屏显示器，基于 PlatformIO + Arduino framework。�
 - 帧预览：`cd remote-render && npm run preview -- --base-url http://127.0.0.1:18080 --device-id desk-01 --frames 2 --output frame-previews/latest.png`
 
 **当前生产部署（2026-07-04 起）已从 Docker 容器迁移到 launchd 原生进程**：本机 Docker 是
-OrbStack（Linux 虚拟机），无法把 USB 串口透传进容器，而设备现在走串口直连。服务由
+OrbStack（Linux 虚拟机），无法把 USB 串口透传进容器。原生部署支持串口直连。服务由
 `~/Library/LaunchAgents/com.sdd.remote-render.plist` 常驻（KeepAlive + RunAtLoad，等价
 `restart: unless-stopped`），日志在 `~/Library/Logs/sdd-remote-render.log`。修改
 `remote-render/` 后的发布方式：
@@ -52,7 +52,7 @@ compose 文件保留给 Linux 宿主机部署场景（那里 `devices:` 映射�
 
 ## TFT_eSPI 引脚配置
 
-屏幕引脚由 `TFT_eSPI` 库自己的 `User_Setup.h` 决定。该文件位于 `.pio/libdeps/esp12e/TFT_eSPI/` 或用户全局 Arduino 库目录，配置 SCK / MOSI / DC / RES / BL。排查显示相关问题时直接检查该文件。
+屏幕引脚、驱动与 SPI 频率由 [include/TFT_eSPI_SDD_ST7789.h](include/TFT_eSPI_SDD_ST7789.h) 配置。[platformio.ini](platformio.ini) 通过 `USER_SETUP_LOADED` 和强制 include 使用该文件。排查显示相关问题时检查这两个文件。
 
 ## 目录说明
 
